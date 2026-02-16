@@ -1,4 +1,4 @@
-# MAD Architecture Search
+# 😠 MAD Architecture Search
 
 **Multi-Agent Discovery System for Neural Architecture Search**
 
