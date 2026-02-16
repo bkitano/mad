@@ -1,0 +1,32 @@
+# MVE 017: Hyperoctahedral Signed-Permutation SSM
+# Task: B3 composition (|B_3| = 48 elements, 3 generators)
+
+dataset:
+  num_samples: 10000      # 10K sequences
+  min_k: 8                # Min generator sequence length
+  max_k: 16               # Max generator sequence length
+  max_seq_len: 20         # Padded length: BOS + max_k + EOS + padding
+  test_ratio: 0.2         # 80/20 train/test split
+
+model:
+  d_model: 64             # Input dimension (increased from proposal's 32 for capacity)
+  state_dim: 8            # State dimension per head (matches proposal)
+  num_heads: 4            # Number of heads
+  num_layers: 2           # Number of layers (increased from 1 for capacity)
+  sinkhorn_iters: 5       # Sinkhorn normalization iterations
+  tau: 0.5                # Gumbel-Sinkhorn temperature (lower = more discrete)
+  use_hard_perm: true     # Use ST hardening for permutations
+  dropout: 0.1
+
+training:
+  batch_size: 128
+  lr: 0.003               # Learning rate
+  beta1: 0.9
+  beta2: 0.999
+  op_eps: 1.0e-8
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  max_epochs: 200
+  patience: 40            # Early stopping patience
+  target_acc: 0.95        # Stop if we hit this
+  seed: 42

@@ -1,0 +1,30 @@
+# Experiment 007: OH-DeltaProduct MVE
+# Proposal: 020-oscillatory-householder-deltaproduct
+# Task: S3 Permutation Composition
+
+seed: 42
+
+model:
+  d_model: 32         # Hidden dim (proposal: d=32)
+  m: 8                # Number of oscillators (state dim 2m=16)
+  n_h: 2              # Number of Householder reflections per step
+  num_layers: 1       # Single layer (proposal MVE)
+  dt: 0.1             # Discretization timestep (larger for discrete task)
+  omega_max: 100.0    # Max frequency clamp
+
+data:
+  num_train: 5000     # Training sequences
+  num_val: 500        # Validation sequences
+  num_test: 500       # Test sequences
+  seq_len: 32         # Sequence length (each step applies a random S3 generator)
+
+training:
+  epochs: 200         # Max epochs
+  batch_size: 128     # Batch size
+  lr: 0.003           # Learning rate (higher for small model)
+  weight_decay: 0.0001
+  beta1: 0.9
+  beta2: 0.999
+  gradient_clip: 1.0
+  dropout: 0.05       # Light dropout for small model
+  patience: 40        # Early stopping patience

@@ -1,0 +1,33 @@
+# MVE 063: DyT vs RMSNorm in GLA
+# Compares 4 normalization variants for quality equivalence
+
+model:
+  d_model: 64
+  d_k: 32
+  d_v: 64
+  n_heads: 2
+  n_layers: 2
+  d_ff: 128
+  dropout: 0.0
+
+data:
+  vocab_size: 256
+  seq_len: 128
+  train_samples: 10000
+  val_samples: 1000
+
+training:
+  batch_size: 64
+  lr: 3.0e-4
+  beta1: 0.9
+  beta2: 0.999
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  epochs: 30
+
+seed: 42
+
+deployment:
+  n_gpus: 1
+  gpu_type: T4
+  timeout_seconds: 3600

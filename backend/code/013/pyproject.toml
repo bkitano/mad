@@ -1,0 +1,15 @@
+[project]
+name = "experiment-013-circulant-ssm"
+version = "0.1.0"
+description = "MVE for Circulant SSM with Fourier-Domain Parallel Scan"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.65.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"

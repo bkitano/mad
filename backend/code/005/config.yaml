@@ -1,0 +1,35 @@
+# MVE 005: Segmented-HSS Linear Attention
+# Hierarchical Copying Task
+#
+# Tests whether HSS-structured state matrices can capture
+# hierarchical dependencies in linear attention.
+#
+# Reduced dataset for faster iteration - still validates core hypothesis.
+
+dataset:
+  num_samples: 2000        # Reduced from 5K for faster training
+  max_seq_len: 32          # BOS + 8 input + SEP + up to 16 output + EOS + PAD
+  test_split: 0.3          # 15% val, 15% test
+  seed: 42
+
+model:
+  d_model: 64              # Model dimension (proposal: d=64)
+  d_head: 64               # Head dimension (power of 2 for HSS tree)
+  hss_rank: 8              # HSS rank (proposal: r=8)
+  dropout: 0.1
+
+training:
+  batch_size: 64
+  lr: 1e-3                 # Slightly higher LR for faster convergence
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  max_epochs: 100          # Reduced for speed
+  patience: 20             # Early stopping patience
+
+logging:
+  wandb_project: "mve-005-hss-linear-attention"
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"           # T4 sufficient for ~10K param model
+  timeout_seconds: 1800    # 30 minutes max

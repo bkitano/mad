@@ -1,0 +1,441 @@
+#!/usr/bin/env python3
+"""
+MAD Architecture Search - SSE Dashboard Server
+
+Watches experiment files and streams updates to connected clients via Server-Sent Events.
+"""
+
+import json
+import time
+import logging
+from pathlib import Path
+from datetime import datetime
+from threading import Thread, Lock
+from flask import Flask, Response, jsonify, request
+from flask_cors import CORS
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+# Configuration
+PROJECT_ROOT = Path(__file__).parent.parent
+EXPERIMENTS_DIR = PROJECT_ROOT / "experiments"
+PROPOSALS_DIR = PROJECT_ROOT / "proposals"
+TRICKS_DIR = PROJECT_ROOT / "tricks"
+NOTES_DIR = PROJECT_ROOT / "notes"
+RUNNER_LOG = PROJECT_ROOT / "runner.log"
+ACTIVE_WORK_FILE = EXPERIMENTS_DIR / "active_work.json"
+RESEARCH_LOG = NOTES_DIR / "log.md"
+
+# Server settings
+MAX_CONNECTIONS = 100
+HEARTBEAT_INTERVAL = 30  # seconds
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Flask app
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
+
+# Connection tracking
+connections = []
+connections_lock = Lock()
+
+
+class ExperimentWatcher(FileSystemEventHandler):
+    """Watches experiment directory for file changes."""
+
+    def __init__(self):
+        self.last_update = {}
+
+    def on_modified(self, event):
+        if event.is_directory:
+            return
+
+        # Debounce rapid updates (ignore updates within 1 second)
+        now = time.time()
+        if event.src_path in self.last_update:
+            if now - self.last_update[event.src_path] < 1.0:
+                return
+
+        self.last_update[event.src_path] = now
+
+        # Broadcast update to all connected clients
+        file_path = Path(event.src_path)
+        logger.info(f"File changed: {file_path.name}")
+
+        if file_path.name == "active_work.json":
+            broadcast_update("active_work", get_active_work())
+        elif file_path.name.endswith("_results.md"):
+            broadcast_update("results", {"file": file_path.name})
+        elif file_path.name.endswith(".log"):
+            broadcast_update("logs", {"file": file_path.name})
+
+
+def get_active_work():
+    """Read active work status."""
+    try:
+        if ACTIVE_WORK_FILE.exists():
+            with open(ACTIVE_WORK_FILE) as f:
+                data = json.load(f)
+                # Add server timestamp
+                data["server_timestamp"] = datetime.now().isoformat()
+                return data
+        return {"active_work": {}, "history": [], "server_timestamp": datetime.now().isoformat()}
+    except Exception as e:
+        logger.error(f"Error reading active_work.json: {e}")
+        return {"error": str(e), "server_timestamp": datetime.now().isoformat()}
+
+
+def get_recent_logs(n=50):
+    """Get last N lines from runner.log."""
+    try:
+        if RUNNER_LOG.exists():
+            with open(RUNNER_LOG) as f:
+                lines = f.readlines()
+                return lines[-n:]
+        return []
+    except Exception as e:
+        logger.error(f"Error reading runner.log: {e}")
+        return [f"Error: {e}"]
+
+
+def get_experiment_results():
+    """List all experiment results."""
+    try:
+        results = []
+        for result_file in sorted(EXPERIMENTS_DIR.glob("*_results.md")):
+            results.append({
+                "filename": result_file.name,
+                "experiment_id": result_file.stem.replace("_results", ""),
+                "modified": result_file.stat().st_mtime,
+            })
+        return results
+    except Exception as e:
+        logger.error(f"Error listing results: {e}")
+        return []
+
+
+def get_proposals():
+    """List all proposals with metadata."""
+    try:
+        proposals = []
+        if not PROPOSALS_DIR.exists():
+            return proposals
+
+        for proposal_file in sorted(PROPOSALS_DIR.glob("*.md")):
+            # Parse frontmatter
+            content = proposal_file.read_text()
+            metadata = {
+                "id": proposal_file.stem,
+                "filename": proposal_file.name,
+                "modified": proposal_file.stat().st_mtime,
+            }
+
+            # Extract key metadata from content
+            for line in content.split('\n')[:20]:  # Check first 20 lines
+                if line.startswith('**Status**:'):
+                    metadata['status'] = line.split(':', 1)[1].strip()
+                elif line.startswith('**Priority**:'):
+                    metadata['priority'] = line.split(':', 1)[1].strip()
+                elif line.startswith('**Created**:'):
+                    metadata['created'] = line.split(':', 1)[1].strip()
+                elif line.startswith('**Based on**:'):
+                    metadata['based_on'] = line.split(':', 1)[1].strip()
+                elif line.startswith('# '):
+                    metadata['title'] = line.lstrip('# ').strip()
+
+            proposals.append(metadata)
+
+        return proposals
+    except Exception as e:
+        logger.error(f"Error listing proposals: {e}")
+        return []
+
+
+def get_tricks():
+    """List all tricks with metadata."""
+    try:
+        tricks = []
+        if not TRICKS_DIR.exists():
+            return tricks
+
+        for trick_file in sorted(TRICKS_DIR.glob("*.md")):
+            content = trick_file.read_text()
+            metadata = {
+                "id": trick_file.stem,
+                "filename": trick_file.name,
+                "modified": trick_file.stat().st_mtime,
+            }
+
+            # Extract title from first heading
+            for line in content.split('\n')[:10]:
+                if line.startswith('# '):
+                    metadata['title'] = line.lstrip('# ').strip()
+                    break
+
+            tricks.append(metadata)
+
+        return tricks
+    except Exception as e:
+        logger.error(f"Error listing tricks: {e}")
+        return []
+
+
+def broadcast_update(event_type, data):
+    """Send update to all connected clients."""
+    with connections_lock:
+        disconnected = []
+        message = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+
+        for i, client_queue in enumerate(connections):
+            try:
+                client_queue.put(message)
+            except:
+                disconnected.append(i)
+
+        # Remove disconnected clients
+        for i in reversed(disconnected):
+            connections.pop(i)
+
+        if disconnected:
+            logger.info(f"Removed {len(disconnected)} disconnected clients. Active: {len(connections)}")
+
+
+def event_stream():
+    """SSE event stream for a single client."""
+    import queue
+
+    # Check connection limit
+    with connections_lock:
+        if len(connections) >= MAX_CONNECTIONS:
+            yield f"data: {json.dumps({'error': 'Max connections reached'})}\n\n"
+            return
+
+        # Create queue for this client
+        client_queue = queue.Queue(maxsize=10)
+        connections.append(client_queue)
+        logger.info(f"New client connected. Active connections: {len(connections)}")
+
+    try:
+        # Send initial state
+        yield f"event: connected\ndata: {json.dumps({'message': 'Connected to MAD dashboard'})}\n\n"
+        yield f"event: active_work\ndata: {json.dumps(get_active_work())}\n\n"
+
+        # Send heartbeat and updates
+        last_heartbeat = time.time()
+
+        while True:
+            try:
+                # Check for updates in queue (with timeout)
+                message = client_queue.get(timeout=1.0)
+                yield message
+            except queue.Empty:
+                # Send heartbeat if needed
+                now = time.time()
+                if now - last_heartbeat > HEARTBEAT_INTERVAL:
+                    yield f": heartbeat\n\n"
+                    last_heartbeat = now
+
+    except GeneratorExit:
+        # Client disconnected
+        with connections_lock:
+            if client_queue in connections:
+                connections.remove(client_queue)
+                logger.info(f"Client disconnected. Active connections: {len(connections)}")
+
+
+@app.route('/stream')
+def stream():
+    """SSE endpoint for real-time updates."""
+    return Response(event_stream(), mimetype='text/event-stream')
+
+
+@app.route('/api/status')
+def status():
+    """Get current status (HTTP endpoint)."""
+    return jsonify({
+        "active_work": get_active_work(),
+        "results": get_experiment_results(),
+        "server_time": datetime.now().isoformat(),
+        "active_connections": len(connections),
+    })
+
+
+@app.route('/api/logs')
+def logs():
+    """Get recent logs."""
+    n = request.args.get('n', 50, type=int)
+    return jsonify({
+        "logs": get_recent_logs(n),
+    })
+
+
+@app.route('/api/result/<experiment_id>')
+def get_result(experiment_id):
+    """Get specific experiment result."""
+    result_file = EXPERIMENTS_DIR / f"{experiment_id}_results.md"
+    if result_file.exists():
+        return jsonify({
+            "experiment_id": experiment_id,
+            "content": result_file.read_text(),
+        })
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route('/api/experiment-log/<experiment_id>')
+def get_experiment_log(experiment_id):
+    """Get specific experiment log."""
+    log_file = EXPERIMENTS_DIR / f"experiment-log-{experiment_id}.md"
+    if log_file.exists():
+        return jsonify({
+            "experiment_id": experiment_id,
+            "content": log_file.read_text(),
+        })
+
+    # Try without the ID suffix
+    log_file = EXPERIMENTS_DIR / "experiment-log.md"
+    if log_file.exists():
+        return jsonify({
+            "experiment_id": "all",
+            "content": log_file.read_text(),
+        })
+
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route('/api/proposals')
+def proposals():
+    """List all proposals."""
+    return jsonify({
+        "proposals": get_proposals(),
+        "count": len(get_proposals()),
+    })
+
+
+@app.route('/api/proposal/<proposal_id>')
+def get_proposal(proposal_id):
+    """Get specific proposal content."""
+    proposal_file = PROPOSALS_DIR / f"{proposal_id}.md"
+    if proposal_file.exists():
+        return jsonify({
+            "id": proposal_id,
+            "content": proposal_file.read_text(),
+            "modified": proposal_file.stat().st_mtime,
+        })
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route('/api/tricks')
+def tricks():
+    """List all tricks."""
+    return jsonify({
+        "tricks": get_tricks(),
+        "count": len(get_tricks()),
+    })
+
+
+@app.route('/api/trick/<trick_id>')
+def get_trick(trick_id):
+    """Get specific trick content."""
+    trick_file = TRICKS_DIR / f"{trick_id}.md"
+    if trick_file.exists():
+        return jsonify({
+            "id": trick_id,
+            "content": trick_file.read_text(),
+            "modified": trick_file.stat().st_mtime,
+        })
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route('/api/research-log')
+def research_log():
+    """Get research activity log."""
+    if RESEARCH_LOG.exists():
+        return jsonify({
+            "content": RESEARCH_LOG.read_text(),
+            "modified": RESEARCH_LOG.stat().st_mtime,
+        })
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route('/health')
+def health():
+    """Health check endpoint."""
+    return jsonify({
+        "status": "healthy",
+        "active_connections": len(connections),
+        "timestamp": datetime.now().isoformat(),
+    })
+
+
+@app.route('/')
+def index():
+    """Root endpoint with API info."""
+    return jsonify({
+        "name": "MAD Architecture Search Dashboard API",
+        "endpoints": {
+            "/stream": "SSE stream for real-time updates",
+            "/api/status": "Current experiment status",
+            "/api/logs?n=50": "Recent log lines",
+            "/api/result/<id>": "Get experiment result",
+            "/api/experiment-log/<id>": "Get experiment log",
+            "/api/proposals": "List all proposals",
+            "/api/proposal/<id>": "Get specific proposal",
+            "/api/tricks": "List all tricks",
+            "/api/trick/<id>": "Get specific trick",
+            "/api/research-log": "Get research activity log",
+            "/health": "Health check",
+        },
+        "active_connections": len(connections),
+    })
+
+
+def start_file_watcher():
+    """Start watching experiment directory for changes."""
+    event_handler = ExperimentWatcher()
+    observer = Observer()
+    observer.schedule(event_handler, str(EXPERIMENTS_DIR), recursive=False)
+    observer.start()
+    logger.info(f"Started watching: {EXPERIMENTS_DIR}")
+    return observer
+
+
+def periodic_broadcast():
+    """Periodically broadcast active work status (fallback for missed updates)."""
+    while True:
+        time.sleep(10)  # Every 10 seconds
+        try:
+            broadcast_update("active_work", get_active_work())
+        except Exception as e:
+            logger.error(f"Error in periodic broadcast: {e}")
+
+
+if __name__ == '__main__':
+    logger.info("Starting MAD Dashboard Server")
+    logger.info(f"Project root: {PROJECT_ROOT}")
+    logger.info(f"Watching: {EXPERIMENTS_DIR}")
+
+    # Start file watcher
+    observer = start_file_watcher()
+
+    # Start periodic broadcast thread
+    broadcast_thread = Thread(target=periodic_broadcast, daemon=True)
+    broadcast_thread.start()
+
+    # Start Flask server
+    try:
+        app.run(
+            host='0.0.0.0',
+            port=8001,
+            threaded=True,
+            debug=False,
+        )
+    finally:
+        observer.stop()
+        observer.join()
+        logger.info("Server stopped")

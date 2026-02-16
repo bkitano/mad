@@ -1,0 +1,36 @@
+{
+  "trick_search": {
+    "status": "running",
+    "last_update": "2026-02-16T02:04:23.178428",
+    "details": {
+      "iteration": 3,
+      "interval_minutes": 10
+    }
+  },
+  "research": {
+    "status": "running",
+    "last_update": "2026-02-16T01:51:51.007622",
+    "details": {
+      "iteration": 2,
+      "interval_minutes": 30
+    }
+  },
+  "log": {
+    "status": "waiting",
+    "last_update": "2026-02-16T01:15:22.950146",
+    "details": {
+      "iteration": 1,
+      "interval_minutes": 60,
+      "next_run": 1771236922.949868
+    }
+  },
+  "experiment": {
+    "status": "running",
+    "last_update": "2026-02-16T01:24:09.313452",
+    "details": {
+      "iteration": 2,
+      "interval_minutes": 15,
+      "num_parallel_agents": 10
+    }
+  }
+}

@@ -1,0 +1,49 @@
+# MVE 059: Second-Order KDA (SO-KDA) with HLA Key Metric
+# Task: Multi-Query Associative Recall (MQAR)
+# Compares: SO-KDA vs KDA vs GLA
+
+seed: 42
+
+data:
+  num_train: 10000
+  num_val: 1000
+  num_test: 1000
+  num_kv_pairs: 16           # 16 key-value pairs (challenging)
+  seq_len: 512               # Primary sequence length
+  gen_seq_len: 1024           # Length generalization test
+  vocab_size: 64              # Keys [1,32), Values [32,64)
+
+model:
+  d_model: 128               # Hidden dimension
+  d_head: 32                 # Per-head dimension (d_k = d_v)
+  n_heads: 4                 # Number of attention heads
+  n_layers: 2                # Number of layers
+  dropout: 0.1
+  gamma_m_init: 0.99         # Initial key metric decay (SO-KDA only)
+  max_seq_len: 2048
+
+training:
+  batch_size: 64
+  lr: 0.001
+  weight_decay: 0.01
+  epochs: 150                # Max epochs (early stop at 99%)
+  grad_clip: 1.0
+  warmup_epochs: 5
+  patience: 30               # Early stopping patience
+
+# Variants to run
+variants:
+  - gla                      # GLA baseline (no delta rule)
+  - kda                      # Standard KDA (delta rule with k_t removal)
+  - so_kda                   # SO-KDA (delta rule with M_t-adapted removal)
+
+# Success criteria from proposal
+success_criteria:
+  so_kda_accuracy: 0.95       # > 95% at T=512
+  kda_accuracy: 0.85          # KDA expected ~85%
+  gla_accuracy: 0.70          # GLA expected ~70%
+
+deployment:
+  gpu_type: "T4"
+  n_gpus: 1
+  timeout_seconds: 3600       # 1 hour max

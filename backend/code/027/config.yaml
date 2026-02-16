@@ -1,0 +1,23 @@
+# CC-SSM MVE Configuration (Proposal 027)
+# Delayed copy task: memorize k tokens, wait T steps, reproduce k tokens
+
+model:
+  d_model: 64
+  state_dim: 32
+  num_layers: 2
+  dropout: 0.1
+
+data:
+  vocab_size: 8
+  k: 5               # Number of tokens to copy
+  delays: [50, 100, 200, 500]  # Delay lengths to test
+  num_train: 5000
+  num_test: 1000
+
+training:
+  batch_size: 64
+  lr: 0.001
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  max_epochs: 150
+  patience: 30        # Early stopping patience

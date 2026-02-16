@@ -1,0 +1,42 @@
+# MVE 006: Monarch-Gated State Transition SSM
+# Task: S5 permutation group composition
+# v3: Curriculum learning with online data
+
+dataset:
+  curriculum_stages: [2, 5, 10, 15, 20]  # Progressive sequence lengths
+  batches_per_epoch: 150   # 150 batches * 64 = 9600 fresh samples per epoch
+  seed: 42
+
+# Two models: Monarch-Gated (proposed) and Diagonal (baseline)
+models:
+  monarch_gated:
+    ssm_type: "monarch"
+    d_model: 64
+    state_dim: 64         # 8x8 blocks (sqrt(64) = 8)
+    num_layers: 2
+    max_seq_len: 24       # max seq_len(20) + BOS + EOS + margin
+    dropout: 0.05
+
+  diagonal_baseline:
+    ssm_type: "diagonal"
+    d_model: 64
+    state_dim: 64
+    num_layers: 2
+    max_seq_len: 24
+    dropout: 0.05
+
+training:
+  batch_size: 64
+  lr: 3e-3
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  epochs_per_stage: 60    # Max epochs per curriculum stage
+  target_acc_per_stage: 0.80  # Move to next stage when test acc >= this
+
+logging:
+  wandb_project: "mad-architecture-search"
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"
+  timeout_seconds: 3600

@@ -1,0 +1,30 @@
+# Fast test config for code validation
+# Much smaller than full MVE to run in ~1-2 minutes
+
+dataset:
+  groups: ["s3", "d4"]
+  num_train: 1000
+  num_test: 200
+  seq_len: 16
+  seed: 42
+
+model:
+  d_model: 32
+  n: 4
+  num_layers: 1
+  kernel_size: 3
+  disp_ranks: [0, 2]   # Just test r=0 vs r=2 for fast validation
+  perturbation_scale: 0.1
+
+training:
+  batch_size: 128
+  lr: 0.003
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  max_epochs: 50
+  patience: 15
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"
+  timeout_seconds: 600

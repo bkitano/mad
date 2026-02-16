@@ -1,0 +1,28 @@
+# Experiment 013: Circulant SSM - Fourier Domain Parallel Scan
+# MVE Configuration
+
+dataset:
+  task: "z8_composition"
+  num_samples: 10000
+  min_len: 16
+  max_len: 64
+  max_seq_len: 66      # max_len + 2 (BOS + buffer)
+  test_fraction: 0.2
+  seed: 42
+
+model:
+  # MVE specs from proposal: 2 layers, d=64, n=64, ~100K params
+  d_model: 64
+  state_dim: 64
+  num_layers: 2
+  dropout: 0.1
+
+training:
+  batch_size: 64
+  lr: 3.0e-3
+  beta1: 0.9
+  beta2: 0.999
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  max_epochs: 100
+  target_accuracy: 0.95   # Early stopping

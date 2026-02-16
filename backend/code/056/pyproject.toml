@@ -1,0 +1,16 @@
+[project]
+name = "mve-056-flashmask-tileskip"
+version = "0.1.0"
+description = "MVE 056: FlashMask Tile-Skip for Chunkwise Linear RNN"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.4.0",
+    "triton>=3.0.0",
+    "wandb>=0.17.6",
+    "pyyaml>=6.0",
+    "numpy<2",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

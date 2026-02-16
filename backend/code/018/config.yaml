@@ -1,0 +1,46 @@
+# Experiment 018: Hutchinson Adaptive Rank DPLR SSM
+# MVE Configuration
+#
+# Task: Sequential CIFAR-10 (sCIFAR)
+# Model: 4-layer DPLR SSM, n=32, d=64, r_max=8
+# Procedure: warmup -> measure importance -> truncate -> fine-tune
+
+data:
+  num_train: 40000
+  num_val: 5000
+  num_test: 5000
+  num_classes: 10
+
+model:
+  d: 64            # Model hidden dimension
+  n: 32            # SSM state dimension
+  r: 8             # Initial/max rank (r_max)
+  num_layers: 4    # Number of DPLR SSM blocks
+  dropout: 0.1
+
+training:
+  batch_size: 64
+  lr: 0.001
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  warmup_steps: 2000       # Phase 1: train at r_max
+  finetune_steps: 2000     # Phase 4: train at adapted ranks
+  finetune_lr_ratio: 0.5   # LR multiplier for fine-tuning phase
+  log_every: 200
+
+  # Rank allocation
+  rank_budget: 16          # R_total = avg_r * num_layers = 4 * 4
+  r_min: 1                 # Minimum rank per layer
+
+  # Importance estimation
+  importance_method: "logdet"  # "logdet" or "hutchinson"
+  num_freqs: 16               # Number of sampled frequencies
+  k_max: 4                    # Power series truncation order
+
+logging:
+  wandb_project: "mad-architecture-search"
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"
+  timeout_seconds: 3600     # 1 hour max

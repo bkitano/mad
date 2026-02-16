@@ -1,0 +1,26 @@
+seed: 42
+
+model:
+  d_model: 64       # Model/embedding dimension (D in proposal)
+  d_head: 16        # Head dimension (d in proposal)
+  n_heads: 4        # Number of attention heads (H in proposal)
+  n_layers: 2       # Number of stacked layers
+
+data:
+  num_train: 5000
+  num_val: 500
+  num_test: 500
+  seq_len: 32
+  n_memory_tokens: 8  # Tokens to remember per sequence
+  n_content_vocab: 16  # Distinct content token values
+
+training:
+  epochs: 200
+  batch_size: 256
+  lr: 0.003
+  weight_decay: 0.0001
+  beta1: 0.9
+  beta2: 0.999
+  gradient_clip: 1.0
+  dropout: 0.05
+  patience: 50       # Early stopping patience (epochs)

@@ -1,0 +1,27 @@
+# Experiment 028: Neumann-Cayley Orthogonal SSM MVE
+# Proposal: 028-neumann-cayley-input-dependent-orthogonal-ssm
+# Task: S5 Permutation Composition
+
+seed: 42
+
+model:
+  d_model: 64       # Hidden dim (proposal: d=64)
+  n: 8              # State dim (proposal: n=8 for MVE)
+  k: 4              # Neumann truncation order (proposal: k=4)
+  rho_max: 0.3      # Spectral radius bound (proposal: rho_max=0.3)
+  num_layers: 2     # Number of SSM layers (proposal: 2-layer)
+
+data:
+  num_train: 10000
+  num_val: 1000
+  num_test: 1000
+  seq_len: 20       # Length of generator sequence
+
+training:
+  epochs: 200
+  batch_size: 128
+  lr: 0.003
+  weight_decay: 0.0001
+  gradient_clip: 1.0
+  dropout: 0.1
+  patience: 40

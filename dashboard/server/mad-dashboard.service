@@ -1,0 +1,36 @@
+# Systemd service for MAD Dashboard
+#
+# Installation:
+# 1. Edit paths below to match your setup
+# 2. sudo cp mad-dashboard.service /etc/systemd/system/
+# 3. sudo systemctl daemon-reload
+# 4. sudo systemctl enable mad-dashboard
+# 5. sudo systemctl start mad-dashboard
+#
+# Check status:
+# sudo systemctl status mad-dashboard
+#
+# View logs:
+# sudo journalctl -u mad-dashboard -f
+
+[Unit]
+Description=MAD Architecture Search Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=bkitano
+WorkingDirectory=/home/bkitano/Desktop/vault/projects/mad-architecture-search/dashboard
+ExecStart=/home/bkitano/Desktop/vault/projects/mad-architecture-search/dashboard/start-tunnel.sh
+Restart=on-failure
+RestartSec=10
+
+# Environment
+Environment="PATH=/home/bkitano/Desktop/vault/projects/mad-architecture-search/dashboard/venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,44 @@
+# CS-NEG-DeltaNet: β ∈ (0, 2), WITH permutation routing
+# FULL MODEL: Combines both tricks for maximum expressivity
+#
+# Expected: >90% on D4 (can handle BOTH permutation routing AND sign changes)
+# This is the configuration that should significantly outperform all ablations.
+
+dataset:
+  task: "d4"
+  max_k: 20
+  samples_per_k: 250
+  max_seq_len: 32
+  test_size: 0.2
+  use_generators_only: true
+  curriculum: true
+
+model:
+  type: "CSDeltaNet"
+  num_layers: 1
+  nhead: 4
+  d_model: 16
+  dropout: 0.1
+  allow_neg_eigval: true       # NEG: β ∈ (0, 2)
+  gumbel_tau: 1.0
+  gumbel_hard: true
+  use_compile: false
+
+training:
+  batch_size: 64
+  lr: 1e-3
+  beta1: 0.9
+  beta2: 0.999
+  op_eps: 1e-8
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  max_val_acc: 0.95
+  max_epochs_per_stage: 100
+
+logging:
+  wandb_project: "mve-001-d4-state-tracking"
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"
+  timeout_seconds: 1800

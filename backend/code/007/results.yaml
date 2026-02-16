@@ -1,0 +1,107 @@
+config:
+  data:
+    content_len: 8
+    num_queries: 8
+    num_test: 1000
+    num_train: 10000
+    num_val: 1000
+    vocab_size: 16
+  model:
+    d_model: 128
+    dt: 0.01
+    m: 64
+    num_layers: 2
+    omega_max: 100.0
+  seed: 42
+  training:
+    batch_size: 256
+    beta1: 0.9
+    beta2: 0.999
+    dropout: 0.1
+    epochs: 100
+    gradient_clip: 1.0
+    lr: 0.001
+    patience: 25
+    weight_decay: 0.0001
+models:
+  diagonal:
+    best_val_acc: 0.9535
+    epochs_trained: 79
+    num_params: 175386
+    test_acc: 0.948
+    test_loss: 0.17553651487827301
+    total_nan_count: 0
+  linoss:
+    best_val_acc: 0.463625
+    epochs_trained: 100
+    num_params: 142618
+    test_acc: 0.4675
+    test_loss: 1.2768976984024047
+    total_nan_count: 0
+  oscgate:
+    best_val_acc: 0.936625
+    epochs_trained: 100
+    num_params: 175386
+    test_acc: 0.93025
+    test_loss: 0.20187705397605896
+    total_nan_count: 0
+speed_benchmark:
+  diagonal: !!python/object/apply:numpy._core.multiarray.scalar
+  - &id001 !!python/object/apply:numpy.dtype
+    args:
+    - f8
+    - false
+    - true
+    state: !!python/tuple
+    - 3
+    - <
+    - null
+    - null
+    - null
+    - -1
+    - -1
+    - 0
+  - !!binary |
+    AFCowsDYTkA=
+  oscgate: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AJzrSLvQW0A=
+  ratio: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    u71R4/ba/D8=
+success_criteria:
+  linoss_accuracy:
+    achieved: 46.8%
+    passed: false
+    target: < 40%
+  oscgate_accuracy:
+    achieved: 93.0%
+    passed: true
+    target: '> 90%'
+  speed:
+    achieved: "1.80\xD7"
+    passed: !!python/object/apply:numpy._core.multiarray.scalar
+    - !!python/object/apply:numpy.dtype
+      args:
+      - b1
+      - false
+      - true
+      state: !!python/tuple
+      - 3
+      - '|'
+      - null
+      - null
+      - null
+      - -1
+      - -1
+      - 0
+    - !!binary |
+      AQ==
+    target: "< 3.0\xD7"
+  stability:
+    achieved: '0'
+    passed: true
+    target: 0 NaN/Inf
+verdict: DEBUG

@@ -1,0 +1,249 @@
+{
+  "config": {
+    "state_dim": 64,
+    "rank": 1,
+    "hidden_dim": 8,
+    "seq_len": 1024,
+    "k_values": [
+      2,
+      4,
+      6,
+      8,
+      12,
+      16
+    ],
+    "n_trials": 5,
+    "epsilon_values": [
+      0.1,
+      0.01,
+      0.001,
+      0.0001
+    ],
+    "k_resonance": 8,
+    "N_values": [
+      32,
+      64,
+      128,
+      256
+    ],
+    "k_speed": 8,
+    "n_warmup": 3,
+    "n_runs": 10
+  },
+  "device": "cpu",
+  "kernel_accuracy": {
+    "k_values": [
+      2,
+      4,
+      6,
+      8,
+      12,
+      16
+    ],
+    "errors": {
+      "2": [
+        0.00014401681583630182,
+        0.003756911568432204,
+        6.727281672441614e-05,
+        0.006873560590673863,
+        0.0025182136073328204
+      ],
+      "4": [
+        4.573969130041956e-08,
+        2.1437700632377332e-05,
+        1.0420414915794436e-08,
+        6.651133698490098e-05,
+        9.17452928849349e-06
+      ],
+      "6": [
+        1.614898901166417e-11,
+        1.3178202359475227e-07,
+        1.9282678163016362e-12,
+        6.861746903937421e-07,
+        3.5835593591045955e-08
+      ],
+      "8": [
+        5.941585599081152e-15,
+        8.338385886636057e-10,
+        7.724568124821884e-16,
+        7.271313390646396e-09,
+        1.4395837743346544e-10
+      ],
+      "12": [
+        6.607694293188454e-16,
+        3.4811935962598436e-14,
+        6.737730017440521e-16,
+        8.494342004371612e-13,
+        2.5082329537124054e-15
+      ],
+      "16": [
+        6.607694293188454e-16,
+        6.851444351229097e-16,
+        6.737730017440521e-16,
+        6.922410208546326e-16,
+        6.852585226950156e-16
+      ]
+    },
+    "spectral_radii": {
+      "mean": 0.013119300319957915,
+      "max": 0.019858070305405942,
+      "min": 0.007246690988969829,
+      "frac_above_1": 0.0,
+      "median": 0.012608329323435495
+    },
+    "summary": {
+      "2": {
+        "mean_error": 0.002671995079799921,
+        "std_error": 0.002530972044159297,
+        "max_error": 0.006873560590673863,
+        "passed": false
+      },
+      "4": {
+        "mean_error": 1.9435945402397602e-05,
+        "std_error": 2.4814218810461947e-05,
+        "max_error": 6.651133698490098e-05,
+        "passed": true
+      },
+      "6": {
+        "mean_error": 1.7076207696727366e-07,
+        "std_error": 2.621785509386002e-07,
+        "max_error": 6.861746903937421e-07,
+        "passed": true
+      },
+      "8": {
+        "mean_error": 1.6498234141571758e-09,
+        "std_error": 2.827664150563185e-09,
+        "max_error": 7.271313390646396e-09,
+        "passed": true
+      },
+      "12": {
+        "mean_error": 1.77617782356907e-13,
+        "std_error": 3.3615982226604716e-13,
+        "max_error": 8.494342004371612e-13,
+        "passed": true
+      },
+      "16": {
+        "mean_error": 6.794372819470911e-16,
+        "std_error": 1.1054112024025108e-17,
+        "max_error": 6.922410208546326e-16,
+        "passed": true
+      }
+    }
+  },
+  "near_resonance": {
+    "epsilon_values": [
+      0.1,
+      0.01,
+      0.001,
+      0.0001
+    ],
+    "tests": [
+      {
+        "epsilon": 0.1,
+        "fp64": {
+          "exact_finite": true,
+          "neumann_finite": true
+        },
+        "fp32": {
+          "exact_finite": true,
+          "neumann_finite": true
+        },
+        "bf16": {
+          "woodbury_dz_finite": true,
+          "woodbury_dz_max": 10.000000953674316,
+          "neumann_f_finite": true
+        }
+      },
+      {
+        "epsilon": 0.01,
+        "fp64": {
+          "exact_finite": true,
+          "neumann_finite": true
+        },
+        "fp32": {
+          "exact_finite": true,
+          "neumann_finite": true
+        },
+        "bf16": {
+          "woodbury_dz_finite": true,
+          "woodbury_dz_max": 100.0000991821289,
+          "neumann_f_finite": true
+        }
+      },
+      {
+        "epsilon": 0.001,
+        "fp64": {
+          "exact_finite": true,
+          "neumann_finite": true
+        },
+        "fp32": {
+          "exact_finite": true,
+          "neumann_finite": true
+        },
+        "bf16": {
+          "woodbury_dz_finite": true,
+          "woodbury_dz_max": 1000.0128784179688,
+          "neumann_f_finite": true
+        }
+      },
+      {
+        "epsilon": 0.0001,
+        "fp64": {
+          "exact_finite": true,
+          "neumann_finite": true
+        },
+        "fp32": {
+          "exact_finite": true,
+          "neumann_finite": true
+        },
+        "bf16": {
+          "woodbury_dz_finite": true,
+          "woodbury_dz_max": 10001.3212890625,
+          "neumann_f_finite": true
+        }
+      }
+    ]
+  },
+  "speed_comparison": {
+    "N_values": [
+      32,
+      64,
+      128,
+      256
+    ],
+    "timings": {
+      "32": {
+        "exact_ms": 302.1051604999684,
+        "neumann_ms": 488.79070899997714,
+        "speedup": 0.6180664954087385
+      },
+      "64": {
+        "exact_ms": 780.7869638999819,
+        "neumann_ms": 727.8164370000013,
+        "speedup": 1.0727800640479084
+      },
+      "128": {
+        "exact_ms": 1967.3966946999826,
+        "neumann_ms": 521.6361042999779,
+        "speedup": 3.771588428182474
+      },
+      "256": {
+        "exact_ms": 6407.062527900007,
+        "neumann_ms": 717.9641862000153,
+        "speedup": 8.923930540060509
+      }
+    }
+  },
+  "spectral_radius": {
+    "frac_above_1_per_trial": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "mean_frac_above_1": 0.0,
+    "max_frac_above_1": 0.0,
+    "passed": true
+  }
+}

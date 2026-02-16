@@ -1,0 +1,36 @@
+# Configuration for MVE 002: Oscillatory-DPLR SSM
+# Task: Damped Oscillation Extrapolation
+
+# Random seed
+seed: 42
+
+# Model parameters
+model:
+  n: 16                    # State dimension (number of oscillators)
+  r: 2                     # Low-rank component rank
+  d_input: 1               # Input dimension
+  d_output: 1              # Output dimension
+  dt: 0.01                 # Discretization step size (Δ)
+  init_omega_range: [0.01, 0.1]  # Initial frequency range
+
+# Data parameters
+data:
+  num_train: 8000          # Training sequences
+  num_val: 1000            # Validation sequences
+  num_test: 1000           # Test sequences
+  train_len: 128           # Training sequence length
+  test_len: 512            # Test sequence length (4× extrapolation)
+  omega_range: [0.01, 0.1] # Ground truth frequency range
+  zeta_range: [0.2, 0.8]   # Ground truth damping range
+
+# Training parameters
+training:
+  epochs: 50               # Number of training epochs
+  batch_size: 32           # Batch size
+  lr: 0.001                # Learning rate
+  weight_decay: 0.0001     # Weight decay for AdamW
+
+# Success criteria (from proposal)
+# 1. Training MSE < 1e-3
+# 2. Extrapolation MSE < 1e-2
+# 3. Learned ω_i in [0.01, 0.1] range and not collapsed

@@ -1,0 +1,70 @@
+# Experiment 026 Scaled: Cyclic Reduction for Dense SSM Training
+# Hardware: 1x A100 (80GB), 12 GPU-hours total
+
+# Phase 1: GPU Kernel Benchmark (2 hours)
+phase1:
+  device: "cuda"
+  dtype: "float16"  # Use FP16 for tensor cores
+  n_values: [32, 64, 128]
+  T_values: [1024, 2048, 4096, 8192]
+  num_trials: 100  # More trials for GPU timing stability
+  warmup: 10
+  profile: true  # Enable CUDA profiler
+  output_dir: "results/phase1"
+
+# Phase 2: DeltaNet Training (10 hours)
+phase2:
+  # Model architecture
+  model:
+    type: "deltanet"  # DeltaNet with dense state transitions
+    d_model: 256
+    n_layers: 6
+    n_heads: 8
+    state_dim: 32  # Per-head state dimension
+    dropout: 0.1
+    use_neg_eigval: false
+
+  # Recurrence parallelization method
+  recurrence:
+    method: "cr"  # Options: "cr" (cyclic reduction), "scan" (prefix scan), "sequential"
+    chunk_size: 64  # For chunkwise algorithms (if used)
+
+  # Training
+  training:
+    batch_size: 32
+    seq_len: 2048
+    max_steps: 10000
+    gradient_accumulation: 1  # Increase if OOM
+    learning_rate: 3e-4
+    warmup_steps: 500
+    weight_decay: 0.01
+    grad_clip: 1.0
+    mixed_precision: true  # Use AMP for FP16 training
+    compile: true  # Use torch.compile for speed
+
+  # Dataset
+  data:
+    dataset: "wikitext-103"
+    num_workers: 4
+    prefetch_factor: 2
+
+  # Logging
+  logging:
+    wandb: true
+    project: "mad-architecture-search"
+    name: "026_scaled_cr"
+    log_interval: 10  # Log every N steps
+    eval_interval: 500
+    save_interval: 2000
+
+  # Hardware
+  device: "cuda"
+  seed: 42
+  output_dir: "results/phase2"
+
+# Early stopping
+early_stopping:
+  enabled: true
+  patience_steps: 2000  # Stop if no improvement for N steps
+  min_improvement: 0.01  # Minimum perplexity improvement
+  check_interval: 500

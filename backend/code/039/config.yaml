@@ -1,0 +1,27 @@
+# MVE 039: Warp-Specialized Pingpong Chunkwise Linear RNN
+# Kernel microbenchmark configuration
+
+benchmark:
+  # Dimensions from proposal (typical 350M model config)
+  batch_size: 4          # B
+  num_heads: 32          # H
+  d: 64                  # head dimension (query/key)
+  d_v: 64                # value dimension
+
+  # Chunk size: larger = more inner tiles to pipeline over
+  # With chunk_size=256 and BLOCK_N=64, there are 4 inner tiles per chunk
+  # This gives the pipelined version tiles to overlap loading with compute
+  chunk_size: 256
+
+  # Sequence lengths to test
+  T_values: [1024, 2048, 4096]
+
+  # Benchmark parameters
+  warmup: 20             # warmup iterations (includes Triton JIT compilation)
+  repeats: 100           # timed iterations per configuration
+  dtype: "float32"       # compute dtype
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"         # T4 for availability; Triton works on T4
+  timeout_seconds: 1800  # 30 minutes max

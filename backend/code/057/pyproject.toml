@@ -1,0 +1,17 @@
+[project]
+name = "mve-057-flashrnn-fused-scan"
+version = "0.1.0"
+description = "MVE 057: FlashRNN-Style Fused Inter-Chunk State Recurrence benchmark"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy<2",
+    "pyyaml>=6.0",
+    "torch>=2.4.0",
+    "triton>=3.0.0",
+    "wandb>=0.17.6",
+    "modal>=1.3.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

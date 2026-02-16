@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mve-040-megakernel-fusion"
+version = "0.1.0"
+description = "MVE 040: Persistent Megakernel Fusion for Linear RNN Layers"
+requires-python = ">=3.11"
+
+dependencies = [
+    "torch>=2.4.0",
+    "triton>=2.2.0",
+    "numpy<2",
+    "pyyaml>=6.0",
+    "wandb>=0.17.6",
+    "modal>=1.3.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["models*"]

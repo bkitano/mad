@@ -1,0 +1,35 @@
+# MVE 016: GS-Monomial SSM on S5 Permutation Composition
+#
+# Proposal: 016-gs-monomial-ssm-state-transition.md
+# Task: S5 composition (120 classes, non-solvable group)
+# Models: GS-Monomial (with/without shuffle) + Diagonal baseline
+
+model:
+  d_model: 64          # Model dimension (increased from proposal's 32 for capacity)
+  state_dim: 16        # SSM state dimension n = b * r
+  block_size: 4         # Monomial block size b
+  # num_blocks = 4      # r = n / b = 16 / 4
+  num_layers: 2         # Number of SSM blocks
+  sinkhorn_iters: 5     # Sinkhorn iterations for permutation learning
+  tau: 0.5              # Sinkhorn temperature
+  dropout: 0.1
+
+data:
+  num_train: 10000      # Training samples
+  num_val: 1000         # Validation samples
+  num_test: 1000        # Test samples
+  seq_len: 20           # Number of generator tokens per sequence
+  # max_seq_len = 22    # seq_len + 2 (BOS + EOS)
+
+training:
+  max_epochs: 150
+  batch_size: 128
+  lr: 0.003
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  patience: 40
+
+deployment:
+  gpu_type: "T4"
+  n_gpus: 1
+  timeout_seconds: 3600  # 1 hour max

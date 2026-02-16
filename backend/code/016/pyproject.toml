@@ -1,0 +1,14 @@
+[project]
+name = "mve-016-gs-monomial-ssm"
+version = "0.1.0"
+description = "MVE 016: Group-and-Shuffle Monomial SSM for S5 Permutation Composition"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0.0",
+    "pyyaml>=6.0",
+    "numpy<2",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"

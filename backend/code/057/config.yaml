@@ -1,0 +1,22 @@
+# MVE 057: FlashRNN-Style Fused Inter-Chunk State Recurrence
+# Benchmark configuration for kernel microbenchmark
+
+benchmark:
+  # Data dimensions (from proposal)
+  batch_size: 4        # B
+  num_heads: 16        # H
+  dk: 64               # key/state dimension
+  dv: 64               # value dimension
+
+  # Chunk counts to test
+  G_values: [32, 64, 128]  # G = T/C chunks
+
+  # Benchmark parameters
+  warmup: 50           # warmup iterations (includes Triton JIT)
+  repeats: 200         # timed iterations
+  dtype: "float32"     # compute dtype
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"       # T4 sufficient for kernel microbenchmark
+  timeout_seconds: 1800  # 30 minutes max

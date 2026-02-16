@@ -1,0 +1,24 @@
+# FlashMask Tile-Skip Benchmark Configuration
+# Experiment 056: FlashMask Tile-Skip for Chunkwise Linear RNN
+
+model:
+  # GLA model config (single layer, small for MVE)
+  d_model: 256
+  dk: 64           # key/query dimension (must be power of 2 for Triton)
+  dv: 64           # value dimension (must be power of 2 for Triton)
+  num_heads: 2
+  chunk_size: 128    # primary chunk size C
+  sub_chunk_size: 16 # secondary sub-chunk size c (Ns = C/c = 8)
+
+benchmark:
+  batch_size: 4
+  seq_len: 1024       # T = 1024 (8 chunks of 128)
+  avg_doc_lens: [16, 32, 64, 128, 256]
+  warmup_iters: 10
+  bench_iters: 100
+  dtype: "float32"   # use float32 for correctness; benchmark also runs bf16
+
+deployment:
+  gpu_type: "A100"
+  n_gpus: 1
+  timeout_seconds: 3600  # 1 hour max

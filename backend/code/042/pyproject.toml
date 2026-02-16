@@ -1,0 +1,18 @@
+[project]
+name = "mve-042-gla-contraction-ordering"
+version = "0.1.0"
+description = "MVE 042: Contraction-Ordered Multi-Operand Chunkwise GLA Fusion"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+    "pyyaml>=6.0",
+    "wandb>=0.15.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["models*"]

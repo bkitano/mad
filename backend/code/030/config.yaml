@@ -1,0 +1,31 @@
+# MVE 030: Group-Matrix Displacement Rank SSM
+# Tests whether low displacement rank group matrices for B_4
+# enable non-abelian state tracking with tunable equivariance deviation.
+
+dataset:
+  groups: ["s3", "d4"]       # S3 (6 elements) and D4 (8 elements)
+  num_train: 5000             # Training sequences
+  num_test: 1000              # Test sequences
+  seq_len: 32                 # Sequence length
+  seed: 42
+
+model:
+  d_model: 32                 # Hidden dimension (~5K params per model)
+  n: 4                        # State dimension (B_4 group, p=4)
+  num_layers: 1               # Single layer for MVE
+  kernel_size: 3              # |N| = 3 (identity + 2 generators)
+  disp_ranks: [0, 1, 2, 4]   # Ablation over displacement rank r
+  perturbation_scale: 0.1     # epsilon: scale of displacement perturbation
+
+training:
+  batch_size: 128
+  lr: 0.003
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  max_epochs: 200
+  patience: 30                # Early stopping patience
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"              # Small experiment, T4 sufficient
+  timeout_seconds: 1800       # 30 minutes

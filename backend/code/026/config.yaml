@@ -1,0 +1,9 @@
+# MVE 008: Cyclic Reduction vs Prefix Scan Benchmark
+# Proposal: 026-cyclic-reduction-randmscan-ssm-recurrence
+
+device: "cpu"
+dtype: "float64"
+n_values: [32]
+T_values: [64, 128, 256, 512, 1024]
+num_trials: 10
+warmup: 3

@@ -1,0 +1,31 @@
+# MVE 058: DSM-Fused Linear RNN Projection Chain — Microbenchmark Config
+#
+# This experiment benchmarks the input projection chain of a GLA-style
+# linear RNN layer, comparing unfused (7-8 separate kernels) vs fused
+# (1 wide GEMM + fused activations) approaches.
+#
+# Configuration matches proposal MVE spec:
+#   B=8, T=4096, d=2048, d_k=d_v=128, H=16
+
+model:
+  d_model: 2048        # Model/input dimension
+  d_k: 128             # Key dimension per head
+  d_v: 128             # Value dimension per head
+  n_heads: 16          # Number of attention heads
+  n_state: 16          # SSM state dimension (for alpha/decay)
+
+benchmark:
+  batch_size: 8        # Batch size
+  seq_len: 4096        # Sequence length
+  warmup_iters: 50     # CUDA warmup iterations
+  bench_iters: 200     # Timed benchmark iterations
+  dtype: "bfloat16"    # Data type (bfloat16 for H100/A100, float16 for T4)
+
+logging:
+  wandb_project: "mad-architecture-search"
+  wandb_name: "exp-058-dsm-fused-projection-chain"
+
+deployment:
+  n_gpus: 1
+  gpu_type: "A100"     # A100 for good GEMM perf + bf16 support
+  timeout_seconds: 1800  # 30 minutes

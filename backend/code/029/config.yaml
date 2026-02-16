@@ -1,0 +1,27 @@
+# Experiment 029: Circulant FAVOR+ Linear Attention
+# MVE: Associative Recall Task
+# Attempt 4: More random features (m=64 >> d_k=16) for better kernel approximation
+
+data:
+  n_train: 5000        # 5K training sequences
+  n_test: 1000         # 1K test sequences
+  seq_len: 64          # Sequence length (from MVE spec)
+  vocab_size: 16       # Content vocabulary size
+  n_pairs: 8           # Key-value pairs per sequence
+
+model:
+  d_model: 64          # Model dimension
+  n_heads: 4           # Number of attention heads (d_k = 16)
+  n_layers: 2          # Number of transformer layers
+  num_features: 64     # Random features per head (m = 4*d_k for quality)
+
+training:
+  epochs: 200          # Max epochs per model
+  batch_size: 128      # Batch size
+  lr: 0.003            # Learning rate
+  patience: 30         # Early stopping patience
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"
+  timeout_seconds: 1800  # 30 minutes max

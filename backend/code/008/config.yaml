@@ -1,0 +1,36 @@
+# cos-LogLinear MVE Configuration
+# Experiment 008: Cosine-Reweighted Log-Linear Attention
+#
+# Task: Multi-Query Associative Recall (MQAR)
+# Goal: Compare 4 attention variants on recall capacity
+
+data:
+  num_kv_pairs: 8       # N=8 KV pairs (stresses capacity at d=16)
+  vocab_size: 64         # Token vocabulary size
+  seq_len: 128           # Sequence length T=128
+  num_train: 4000        # Training samples
+  num_test: 1000         # Test samples
+  seed: 42               # Reproducibility
+
+model:
+  d_model: 32            # Model dimension
+  nhead: 2               # Number of attention heads
+  head_dim: 16           # Head dimension (deliberately small to stress state capacity)
+  num_layers: 2          # Number of attention blocks
+  dropout: 0.1           # Dropout rate
+
+training:
+  batch_size: 64         # Batch size
+  lr: 0.001              # Learning rate
+  weight_decay: 0.01     # L2 regularization
+  gradient_clip: 1.0     # Gradient clipping norm
+  max_epochs: 200        # Maximum training epochs
+  early_stop_acc: 0.99   # Stop if val acc reaches this
+
+logging:
+  wandb_project: "mad-architecture-search"
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"
+  timeout_seconds: 3600  # 1 hour max

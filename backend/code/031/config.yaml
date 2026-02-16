@@ -1,0 +1,29 @@
+# MVE 031: V:N:M Sparse SSM Projections with S-STE Training
+# Task: Multi-Query Associative Recall (MQAR)
+# Model: 2-layer Mamba-2 style gated SSM with VNM-sparse projections
+# Sparsity levels: Dense, 2:4 (50%), V:2:6 (67%), V:2:8 (75%)
+
+seed: 42
+
+data:
+  num_train: 8000
+  num_val: 1000
+  num_test: 1000
+  num_kv_pairs: 4          # 4 key-value pairs per sequence
+  seq_len: 64              # Total sequence length
+  vocab_size: 16           # Vocabulary size (keys from [0,8), values from [8,16))
+
+model:
+  d_model: 128             # Model dimension
+  d_head: 32               # Per-head dimension (d_k = d_v)
+  n_heads: 4               # Number of heads
+  n_layers: 2              # Number of SSM layers
+  state_dim: 16            # State dimension per head
+  use_gate: true           # SwiGLU gating (compensates for sparsity)
+  dropout: 0.1
+
+training:
+  batch_size: 64
+  lr: 0.001
+  weight_decay: 0.01
+  epochs: 100              # Max epochs per config (early stop at 99%)

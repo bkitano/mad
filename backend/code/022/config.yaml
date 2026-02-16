@@ -1,0 +1,31 @@
+# Experiment 004: Displacement-Rank SSM (DR-SSM) MVE
+# Proposal: 022-displacement-rank-ssm-state-transitions
+# Task: S5 Permutation Composition
+
+seed: 42
+
+model:
+  d_model: 64        # Hidden dim
+  n: 16              # State dimension
+  num_layers: 2      # Number of SSM layers (with residual connections)
+  # alpha values tested: 0, 1, 2, 4, 16 (16 = n = dense equivalent)
+
+data:
+  num_train: 5000
+  num_val: 500
+  num_test: 500
+  seq_len: 12        # Shorter sequences for faster CPU training
+
+training:
+  epochs: 80
+  batch_size: 256
+  lr: 0.003
+  weight_decay: 0.0001
+  beta1: 0.9
+  beta2: 0.999
+  gradient_clip: 1.0
+  dropout: 0.05
+  patience: 25        # Early stopping patience
+
+# Alpha values to test (proposal MVE: α ∈ {0, 1, 2, 4, 16})
+alpha_values: [0, 1, 2, 4, 16]

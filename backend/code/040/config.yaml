@@ -1,0 +1,22 @@
+# Experiment 040: Persistent Megakernel Fusion MVE
+# From proposal 040-persistent-megakernel-linear-rnn-layer.md
+
+benchmark:
+  # Model dimensions (from proposal MVE section)
+  B: 4           # batch size
+  T: 2048        # sequence length
+  d: 256         # input hidden dimension
+  d_v: 64        # value/output dimension (single head)
+  dtype: "float16"  # BF16/FP16 for realistic conditions
+
+  # Benchmark parameters
+  n_warmup: 20     # warmup iterations (JIT compile + cache warm)
+  n_iters: 200     # benchmark iterations
+
+logging:
+  wandb_project: "mad-architecture-search"
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"       # T4 for MVE (budget-friendly)
+  timeout_seconds: 1800  # 30 minutes max

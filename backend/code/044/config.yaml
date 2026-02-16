@@ -1,0 +1,27 @@
+# Experiment 044: MatMulScan Inter-Chunk State Scan Benchmark
+# Pure microbenchmark - no model training needed
+
+experiment:
+  name: "044-matmulscan-scan"
+  description: "Compare inter-chunk scan implementations for chunkwise linear RNNs"
+  n: 16        # state dimension (diagonal case)
+  d_v: 64      # value dimension
+
+benchmark:
+  # Number of chunks to test
+  G_values: [64, 128, 256]
+  # MatMulScan radix values
+  radix_values: [4, 8]
+  # Benchmark parameters
+  warmup: 10
+  repeat: 100
+  # Data type for primary benchmark
+  dtype: "float32"
+  # Dense case configuration
+  dense_G: 64
+
+# Modal deployment config
+deployment:
+  gpu_type: "A100"      # Need tensor cores for fair comparison
+  n_gpus: 1
+  timeout_seconds: 1800  # 30 minutes should be plenty for microbenchmark

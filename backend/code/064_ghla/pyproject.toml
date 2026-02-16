@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mve-064-ghla"
+version = "0.1.0"
+description = "MVE 064: Gated Second-Order Linear Attention (GHLA) - Data-dependent gating for HLA"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+    "tqdm>=4.65.0",
+    "pyyaml>=6.0",
+    "wandb>=0.17.6",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["models*", "data*"]

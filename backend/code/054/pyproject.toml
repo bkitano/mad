@@ -1,0 +1,16 @@
+[project]
+name = "mve-054-int4-smoothing-gla"
+version = "0.1.0"
+description = "MVE 054: SageAttention2-Style INT4 Smoothing for Chunkwise Linear RNN"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.4.0",
+    "numpy<2",
+    "pyyaml>=6.0",
+    "wandb>=0.17.6",
+    "tqdm>=4.65.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

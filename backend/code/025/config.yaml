@@ -1,0 +1,37 @@
+# Experiment 025: Nystrom Landmark Compression for Chunkwise SSM
+# MVE Configuration
+#
+# Reduced dimensions for GPU-feasible sequential scan.
+# Key test: Nystrom compression preserves cross-chunk state.
+#
+# Compression ratio 4x maintained (n/m = 8/2 = 4).
+# delay=24 spans 3 chunk boundaries at C=8 -- rigorous test of multi-hop transfer.
+
+data:
+  seq_len: 64            # Total sequence length (8 chunks of 8)
+  n_content: 4           # Number of content tokens to copy
+  delay: 24              # Gap spanning 3 chunk boundaries at C=8
+  vocab_size: 12         # Total vocab (3 special + 9 content tokens)
+  n_train: 5000          # Training samples
+  n_test: 1000           # Test samples
+
+model:
+  d_model: 48            # Model dimension
+  state_dim: 8           # SSM state dimension n
+  n_landmarks: 2         # Nystrom landmarks m (compression 4x: 8/2=4)
+  chunk_size: 8          # Chunk size C
+  n_layers: 2            # Number of SSM blocks
+  lr_rank: 2             # Rank of low-rank component in A_t
+
+training:
+  batch_size: 128        # Batch size (larger for better GPU utilization)
+  lr: 2e-3               # Learning rate (slightly higher for smaller model)
+  weight_decay: 0.01     # Weight decay
+  max_epochs: 200        # Maximum epochs (more epochs, smaller model)
+  patience: 40           # Early stopping patience
+  gradient_clip: 1.0     # Gradient clipping
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"
+  timeout_seconds: 3600

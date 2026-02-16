@@ -1,0 +1,345 @@
+{
+  "active_work": {
+    "018-hutchinson-adaptive-rank-dplr-ssm": {
+      "agent_id": "agent-exp-04",
+      "proposal_id": "018-hutchinson-adaptive-rank-dplr-ssm",
+      "started_at": "2026-02-16T01:09:10.222707",
+      "last_heartbeat": "2026-02-16T01:34:12.124079",
+      "status": "in_progress"
+    },
+    "063-dyt-fused-normalization-free-chunkwise-linear-rnn": {
+      "agent_id": "agent-exp-01",
+      "proposal_id": "063-dyt-fused-normalization-free-chunkwise-linear-rnn",
+      "started_at": "2026-02-16T01:24:09.769640",
+      "last_heartbeat": "2026-02-16T02:04:13.598870",
+      "status": "in_progress"
+    },
+    "064-gated-second-order-linear-attention-chunkwise": {
+      "agent_id": "agent-exp-02",
+      "proposal_id": "064-gated-second-order-linear-attention-chunkwise",
+      "started_at": "2026-02-16T01:24:10.127587",
+      "last_heartbeat": "2026-02-16T02:04:14.648763",
+      "status": "in_progress"
+    },
+    "063-mfa-shared-latent-projections-linear-rnn": {
+      "agent_id": "agent-exp-03",
+      "proposal_id": "063-mfa-shared-latent-projections-linear-rnn",
+      "started_at": "2026-02-16T01:24:10.416751",
+      "last_heartbeat": "2026-02-16T01:29:11.978145",
+      "status": "in_progress"
+    },
+    "064-residual-kda-channel-wise-auxiliary-decay": {
+      "agent_id": "agent-exp-04",
+      "proposal_id": "064-residual-kda-channel-wise-auxiliary-decay",
+      "started_at": "2026-02-16T01:24:10.786179",
+      "last_heartbeat": "2026-02-16T01:29:12.187609",
+      "status": "in_progress"
+    }
+  },
+  "history": [
+    {
+      "agent_id": "agent-be676872",
+      "proposal_id": "021-blackbox-hss-telescopic-attention-compression",
+      "started_at": "2026-02-15T21:58:43.388578",
+      "last_heartbeat": "2026-02-15T21:58:43.447705",
+      "status": "failed",
+      "completed_at": "2026-02-15T21:58:43.493158"
+    },
+    {
+      "agent_id": "agent-e7e0845a",
+      "proposal_id": "010-sparse-monarch-ssm-pa-dst",
+      "started_at": "2026-02-15T22:01:27.920618",
+      "last_heartbeat": "2026-02-15T22:01:27.920618",
+      "status": "stale",
+      "staled_at": "2026-02-15T22:55:38.510480"
+    },
+    {
+      "agent_id": "agent-7c2224fe",
+      "proposal_id": "021-blackbox-hss-telescopic-attention-compression",
+      "started_at": "2026-02-15T22:01:28.041967",
+      "last_heartbeat": "2026-02-15T22:01:28.041967",
+      "status": "stale",
+      "staled_at": "2026-02-15T22:55:38.510480"
+    },
+    {
+      "agent_id": "agent-fd61c79f",
+      "proposal_id": "012-expert-choice-monarch-ssm-heads",
+      "started_at": "2026-02-15T22:03:34.628863",
+      "last_heartbeat": "2026-02-15T22:03:34.628863",
+      "status": "stale",
+      "staled_at": "2026-02-15T22:55:38.510480"
+    },
+    {
+      "agent_id": "agent-exp-01",
+      "proposal_id": "043-newton-schulz-orthogonal-deltanet-transition",
+      "started_at": "2026-02-15T23:59:47.063903",
+      "last_heartbeat": "2026-02-16T00:04:51.024431",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-02",
+      "proposal_id": "044-matmulscan-inter-chunk-state-scan-linear-rnn",
+      "started_at": "2026-02-15T23:59:47.680535",
+      "last_heartbeat": "2026-02-16T00:04:51.218844",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-03",
+      "proposal_id": "041-evt-joint-fwd-bwd-graph-partitioning-linear-rnn",
+      "started_at": "2026-02-15T23:59:48.165285",
+      "last_heartbeat": "2026-02-16T00:04:51.318180",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-04",
+      "proposal_id": "042-contraction-ordered-chunkwise-gla-multi-operand-fusion",
+      "started_at": "2026-02-15T23:59:48.462711",
+      "last_heartbeat": "2026-02-16T00:04:51.453322",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-05",
+      "proposal_id": "053-mla-latent-state-linear-rnn-inference",
+      "started_at": "2026-02-15T23:59:48.774401",
+      "last_heartbeat": "2026-02-16T00:04:51.633463",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-06",
+      "proposal_id": "054-sage-int4-smoothing-chunkwise-linear-rnn",
+      "started_at": "2026-02-15T23:59:49.113899",
+      "last_heartbeat": "2026-02-16T00:04:51.755746",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-07",
+      "proposal_id": "055-zeco-allscan-gated-deltanet-sequence-parallelism",
+      "started_at": "2026-02-15T23:59:49.643199",
+      "last_heartbeat": "2026-02-16T00:04:51.901934",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-08",
+      "proposal_id": "056-flashmask-tile-skip-chunkwise-linear-rnn",
+      "started_at": "2026-02-15T23:59:50.255469",
+      "last_heartbeat": "2026-02-16T00:04:52.035841",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-09",
+      "proposal_id": "057-flashrnn-fused-inter-chunk-state-recurrence",
+      "started_at": "2026-02-15T23:59:50.588832",
+      "last_heartbeat": "2026-02-16T00:04:52.190066",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-10",
+      "proposal_id": "059-second-order-kda-hla-key-metric",
+      "started_at": "2026-02-15T23:59:50.877378",
+      "last_heartbeat": "2026-02-16T00:04:52.327735",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-01",
+      "proposal_id": "060-fused-post-sigmoid-gating-chunkwise-linear-rnn",
+      "started_at": "2026-02-16T00:09:43.475785",
+      "last_heartbeat": "2026-02-16T00:09:43.857958",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-02",
+      "proposal_id": "061-stablessm-decay-reparam-kda-gla",
+      "started_at": "2026-02-16T00:09:44.526123",
+      "last_heartbeat": "2026-02-16T00:09:44.714560",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-03",
+      "proposal_id": "023-circulant-diagonal-ssm-state-transitions",
+      "started_at": "2026-02-16T00:09:45.679890",
+      "last_heartbeat": "2026-02-16T00:09:45.942378",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-04",
+      "proposal_id": "024-sparse-ssm-sste-blockwise-sinkhorn",
+      "started_at": "2026-02-16T00:09:47.000421",
+      "last_heartbeat": "2026-02-16T00:09:47.110684",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-05",
+      "proposal_id": "032-chimera-fused-chunkwise-ssm-scan",
+      "started_at": "2026-02-16T00:09:47.400044",
+      "last_heartbeat": "2026-02-16T00:09:47.600701",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-06",
+      "proposal_id": "033-evt-fused-ssm-swiglu-epilogues",
+      "started_at": "2026-02-16T00:09:48.344933",
+      "last_heartbeat": "2026-02-16T00:09:48.961315",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-07",
+      "proposal_id": "034-stream-k-brgemm-chunkwise-state-accumulation",
+      "started_at": "2026-02-16T00:09:50.401754",
+      "last_heartbeat": "2026-02-16T00:09:50.851935",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-08",
+      "proposal_id": "035-transposable-sparse-gla-projection-pretraining",
+      "started_at": "2026-02-16T00:09:51.159616",
+      "last_heartbeat": "2026-02-16T00:09:51.279488",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-09",
+      "proposal_id": "036-near-far-field-chunkwise-gla",
+      "started_at": "2026-02-16T00:09:51.553235",
+      "last_heartbeat": "2026-02-16T00:09:51.656558",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-10",
+      "proposal_id": "037-saderf-sorf-chunkwise-gla-feature-maps",
+      "started_at": "2026-02-16T00:09:51.908412",
+      "last_heartbeat": "2026-02-16T00:09:52.029727",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:08:46.263420"
+    },
+    {
+      "agent_id": "agent-exp-03",
+      "proposal_id": "058-dsm-fused-linear-rnn-projection-chain",
+      "started_at": "2026-02-16T01:09:09.862206",
+      "last_heartbeat": "2026-02-16T01:19:11.248772",
+      "status": "completed",
+      "completed_at": "2026-02-16T01:20:30.593262"
+    },
+    {
+      "agent_id": "agent-exp-01",
+      "proposal_id": "038-cta-swizzled-tfla-l2-cache-optimized-linear-rnn",
+      "started_at": "2026-02-16T01:08:47.174777",
+      "last_heartbeat": "2026-02-16T01:08:47.963597",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:39:09.005522"
+    },
+    {
+      "agent_id": "agent-exp-02",
+      "proposal_id": "045-dct-frequency-kernel-chunkwise-gla",
+      "started_at": "2026-02-16T01:08:49.019856",
+      "last_heartbeat": "2026-02-16T01:08:49.269134",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:39:09.005522"
+    },
+    {
+      "agent_id": "agent-exp-03",
+      "proposal_id": "046-kronecker-state-transition-chunkwise-gla",
+      "started_at": "2026-02-16T01:08:49.887352",
+      "last_heartbeat": "2026-02-16T01:08:50.003778",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:39:09.005522"
+    },
+    {
+      "agent_id": "agent-exp-04",
+      "proposal_id": "047-lasp2-tfla-overlapped-multi-gpu-linear-rnn",
+      "started_at": "2026-02-16T01:08:50.199226",
+      "last_heartbeat": "2026-02-16T01:08:50.316770",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:39:09.005522"
+    },
+    {
+      "agent_id": "agent-exp-05",
+      "proposal_id": "048-segmented-matmulscan-packed-variable-length-linear-rnn",
+      "started_at": "2026-02-16T01:08:50.568461",
+      "last_heartbeat": "2026-02-16T01:08:50.652110",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:39:09.005522"
+    },
+    {
+      "agent_id": "agent-exp-06",
+      "proposal_id": "049-dhelix-strand-interleaved-linear-rnn-distributed-training",
+      "started_at": "2026-02-16T01:08:51.173798",
+      "last_heartbeat": "2026-02-16T01:08:51.255718",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:39:09.005522"
+    },
+    {
+      "agent_id": "agent-exp-07",
+      "proposal_id": "050-fp8-mixed-precision-chunkwise-linear-rnn-training",
+      "started_at": "2026-02-16T01:08:51.417355",
+      "last_heartbeat": "2026-02-16T01:08:51.501445",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:39:09.005522"
+    },
+    {
+      "agent_id": "agent-exp-08",
+      "proposal_id": "051-ks-fused-monarch-projections-chunkwise-linear-rnn",
+      "started_at": "2026-02-16T01:08:51.773315",
+      "last_heartbeat": "2026-02-16T01:08:51.880874",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:39:09.005522"
+    },
+    {
+      "agent_id": "agent-exp-09",
+      "proposal_id": "052-dct-unified-frequency-domain-linear-rnn",
+      "started_at": "2026-02-16T01:08:52.195259",
+      "last_heartbeat": "2026-02-16T01:08:52.293151",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:39:09.005522"
+    },
+    {
+      "agent_id": "agent-exp-10",
+      "proposal_id": "062-fused-intra-token-deltaproduct-householder-steps",
+      "started_at": "2026-02-16T01:08:52.520394",
+      "last_heartbeat": "2026-02-16T01:08:52.607579",
+      "status": "stale",
+      "staled_at": "2026-02-16T01:39:09.005522"
+    },
+    {
+      "agent_id": "agent-exp-01",
+      "proposal_id": "040-persistent-megakernel-linear-rnn-layer",
+      "started_at": "2026-02-16T01:09:09.271364",
+      "last_heartbeat": "2026-02-16T01:24:11.015969",
+      "status": "completed",
+      "completed_at": "2026-02-16T01:52:08.920810"
+    },
+    {
+      "agent_id": "agent-exp-02",
+      "proposal_id": "039-warp-specialized-pingpong-chunkwise-linear-rnn",
+      "started_at": "2026-02-16T01:09:09.504792",
+      "last_heartbeat": "2026-02-16T01:29:11.365053",
+      "status": "completed",
+      "completed_at": "2026-02-16T01:52:35.267532"
+    },
+    {
+      "agent_id": "agent-exp-05",
+      "proposal_id": "008-cosine-log-linear-attention",
+      "started_at": "2026-02-16T01:09:10.576593",
+      "last_heartbeat": "2026-02-16T01:54:13.287178",
+      "status": "completed",
+      "completed_at": "2026-02-16T01:54:41.059483"
+    }
+  ]
+}

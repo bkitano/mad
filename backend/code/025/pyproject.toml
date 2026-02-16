@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=64.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mve-025-nystrom-ssm"
+version = "0.1.0"
+description = "MVE 025: Nystrom Landmark Compression for Chunkwise SSM Inter-Chunk State Transfer"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.65.0",
+]
+
+[project.optional-dependencies]
+modal = ["modal>=0.50.0"]
+
+[tool.setuptools.packages.find]
+include = ["models*", "data*"]

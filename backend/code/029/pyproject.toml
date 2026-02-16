@@ -1,0 +1,15 @@
+[project]
+name = "mve-029-circulant-favor-plus"
+version = "0.1.0"
+description = "MVE 029: Circulant FAVOR+ for Linear Attention"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy<2",
+    "pyyaml>=6.0",
+    "torch>=2.4.0",
+    "tqdm>=4.65.0",
+]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"

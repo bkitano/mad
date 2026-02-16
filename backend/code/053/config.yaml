@@ -1,0 +1,38 @@
+# Experiment 053: MLA-Inspired Latent State Compression for Linear RNN Inference
+# MVE Configuration
+#
+# Tests whether GLA hidden states (d_k x d_v) can be compressed to a
+# low-rank latent vector d_c using SVD, enabling efficient inference
+# via MLA-style weight absorption.
+
+model:
+  d_model: 128       # model hidden dimension
+  n_layers: 2        # number of GLA layers
+  n_heads: 2         # attention heads per layer
+  d_k: 64            # key dimension per head (state rows)
+  d_v: 128           # value dimension per head (state columns)
+  dropout: 0.1       # dropout rate
+
+data:
+  vocab_size: 256     # vocabulary size for synthetic data
+  seq_len: 128        # sequence length
+  train_samples: 5000 # number of training sequences
+  val_samples: 1000   # number of validation sequences
+
+training:
+  batch_size: 64      # batch size
+  lr: 3.0e-4          # learning rate
+  weight_decay: 0.01  # L2 regularization
+  gradient_clip: 1.0  # gradient clipping
+  max_epochs: 50      # maximum training epochs
+  target_ppl: 15.0    # early stopping target (synthetic data won't go super low)
+
+compression:
+  latent_dims: [8, 16, 32, 64]  # d_c values to test
+  max_collection_batches: 50     # batches to collect states from
+  max_error_batches: 10          # batches for readout error measurement
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"
+  timeout_seconds: 3600  # 1 hour max

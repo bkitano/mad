@@ -1,0 +1,16 @@
+[project]
+name = "mve-041-evt-joint-fwd-bwd"
+version = "0.1.0"
+description = "MVE for EVT Joint Forward-Backward Graph Partitioning for Linear RNN Training"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.4.0",
+    "triton>=3.0.0",
+    "wandb>=0.17.6",
+    "pyyaml>=6.0",
+    "numpy<2",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

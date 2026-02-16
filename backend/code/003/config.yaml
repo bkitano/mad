@@ -1,0 +1,28 @@
+# DPLR-CS SSM Parity Experiment Config
+# Proposal: 003-dplr-column-sparse-cauchy-kernel
+# Task: Parity computation (requires inter-dimension coupling)
+
+data:
+  seq_len: 32          # Sequence length T
+  n_samples: 10000     # Total samples
+  test_fraction: 0.2   # 80/20 train/test split
+
+model:
+  d_model: 32          # Hidden dimension
+  state_dim: 16        # State dimension N (must be power of 2 for bit-reversal)
+  dt: 1.0              # Discretization time step
+
+training:
+  batch_size: 64
+  lr: 1e-3
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  max_epochs: 200
+  patience: 30         # Early stopping patience
+  early_stop_acc: 0.99 # Stop if test acc reaches this
+
+# Success criteria (from proposal):
+# - DPLR (P=I): ~50-70% accuracy (struggles without coupling)
+# - DPLR-CS (any P != I): >90% accuracy
+# The idea works if: Any non-identity permutation achieves >90%
+#   while P=I achieves <75%

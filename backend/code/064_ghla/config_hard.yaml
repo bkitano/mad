@@ -1,0 +1,41 @@
+# MVE 064 (GHLA): Gated Second-Order Linear Attention - HARD setting
+# Task: Multi-Query Associative Recall (MQAR) with 32 KV pairs
+# This is the harder version to differentiate models
+
+seed: 42
+
+data:
+  num_train: 10000
+  num_val: 1000
+  num_test: 1000
+  num_kv_pairs: 32               # 32 key-value pairs (much harder than 8)
+  seq_len: 256                   # Longer sequences
+  vocab_size: 128                # More tokens: keys [0,62), values [62,124), SEP=127, PAD=126
+
+model:
+  d_model: 64                   # Same model size as before
+  d_k: 16                       # Same head dims
+  d_v: 32
+  n_heads: 2
+  n_layers: 2
+  gamma: 0.99
+
+training:
+  batch_size: 64
+  lr: 0.001
+  weight_decay: 0.01
+  epochs: 200
+  grad_clip: 1.0
+  warmup_epochs: 10
+  patience: 40
+
+variants:
+  - gla
+  - hla
+  - hla_decay
+  - ghla
+
+deployment:
+  gpu_type: "T4"
+  n_gpus: 1
+  timeout_seconds: 3600

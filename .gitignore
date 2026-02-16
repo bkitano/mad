@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+ENV/
+
+# Logs
+*.log
+nohup.out
+*.out
+
+# State and temp files
+.state/
+*.tmp
+*.swp
+*~
+
+# Papers (large PDFs)
+papers/
+
+# Large data files
+*.pt
+*.pth
+*.ckpt
+checkpoint/
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+*.key
+*.pem
+*secret*

@@ -1,0 +1,17 @@
+[project]
+name = "mve-009-post-sigmoid-gating"
+version = "0.1.0"
+description = "MVE for Post-Sigmoid Gating Linear Attention (Proposal 009)"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.65.0",
+]
+
+[project.optional-dependencies]
+modal = ["modal>=0.60.0"]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"

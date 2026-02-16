@@ -1,0 +1,19 @@
+[project]
+name = "mve-063-mfa-gla-shared-projections"
+version = "0.1.0"
+description = "MVE 063: MFA-Style Shared Latent Projections for Linear RNN Training"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+    "pyyaml>=6.0",
+    "wandb>=0.15.0",
+    "tqdm>=4.65.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["models*", "data*"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

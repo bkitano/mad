@@ -1,0 +1,36 @@
+# Post-Sigmoid Gating Linear Attention MVE (Proposal 009)
+#
+# Tests whether post-readout sigmoid gating improves cosFormer's
+# readout precision on Multi-Query Associative Recall (MQAR).
+#
+# Attempt 2: Increased capacity (d_model=128), longer patience (100),
+# higher LR (3e-3), gate bias init (+1.0) to fix underfitting from Attempt 1.
+
+data:
+  n_train: 10000          # Training samples
+  n_test: 2000            # Test samples
+  n_kv_pairs: 4           # Number of KV pairs to store
+  n_queries: 2            # Number of queries per sequence
+  vocab_size: 16          # Content vocabulary size
+
+model:
+  d_model: 128            # Increased from 64 for more capacity
+  n_heads: 8              # Increased from 4 (keeping d_k=16)
+  d_k: 16                 # Per-head key/query dimension (small = stresses bottleneck)
+  n_layers: 2             # Number of cosFormer blocks
+  dropout: 0.0            # No dropout for MVE
+  ffn_mult: 4             # FFN hidden dim multiplier
+
+training:
+  batch_size: 128
+  lr: 3e-3                # Increased from 1e-3 for faster convergence
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  max_epochs: 200
+  patience: 100           # Increased from 30 to allow longer training
+  early_stop_acc: 0.99    # Stop if accuracy exceeds this
+
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"          # T4 is sufficient for ~500K param model
+  timeout_seconds: 1800   # 30 minutes max

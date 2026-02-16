@@ -1,0 +1,165 @@
+config:
+  alpha_values:
+  - 0
+  - 1
+  - 2
+  - 4
+  - 16
+  data:
+    num_test: 500
+    num_train: 5000
+    num_val: 500
+    seq_len: 12
+  model:
+    d_model: 64
+    n: 16
+    num_layers: 2
+  seed: 42
+  training:
+    batch_size: 256
+    beta1: 0.9
+    beta2: 0.999
+    dropout: 0.05
+    epochs: 80
+    gradient_clip: 1.0
+    lr: 0.003
+    patience: 25
+    weight_decay: 0.0001
+matvec_benchmark:
+  cauchy_ms: 0.5887205895851366
+  dense_ms: 0.12052519974531606
+  throughput_ratio: 0.20472394184522835
+models:
+  alpha_0:
+    alpha: 0
+    best_val_acc: 0.37
+    epochs_trained: 80
+    model_name: "DR-SSM (\u03B1=0)"
+    num_params: 30648
+    test_acc: 0.336
+    test_loss: 1.9996293678283692
+    total_nan_count: 0
+    train_time_s: 93.66732795200369
+  alpha_1:
+    alpha: 1
+    best_val_acc: 0.952
+    epochs_trained: 59
+    model_name: "DR-SSM (\u03B1=1)"
+    num_params: 34808
+    test_acc: 0.958
+    test_loss: 0.3728237431049347
+    total_nan_count: 0
+    train_time_s: 148.74419171999762
+  alpha_16:
+    alpha: 16
+    best_val_acc: 0.974
+    epochs_trained: 12
+    model_name: "Dense-SSM (\u03B1=n=16)"
+    num_params: 63928
+    test_acc: 0.974
+    test_loss: 0.13202653932571412
+    total_nan_count: 0
+    train_time_s: 31.258587678996264
+  alpha_2:
+    alpha: 2
+    best_val_acc: 0.9
+    epochs_trained: 80
+    model_name: "DR-SSM (\u03B1=2)"
+    num_params: 38968
+    test_acc: 0.876
+    test_loss: 0.5922274069786072
+    total_nan_count: 0
+    train_time_s: 237.43507714699808
+  alpha_4:
+    alpha: 4
+    best_val_acc: 0.958
+    epochs_trained: 27
+    model_name: "DR-SSM (\u03B1=4)"
+    num_params: 47288
+    test_acc: 0.958
+    test_loss: 0.36738320207595826
+    total_nan_count: 0
+    train_time_s: 87.51919992899639
+speed_benchmark:
+  '0': !!python/object/apply:numpy._core.multiarray.scalar
+  - &id001 !!python/object/apply:numpy.dtype
+    args:
+    - f8
+    - false
+    - true
+    state: !!python/tuple
+    - 3
+    - <
+    - null
+    - null
+    - null
+    - -1
+    - -1
+    - 0
+  - !!binary |
+    AIAgMjCLJ0A=
+  '1': !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AIBXwJDxPEA=
+  '16': !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AKDNvU1XQUA=
+  '2': !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ACDyBdoZQkA=
+  '4': !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AOA3Ot8IRkA=
+speed_ratio_dense_over_alpha4: 0.7869889073023056
+success_criteria:
+  alpha4_beats_alpha1:
+    achieved: "\u03B1=4=95.8% vs \u03B1=1=95.8%"
+    passed: false
+    target: "\u03B1=4 > \u03B1=1"
+  cauchy_not_too_slow:
+    achieved: "4.9\xD7 slower"
+    passed: !!python/object/apply:numpy._core.multiarray.scalar
+    - &id002 !!python/object/apply:numpy.dtype
+      args:
+      - b1
+      - false
+      - true
+      state: !!python/tuple
+      - 3
+      - '|'
+      - null
+      - null
+      - null
+      - -1
+      - -1
+      - 0
+    - !!binary |
+      AQ==
+    target: "Cauchy not >10\xD7 slower than dense"
+  cauchy_throughput:
+    achieved: "0.20\xD7"
+    passed: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id002
+    - !!binary |
+      AA==
+    target: ">0.3\xD7 dense throughput"
+  efficiency:
+    achieved: "0.79\xD7 speed, 1.6% gap"
+    passed: true
+    target: ">0.6\xD7 dense speed, <5% accuracy gap"
+  rank_scaling:
+    achieved: "\u03B1=4: 95.8%, \u03B1=1: 95.8%, \u03B1=0: 33.6%"
+    passed: false
+    target: "\u03B1=4 > 85%, \u03B1=1 < 70%, \u03B1=0 < 50%"
+  truncation:
+    achieved: 0.00%
+    passed: true
+    target: <10% relative error after 20 compositions
+truncation_test:
+  passes: true
+  relative_error: 2.0506209352788574e-07
+verdict: ABANDON

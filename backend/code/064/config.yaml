@@ -1,0 +1,47 @@
+# MVE 064: Residual KDA with Channel-Wise Auxiliary Decay
+# Task: Multi-Query Associative Recall (MQAR)
+# Compares: KDA vs KDA+scalar-residual vs RKDA (channel-wise residual)
+
+seed: 42
+
+data:
+  num_train: 10000
+  num_val: 1000
+  num_test: 1000
+  num_kv_pairs: 16           # 16 key-value pairs (challenging)
+  seq_len: 256               # Sequence length (proposal spec)
+  vocab_size: 64              # Keys [1,32), Values [32,64)
+
+model:
+  d_model: 128               # Hidden dimension
+  d_head: 64                 # Per-head dimension (d_k = d_v = 64, per proposal)
+  n_heads: 2                 # Number of attention heads (per proposal)
+  n_layers: 2                # Number of layers (per proposal)
+  clip_threshold: 1.0        # Residual clipping threshold c
+  dropout: 0.1
+  max_seq_len: 512
+
+training:
+  batch_size: 64
+  lr: 0.001
+  weight_decay: 0.01
+  epochs: 150                # Max epochs (early stop at 99%)
+  grad_clip: 1.0
+  warmup_epochs: 5
+  patience: 30               # Early stopping patience
+
+# Variants to run (in order)
+variants:
+  - kda                      # KDA baseline (no residual)
+  - kda_scalar_residual      # KDA + scalar-decay residual (RDN-style)
+  - rkda                     # KDA + channel-wise-decay residual (proposed)
+
+# Success criteria from proposal
+success_criteria:
+  rkda_over_kda: 0.05        # >= 5% absolute accuracy improvement
+  rkda_over_scalar: 0.02     # >= 2% improvement over scalar residual
+
+deployment:
+  gpu_type: "T4"
+  n_gpus: 1
+  timeout_seconds: 3600       # 1 hour max

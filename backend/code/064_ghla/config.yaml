@@ -1,0 +1,42 @@
+# MVE 064 (GHLA): Gated Second-Order Linear Attention
+# Task: Multi-Query Associative Recall (MQAR)
+# Compares: GLA (first-order) vs HLA (ungated) vs HLA-decay vs GHLA (proposed)
+
+seed: 42
+
+data:
+  num_train: 8000
+  num_val: 1000
+  num_test: 1000
+  num_kv_pairs: 8                # 8 key-value pairs (from proposal MVE)
+  seq_len: 128                   # Sequence length (from proposal)
+  vocab_size: 32                 # Keys [0,14), Values [14,28), SEP=31, PAD=30
+
+model:
+  d_model: 64                   # Hidden dimension (from proposal: ~100K params)
+  d_k: 16                       # Per-head key dimension (from proposal)
+  d_v: 32                       # Per-head value dimension (from proposal)
+  n_heads: 2                    # Number of attention heads (from proposal)
+  n_layers: 2                   # Number of layers (from proposal)
+  gamma: 0.99                   # Fixed decay for HLA-decay baseline
+
+training:
+  batch_size: 64
+  lr: 0.001
+  weight_decay: 0.01
+  epochs: 200                   # Max epochs (early stop at 99%)
+  grad_clip: 1.0
+  warmup_epochs: 10
+  patience: 40                  # Early stopping patience
+
+# Variants to run (in order)
+variants:
+  - gla                         # Baseline 1: First-order gated linear attention
+  - hla                         # Baseline 2: Second-order ungated
+  - hla_decay                   # Baseline 3: Second-order fixed decay
+  - ghla                        # Proposed: Second-order data-dependent gating
+
+deployment:
+  gpu_type: "T4"
+  n_gpus: 1
+  timeout_seconds: 3600         # 1 hour max

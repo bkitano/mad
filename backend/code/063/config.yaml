@@ -1,0 +1,54 @@
+# MVE 063: MFA-Style Shared Latent Projections for Linear RNN
+# Task: Multi-Query Associative Recall (MQAR)
+# Compares: MFA-GLA (shared projections, m=4 heads) vs GLA (standard, n=2 heads)
+
+seed: 42
+
+data:
+  num_train: 10000
+  num_val: 1000
+  num_test: 1000
+  num_kv_pairs: 8              # 8 key-value pairs (moderate difficulty for MVE)
+  seq_len: 128                 # Sequence length
+  vocab_size: 64               # Keys [1,32), Values [32,64)
+
+model:
+  d_model: 128                 # Hidden dimension
+  n_layers: 2                  # Number of layers
+
+  # Standard GLA config (baseline)
+  gla_n_heads: 2               # n = 2 standard heads
+  gla_d_head: 32               # d_k = d_v = 32 (state S in R^{32 x 32})
+
+  # MFA-GLA config (experiment)
+  mfa_n_heads: 4               # m = 4 MFA heads (2x more than standard)
+  mfa_d_head: 32               # d_v = 32 (per-head value dimension)
+  mfa_latent_dim: 64           # C = 64 (shared latent / key dimension)
+
+  dropout: 0.1
+  max_seq_len: 256
+
+training:
+  batch_size: 64
+  lr: 0.001
+  weight_decay: 0.01
+  epochs: 150                  # Max epochs (early stop at 99%)
+  grad_clip: 1.0
+  warmup_epochs: 5
+  patience: 30                 # Early stopping patience
+
+# Variants to run
+variants:
+  - gla                        # Standard GLA (independent projections, n=2)
+  - mfa_gla                   # MFA-GLA (shared projections, m=4)
+
+# Success criteria from proposal
+success_criteria:
+  mfa_accuracy: 0.90           # MFA-GLA >= 90% MQAR accuracy
+  fwd_time_ratio: 1.2          # MFA fwd time <= 1.2x GLA
+  convergence_ratio: 1.5       # MFA epochs <= 1.5x GLA epochs
+
+deployment:
+  gpu_type: "T4"
+  n_gpus: 1
+  timeout_seconds: 1800        # 30 min timeout

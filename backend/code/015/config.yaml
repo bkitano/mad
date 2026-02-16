@@ -1,0 +1,23 @@
+seed: 42
+ssm_types:
+  - monarch
+  - diagonal
+model:
+  d_model: 64
+  n: 64
+  num_layers: 2
+data:
+  seq_len: 20
+  num_train: 10000
+  num_val: 1000
+  num_test: 1000
+training:
+  batch_size: 128
+  lr: 0.003
+  beta1: 0.9
+  beta2: 0.999
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  dropout: 0.1
+  epochs: 150
+  patience: 30

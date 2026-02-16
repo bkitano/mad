@@ -1,0 +1,21 @@
+[project]
+name = "mve-039-pingpong-chunkwise-gla"
+version = "0.1.0"
+description = "MVE 039: Warp-Specialized Pingpong Pipelining for Chunkwise Linear RNN Kernels"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.4.0",
+    "triton>=3.0.0",
+    "numpy<2",
+    "pyyaml>=6.0",
+    "wandb>=0.17.6",
+    "modal>=0.64.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["models*"]

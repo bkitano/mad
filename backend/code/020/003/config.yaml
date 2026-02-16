@@ -1,0 +1,31 @@
+# Experiment 003: OscGate-SSM MVE
+# Proposal: 007-oscillatory-gated-selective-ssm
+# Task: Selective Copying
+
+seed: 42
+
+model:
+  d_model: 128      # Hidden dim
+  m: 64             # Number of oscillators (state dim n = 2m = 128)
+  num_layers: 2     # Number of SSM layers (with residual connections)
+  dt: 0.01          # Discretization timestep
+  omega_max: 100.0  # Max frequency clamp (numerical stability)
+
+data:
+  num_train: 10000
+  num_val: 1000
+  num_test: 1000
+  content_len: 8    # Number of content tokens before SEP
+  num_queries: 8    # Number of query positions after SEP
+  vocab_size: 16    # Number of distinct content token values
+
+training:
+  epochs: 100
+  batch_size: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  beta1: 0.9
+  beta2: 0.999
+  gradient_clip: 1.0
+  dropout: 0.1
+  patience: 25

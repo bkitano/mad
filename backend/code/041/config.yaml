@@ -1,0 +1,26 @@
+# Experiment 041: EVT Joint Forward-Backward Graph Partitioning
+# Tiny GLA model for MVE
+
+model:
+  d_model: 64        # Hidden dimension (proposal: d=64)
+  d_state: 16        # State dimension (proposal: n=16)
+  chunk_size: 32      # Chunk size (proposal: C=32)
+  seq_len: 256        # Sequence length (proposal: T=256)
+  vocab_size: 256     # Vocabulary size
+  n_layers: 1         # Number of layers
+
+training:
+  num_sequences: 1000  # Number of random sequences
+  batch_size: 32
+  lr: 0.001
+  num_epochs: 5
+
+benchmark:
+  batch_size: 8       # Batch size for kernel benchmarks
+  warmup: 10          # Warmup iterations
+  repeats: 100        # Benchmark iterations
+
+deployment:
+  gpu_type: "T4"      # T4 is sufficient for this small MVE
+  n_gpus: 1
+  timeout_seconds: 3600  # 1 hour max

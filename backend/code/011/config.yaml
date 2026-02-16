@@ -1,0 +1,29 @@
+# MVE 011: Neumann Resolvent Kernel Accuracy Test
+# Validates Neumann series approximation of DPLR SSM resolvent
+
+experiment:
+  # DPLR SSM parameters
+  state_dim: 64          # N: state dimension (HiPPO-LegS)
+  rank: 1                # r: low-rank factor rank
+  hidden_dim: 8          # d: input/output dimension
+  seq_len: 1024          # L: number of frequency points
+
+  # Kernel accuracy sweep
+  k_values: [2, 4, 6, 8, 12, 16]  # Neumann truncation orders
+  n_trials: 5            # Number of random initializations
+
+  # Near-resonance test
+  epsilon_values: [0.1, 0.01, 0.001, 0.0001]
+  k_resonance: 8         # Truncation order for resonance test
+
+  # Speed comparison
+  N_values: [32, 64, 128, 256]  # State dimensions to benchmark
+  k_speed: 8             # Truncation order for speed test
+  n_warmup: 3            # Warmup iterations
+  n_runs: 10             # Timed iterations
+
+# Modal deployment
+deployment:
+  n_gpus: 1
+  gpu_type: "T4"
+  timeout_seconds: 600   # 10 minutes max

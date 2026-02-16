@@ -1,0 +1,18 @@
+# Experiment 055: WY-All-Scan Microbenchmark Configuration
+# Tests WY-factored All-Scan vs LASP-2 AllGather vs ZeCO-GLA All-Scan
+
+# Model dimensions (matching Gated DeltaNet 1.3B head config)
+d_k: 128          # Key dimension per head
+d_v: 128          # Value dimension per head
+H: 16             # Number of attention heads
+
+# Benchmark settings
+num_warmup: 10     # Warmup iterations
+num_trials: 50     # Timed iterations
+dtype: bfloat16    # Data type (bfloat16 or float16)
+
+# Deployment (Modal)
+deployment:
+  n_gpus: 8        # Number of GPUs (tests P=2,4,8)
+  gpu_type: "A100"  # GPU type
+  timeout_seconds: 1800  # 30 min max

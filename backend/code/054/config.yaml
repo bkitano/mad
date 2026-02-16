@@ -1,0 +1,30 @@
+# MVE 054: SageAttention2-Style INT4 Smoothing for Chunkwise Linear RNN
+# Proposal: proposals/054-sage-int4-smoothing-chunkwise-linear-rnn.md
+
+model:
+  d_model: 256
+  n_layers: 2
+  n_heads: 2
+  dk_per_head: 128
+  dv_per_head: 256
+  chunk_size: 128
+  sub_chunk_size: 16
+
+dataset:
+  # Copying task parameters
+  train_samples: 1000
+  val_samples: 200
+  copy_len: 32       # Tokens to copy (total seq = 2*32+2 = 66)
+  vocab_size: 16     # Data token vocabulary size
+
+training:
+  batch_size: 32
+  lr: 1.0e-3
+  weight_decay: 0.01
+  n_epochs: 100
+  gradient_clip: 1.0
+
+deployment:
+  gpu_type: "T4"
+  n_gpus: 1
+  timeout_seconds: 3600  # 1 hour max

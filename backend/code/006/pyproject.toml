@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mve-006-monarch-gated-ssm"
+version = "0.1.0"
+description = "MVE 006: Monarch-Gated State Transition SSM for S5 Permutation Composition"
+requires-python = ">=3.11"
+dependencies = [
+    "setuptools>=61.0",
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+    "tqdm>=4.65.0",
+    "modal>=1.3.0",
+    "wandb>=0.15.0",
+    "pyyaml>=6.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tasks*", "models*", "train*"]
