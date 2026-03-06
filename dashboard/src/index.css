@@ -1,0 +1,73 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Interactive Linear Attention app CSS variables */
+.interactive-linear-attention {
+  --font-display: "Space Grotesk", "Segoe UI", sans-serif;
+  --font-body: "Newsreader", "Iowan Old Style", "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, monospace;
+  --paper: #f7f1e8;
+  --paper-deep: #efe5d8;
+  --ink: #111827;
+  --ink-muted: #475569;
+  --accent: #0f766e;
+  --accent-strong: #115e59;
+  --accent-soft: #ccfbf1;
+  --tab-header-height: 72px;
+}
+
+/* KaTeX adjustments */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5rem 0;
+}
+
+.katex {
+  font-size: 1.1em;
+}
+
+/* Inline code in prose */
+.prose code {
+  background-color: #f3f4f6;
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+
+.prose pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+/* Code blocks */
+.prose pre {
+  background-color: #1f2937;
+  color: #e5e7eb;
+  overflow-x: auto;
+}
+
+/* Heading anchor links */
+.heading-anchor {
+  position: relative;
+}
+
+.heading-anchor-link {
+  opacity: 0;
+  margin-left: 0.4em;
+  color: #9ca3af;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+  font-weight: 400;
+}
+
+.heading-anchor:hover .heading-anchor-link {
+  opacity: 1;
+}
+
+.heading-anchor-link:hover {
+  color: #3b82f6;
+}

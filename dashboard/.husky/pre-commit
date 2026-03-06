@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# Change to blog directory where package.json is located
+cd "$(dirname "$0")/.." || exit 1
+
+# Run markdown linter
+npm run lint:md

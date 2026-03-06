@@ -1,0 +1,253 @@
+"""
+Modal-based experiment worker — one function invocation per job.
+
+Starts opencode as a subprocess, runs the experiment worker logic,
+and reports results back to the API server.
+
+Deploy:
+    uv run python -m modal deploy service/modal_worker.py
+
+Run a single job (for testing):
+    uv run python -m modal run service/modal_worker.py::run_job --job-id test-001 --proposal-id 042-monarch-gated
+
+Trigger from API (fire-and-forget):
+    curl -X POST https://<your-app>.modal.run/create_job \
+        -H "Content-Type: application/json" \
+        -d '{"proposal_id": "042-monarch-gated"}'
+"""
+
+import asyncio
+import os
+import subprocess
+import time
+import uuid
+
+import modal
+
+APP_NAME = "mad-worker"
+
+app = modal.App(APP_NAME)
+
+# Image: opencode + uv-managed deps + project source
+image = (
+    modal.Image.debian_slim(python_version="3.12")
+    .apt_install("curl", "ca-certificates", "git")
+    .run_commands(
+        "curl -fsSL https://opencode.ai/install | bash",
+        "ln -s /root/.opencode/bin/opencode /usr/local/bin/opencode",
+    )
+    .uv_sync()  # installs deps from pyproject.toml / uv.lock
+    .add_local_python_source("agents")
+    .add_local_python_source("service")
+    .add_local_file("agents/opencode.jsonc", remote_path="/workspace/opencode.jsonc")
+)
+
+# Secrets: API keys for opencode, wandb, postgres, etc.
+# Create these in Modal dashboard: `modal secret create mad-worker-secrets ...`
+SECRETS = modal.Secret.from_name("mad-worker-secrets")
+
+
+def _wait_for_opencode(url: str, timeout_s: float = 30.0) -> None:
+    """Block until opencode HTTP server is ready."""
+    import httpx
+
+    deadline = time.time() + timeout_s
+    last_err = None
+    while time.time() < deadline:
+        try:
+            r = httpx.get(f"{url}/session", timeout=2.0)
+            if r.status_code < 500:
+                return
+        except Exception as e:
+            last_err = e
+        time.sleep(0.5)
+    raise RuntimeError(f"opencode not ready after {timeout_s}s; last_err={last_err!r}")
+
+
+@app.function(
+    image=image,
+    secrets=[SECRETS],
+    timeout=60 * 60,       # 1 hour max per job
+    cpu=2,
+    memory=4096,
+    # gpu="T4",            # uncomment if experiments need GPU
+)
+def run_job(
+    proposal_id: str,
+    job_id: str = "",
+    service_url: str = "",
+) -> dict:
+    """
+    One invocation = one experiment job.
+
+    Starts opencode locally, then runs the worker's experiment cycle.
+    """
+    import sys
+    sys.path.insert(0, "/app")
+
+    job_id = job_id or str(uuid.uuid4())
+    service_url = service_url or os.environ.get("MAD_SERVICE_URL", "http://mad.briankitano.com")
+
+    # Set up workspace
+    workspace = "/workspace"
+    os.makedirs(f"{workspace}/proposals", exist_ok=True)
+    os.makedirs(f"{workspace}/code", exist_ok=True)
+    os.makedirs(f"{workspace}/experiments", exist_ok=True)
+
+    # Set env vars the worker expects
+    os.environ["MAD_SERVICE_URL"] = service_url
+    os.environ["MAD_AGENT_ID"] = f"modal-{job_id[:8]}"
+    os.environ["MAD_WORKSPACE"] = workspace
+    os.environ["OPENCODE_BASE_URL"] = "http://127.0.0.1:4096"
+
+    # Start opencode as a subprocess
+    opencode_proc = subprocess.Popen(
+        ["opencode", "serve", "--hostname", "127.0.0.1", "--port", "4096"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        cwd=workspace,
+    )
+
+    try:
+        _wait_for_opencode("http://127.0.0.1:4096")
+        print(f"[modal-worker] opencode ready, running proposal {proposal_id}")
+
+        # Import and run the existing worker logic
+        from service.client import ExperimentClient
+        from service.worker import run_experiment_cycle
+
+        client = ExperimentClient(base_url=service_url)
+
+        did_work = asyncio.run(
+            run_experiment_cycle(client, specific_proposal=proposal_id)
+        )
+
+        return {
+            "job_id": job_id,
+            "proposal_id": proposal_id,
+            "status": "completed" if did_work else "no_work",
+        }
+
+    except Exception as e:
+        print(f"[modal-worker] ERROR: {e}")
+        return {
+            "job_id": job_id,
+            "proposal_id": proposal_id,
+            "status": "failed",
+            "error": str(e),
+        }
+
+    finally:
+        opencode_proc.terminate()
+        try:
+            opencode_proc.wait(timeout=5)
+        except Exception:
+            opencode_proc.kill()
+
+
+@app.function(
+    image=image,
+    secrets=[SECRETS],
+    timeout=60 * 60,
+    cpu=2,
+    memory=4096,
+)
+def run_next_job(service_url: str = "") -> dict:
+    """
+    Pick the next unclaimed proposal and run it.
+    Use this for continuous polling or cron-triggered runs.
+    """
+    import sys
+    sys.path.insert(0, "/app")
+
+    service_url = service_url or os.environ.get("MAD_SERVICE_URL", "http://mad.briankitano.com")
+    job_id = str(uuid.uuid4())
+
+    workspace = "/workspace"
+    os.makedirs(f"{workspace}/proposals", exist_ok=True)
+    os.makedirs(f"{workspace}/code", exist_ok=True)
+    os.makedirs(f"{workspace}/experiments", exist_ok=True)
+
+    os.environ["MAD_SERVICE_URL"] = service_url
+    os.environ["MAD_AGENT_ID"] = f"modal-{job_id[:8]}"
+    os.environ["MAD_WORKSPACE"] = workspace
+    os.environ["OPENCODE_BASE_URL"] = "http://127.0.0.1:4096"
+
+    opencode_proc = subprocess.Popen(
+        ["opencode", "serve", "--hostname", "127.0.0.1", "--port", "4096"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        cwd=workspace,
+    )
+
+    try:
+        _wait_for_opencode("http://127.0.0.1:4096")
+
+        from service.client import ExperimentClient
+        from service.worker import run_experiment_cycle
+
+        client = ExperimentClient(base_url=service_url)
+        did_work = asyncio.run(run_experiment_cycle(client))
+
+        return {
+            "job_id": job_id,
+            "status": "completed" if did_work else "no_work",
+        }
+
+    except Exception as e:
+        return {"job_id": job_id, "status": "failed", "error": str(e)}
+
+    finally:
+        opencode_proc.terminate()
+        try:
+            opencode_proc.wait(timeout=5)
+        except Exception:
+            opencode_proc.kill()
+
+
+# ── Web endpoint: trigger a job via HTTP POST ────────────────────────────────
+
+@app.function(image=image, secrets=[SECRETS])
+@modal.fastapi_endpoint(method="POST")
+def create_job(payload: dict) -> dict:
+    """
+    HTTP trigger to start a job.
+
+    POST body:
+        {"proposal_id": "042-monarch-gated"}
+        or
+        {"proposal_id": "auto"}  # pick next unclaimed
+    """
+    proposal_id = payload.get("proposal_id", "")
+    service_url = payload.get("service_url", "")
+    job_id = payload.get("job_id") or str(uuid.uuid4())
+
+    if proposal_id == "auto" or not proposal_id:
+        run_next_job.spawn(service_url=service_url)
+        return {"job_id": job_id, "status": "queued", "mode": "auto"}
+    else:
+        run_job.spawn(
+            proposal_id=proposal_id,
+            job_id=job_id,
+            service_url=service_url,
+        )
+        return {"job_id": job_id, "proposal_id": proposal_id, "status": "queued"}
+
+
+# ── Cron: run every 10 minutes to pick up new proposals ──────────────────────
+
+# @app.function(
+#     image=image,
+#     secrets=[SECRETS],
+#     schedule=modal.Period(minutes=10),
+#     timeout=60 * 60,
+#     cpu=2,
+#     memory=4096,
+# )
+# def poll_for_work():
+#     """Scheduled function that checks for unclaimed proposals and runs one."""
+#     result = run_next_job.remote()
+#     print(f"[cron] poll result: {result}")
+#     return result
