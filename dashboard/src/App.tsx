@@ -9,7 +9,7 @@ function App() {
     <MDXProvider components={mdxComponents}>
       <Routes>
         {/* Standard pages with layout */}
-        <Route path="/*" element={<Layout><MADDashboard /></Layout>} />
+        <Route path="/mad/*" element={<Layout><MADDashboard /></Layout>} />
       </Routes>
     </MDXProvider>
   )

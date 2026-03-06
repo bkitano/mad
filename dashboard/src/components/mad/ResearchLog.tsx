@@ -6,7 +6,7 @@ import rehypeKatex from 'rehype-katex'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
 interface ResearchLogProps {
-  sseUrl: string
+  apiUrl: string
 }
 
 interface LogEntry {
@@ -20,28 +20,62 @@ interface LogEntry {
   experiments?: string
 }
 
-export default function ResearchLog({ sseUrl }: ResearchLogProps) {
+export default function ResearchLog({ apiUrl }: ResearchLogProps) {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set())
   const [logContents, setLogContents] = useState<Map<string, string>>(new Map())
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchLogs = async () => {
       try {
-        const res = await fetch(`${sseUrl}/api/research-logs`)
+        // Research logs endpoint not implemented in new API
+        // Use events as a fallback to show recent activity
+        const res = await fetch(`${apiUrl}/events?limit=50`)
         if (res.ok) {
-          const data = await res.json()
-          setLogs(data.logs || [])
-          // Auto-expand the first (newest) log
-          if (data.logs && data.logs.length > 0) {
-            const newest = data.logs[0].filename
-            setExpandedLogs(new Set([newest]))
-            fetchLogContent(newest)
+          const events = await res.json()
+          // Group events by date to simulate log entries
+          const groupedByDate: Record<string, typeof events> = {}
+          for (const event of events) {
+            const date = new Date(event.timestamp).toDateString()
+            if (!groupedByDate[date]) {
+              groupedByDate[date] = []
+            }
+            groupedByDate[date].push(event)
           }
+
+          // Convert to log entries
+          const logEntries: LogEntry[] = Object.entries(groupedByDate).map(([date, dateEvents]) => ({
+            filename: date,
+            modified: new Date(date).getTime(),
+            title: `Activity on ${date}`,
+            date,
+            experiments: String(dateEvents.filter((e: { event_type: string }) => e.event_type.startsWith('experiment.')).length)
+          }))
+
+          setLogs(logEntries)
+
+          // Store content for each log entry
+          const newContents = new Map(logContents)
+          for (const [date, dateEvents] of Object.entries(groupedByDate)) {
+            const content = (dateEvents as Array<{ timestamp: string; event_type: string; summary: string; agent?: string }>)
+              .map(e => `**${new Date(e.timestamp).toLocaleTimeString()}** - [${e.event_type}] ${e.summary}${e.agent ? ` (${e.agent})` : ''}`)
+              .join('\n\n')
+            newContents.set(date, content)
+          }
+          setLogContents(newContents)
+
+          // Auto-expand first entry
+          if (logEntries.length > 0) {
+            setExpandedLogs(new Set([logEntries[0].filename]))
+          }
+        } else {
+          setError('Failed to load activity logs')
         }
       } catch (err) {
         console.error('Error fetching research logs:', err)
+        setError('Failed to load activity logs')
       } finally {
         setLoading(false)
       }
@@ -52,20 +86,11 @@ export default function ResearchLog({ sseUrl }: ResearchLogProps) {
     // Refresh every 30 seconds
     const interval = setInterval(fetchLogs, 30000)
     return () => clearInterval(interval)
-  }, [sseUrl])
+  }, [apiUrl])
 
-  const fetchLogContent = async (filename: string) => {
-    if (logContents.has(filename)) return
-
-    try {
-      const res = await fetch(`${sseUrl}/api/research-log/${filename}`)
-      if (res.ok) {
-        const data = await res.json()
-        setLogContents(new Map(logContents).set(filename, data.content))
-      }
-    } catch (err) {
-      console.error(`Error fetching log ${filename}:`, err)
-    }
+  const fetchLogContent = async (_filename: string) => {
+    // Content is already loaded in the main fetch
+    return
   }
 
   const toggleLog = (filename: string) => {
@@ -93,7 +118,15 @@ export default function ResearchLog({ sseUrl }: ResearchLogProps) {
   if (loading) {
     return (
       <div className="bg-gray-50 p-6 rounded-lg text-center text-gray-500">
-        Loading research logs...
+        Loading activity logs...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
+        {error}
       </div>
     )
   }
@@ -101,7 +134,7 @@ export default function ResearchLog({ sseUrl }: ResearchLogProps) {
   if (logs.length === 0) {
     return (
       <div className="bg-gray-50 p-6 rounded-lg text-center text-gray-500">
-        No research logs available
+        No activity logs available
       </div>
     )
   }
@@ -112,22 +145,21 @@ export default function ResearchLog({ sseUrl }: ResearchLogProps) {
         <div className="text-sm">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className="font-semibold text-gray-900">Research Activity Log</span>
+              <span className="font-semibold text-gray-900">Activity Log</span>
               <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded">
-                {logs.length} updates
+                {logs.length} days
               </span>
               <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded">
                 Newest first ↓
               </span>
             </div>
             <p className="text-gray-700 mb-2">
-              Timestamped entries from the <strong>Research Agent</strong> documenting its analysis of experimental
-              results, strategic decisions, and insights discovered during the architecture search process.
+              Timestamped events from the experiment execution system, showing experiment progress,
+              status changes, and agent activity.
             </p>
             <p className="text-gray-700 text-xs">
-              Each log entry shows what the Research Agent learned from recent experiments, which tricks it
-              extracted, and what new proposals it generated. This creates a chronological record of the
-              autonomous research process—watching the agent learn, adapt, and evolve its search strategy over time.
+              Each entry shows events grouped by day, including experiment creation, status updates,
+              and completion events.
             </p>
           </div>
         </div>

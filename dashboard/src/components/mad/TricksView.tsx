@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -13,34 +13,35 @@ interface Trick {
 }
 
 interface TricksViewProps {
-  sseUrl: string
+  apiUrl: string
 }
 
 // Tricks List Component
-function TricksList({ sseUrl }: TricksViewProps) {
+function TricksList({ apiUrl }: TricksViewProps) {
   const navigate = useNavigate()
   const [tricks, setTricks] = useState<Trick[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   // Fetch tricks list
+  // Note: Tricks endpoint not available in current backend API
   useEffect(() => {
     const fetchTricks = async () => {
       try {
-        const res = await fetch(`${sseUrl}/api/tricks`)
-        if (res.ok) {
-          const data = await res.json()
-          setTricks(data.tricks || [])
-        }
+        // Tricks endpoint not implemented in new API
+        setError('Tricks functionality is not available in the current API version')
+        setTricks([])
       } catch (err) {
         console.error('Error fetching tricks:', err)
+        setError('Failed to load tricks')
       } finally {
         setLoading(false)
       }
     }
 
     fetchTricks()
-  }, [sseUrl])
+  }, [apiUrl])
 
   // Filter tricks by search term
   const filteredTricks = tricks.filter(t => {
@@ -56,6 +57,23 @@ function TricksList({ sseUrl }: TricksViewProps) {
     return (
       <div className="bg-gray-50 p-6 rounded-lg text-center text-gray-500">
         Loading tricks...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-2">What are Tricks?</h3>
+          <p className="text-sm text-gray-700 mb-2">
+            Tricks are atomic, reusable insights extracted from research papers. Think of them as a curated
+            knowledge base of techniques, optimizations, and implementation patterns from the broader ML literature.
+          </p>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
+          {error}
+        </div>
       </div>
     )
   }
@@ -118,33 +136,38 @@ function TricksList({ sseUrl }: TricksViewProps) {
   )
 }
 
+interface TrickDetailProps {
+  apiUrl: string
+  trickId: string
+}
+
 // Trick Detail Component
-function TrickDetail({ sseUrl }: TricksViewProps) {
+function TrickDetail({ apiUrl, trickId }: TrickDetailProps) {
   const navigate = useNavigate()
-  const { trickId } = useParams<{ trickId: string }>()
   const [trickContent, setTrickContent] = useState<string>('')
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // Fetch trick content
+  // Note: Tricks endpoint not available in current backend API
   useEffect(() => {
     if (!trickId) return
 
     const fetchContent = async () => {
       try {
-        const res = await fetch(`${sseUrl}/api/trick/${trickId}`)
-        if (res.ok) {
-          const data = await res.json()
-          setTrickContent(data.content || '')
-        }
+        // Tricks endpoint not implemented in new API
+        setError('Trick details are not available in the current API version')
+        setTrickContent('')
       } catch (err) {
         console.error('Error fetching trick content:', err)
+        setError('Failed to load trick')
       } finally {
         setLoading(false)
       }
     }
 
     fetchContent()
-  }, [trickId, sseUrl])
+  }, [trickId, apiUrl])
 
   if (loading) {
     return (
@@ -163,24 +186,35 @@ function TrickDetail({ sseUrl }: TricksViewProps) {
         ← Back to tricks list
       </button>
 
-      <div className="prose prose-sm max-w-none">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkMath]}
-          rehypePlugins={[rehypeKatex]}
-        >
-          {trickContent}
-        </ReactMarkdown>
-      </div>
+      {error ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
+          {error}
+        </div>
+      ) : (
+        <div className="prose prose-sm max-w-none">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+          >
+            {trickContent}
+          </ReactMarkdown>
+        </div>
+      )}
     </div>
   )
 }
 
 // Main Router Component
-export default function TricksView({ sseUrl }: TricksViewProps) {
-  return (
-    <Routes>
-      <Route path="/" element={<TricksList sseUrl={sseUrl} />} />
-      <Route path="/:trickId" element={<TrickDetail sseUrl={sseUrl} />} />
-    </Routes>
-  )
+export default function TricksView({ apiUrl }: TricksViewProps) {
+  const location = useLocation()
+
+  // Check if we're viewing a specific trick (e.g., /mad/tricks/some-trick)
+  const pathParts = location.pathname.split('/').filter(Boolean)
+  const trickId = pathParts.length > 2 && pathParts[1] === 'tricks' ? pathParts[2] : null
+
+  if (trickId) {
+    return <TrickDetail apiUrl={apiUrl} trickId={trickId} />
+  }
+
+  return <TricksList apiUrl={apiUrl} />
 }

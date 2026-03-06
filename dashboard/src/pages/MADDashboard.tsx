@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import ExperimentCard from '../components/mad/ExperimentCard'
 import AgentStatus from '../components/mad/AgentStatus'
 import LogViewer from '../components/mad/LogViewer'
@@ -33,7 +33,7 @@ interface DashboardData {
 
 type TabType = 'experiments' | 'proposals' | 'tricks' | 'log'
 
-const SSE_URL = import.meta.env.VITE_MAD_SSE_URL || 'http://localhost:8001'
+const API_URL = 'https://mad.briankitano.com'
 
 export default function MADDashboard() {
   const navigate = useNavigate()
@@ -64,10 +64,30 @@ export default function MADDashboard() {
     const fetchInitialState = async () => {
       try {
         console.log('Fetching initial state...')
-        const res = await fetch(`${SSE_URL}/api/status`)
-        if (res.ok) {
-          const statusData = await res.json()
-          setData(statusData.active_work)
+        // Fetch both claims (active work) and stats
+        const [claimsRes, statsRes] = await Promise.all([
+          fetch(`${API_URL}/claims?status=active`),
+          fetch(`${API_URL}/stats`)
+        ])
+
+        if (claimsRes.ok && statsRes.ok) {
+          const claims = await claimsRes.json()
+          // Stats response available for future use
+          await statsRes.json()
+
+          // Transform claims into active_work format
+          const activeWork: Record<string, ActiveExperiment> = {}
+          for (const claim of claims) {
+            activeWork[claim.proposal_id] = {
+              agent_id: claim.agent_id,
+              proposal_id: claim.proposal_id,
+              started_at: claim.claimed_at,
+              last_heartbeat: claim.last_heartbeat,
+              status: claim.status
+            }
+          }
+
+          setData({ active_work: activeWork, history: [] })
           setLastUpdate(new Date())
           setIsInitialLoad(false)
           console.log('Initial state loaded')
@@ -88,7 +108,7 @@ export default function MADDashboard() {
 
     const connect = () => {
       console.log('Connecting to SSE stream...')
-      eventSource = new EventSource(`${SSE_URL}/stream`)
+      eventSource = new EventSource(`${API_URL}/events/stream`)
 
       eventSource.onopen = () => {
         console.log('SSE connected')
@@ -96,29 +116,41 @@ export default function MADDashboard() {
         setError(null)
       }
 
-      eventSource.addEventListener('connected', (e) => {
-        console.log('Received connection confirmation:', e.data)
-      })
-
-      eventSource.addEventListener('active_work', (e) => {
+      eventSource.onmessage = (e) => {
         try {
-          const newData = JSON.parse(e.data)
-          setData(newData)
-          setLastUpdate(new Date())
-          setIsInitialLoad(false)
+          const event = JSON.parse(e.data)
+          console.log('Received event:', event.event_type)
+
+          // Handle claim-related events to update active work
+          if (event.event_type === 'claim.acquired' || event.event_type === 'claim.released') {
+            // Refetch claims on claim changes
+            fetch(`${API_URL}/claims?status=active`)
+              .then(res => res.json())
+              .then(claims => {
+                const activeWork: Record<string, ActiveExperiment> = {}
+                for (const claim of claims) {
+                  activeWork[claim.proposal_id] = {
+                    agent_id: claim.agent_id,
+                    proposal_id: claim.proposal_id,
+                    started_at: claim.claimed_at,
+                    last_heartbeat: claim.last_heartbeat,
+                    status: claim.status
+                  }
+                }
+                setData(prev => ({ ...prev, active_work: activeWork } as DashboardData))
+                setLastUpdate(new Date())
+              })
+              .catch(err => console.error('Error refetching claims:', err))
+          }
+
+          // Handle experiment events
+          if (event.event_type?.startsWith('experiment.')) {
+            setLastUpdate(new Date())
+          }
         } catch (err) {
-          console.error('Error parsing active_work data:', err)
+          console.error('Error parsing event data:', err)
         }
-      })
-
-      eventSource.addEventListener('results', (e) => {
-        console.log('New results:', e.data)
-        // Optionally refetch full status
-      })
-
-      eventSource.addEventListener('logs', (e) => {
-        console.log('Logs updated:', e.data)
-      })
+      }
 
       eventSource.onerror = () => {
         console.error('SSE connection error')
@@ -139,14 +171,18 @@ export default function MADDashboard() {
     }
   }, [])
 
-  // Fetch experiment log
+  // Fetch experiment log (events)
   const fetchLog = async (proposalId: string) => {
     try {
       const experimentId = proposalId.split('-')[0]
-      const res = await fetch(`${SSE_URL}/api/experiment-log/${experimentId}`)
+      const res = await fetch(`${API_URL}/experiments/${experimentId}/events?limit=100`)
       if (res.ok) {
-        const logData = await res.json()
-        setSelectedLog({ id: proposalId, content: logData.content })
+        const events = await res.json()
+        // Format events as markdown log
+        const logContent = events.map((event: { timestamp: string; event_type: string; summary: string; agent?: string }) =>
+          `**${new Date(event.timestamp).toLocaleString()}** - [${event.event_type}] ${event.summary}${event.agent ? ` (${event.agent})` : ''}`
+        ).join('\n\n')
+        setSelectedLog({ id: proposalId, content: logContent || '# No Events\n\nNo events recorded for this experiment yet.' })
       } else {
         const message = `# Log Not Available\n\nNo experiment log found for ${experimentId} (${proposalId}).\n\nThe experiment may not have started yet or logs haven't been created.`
         setSelectedLog({ id: proposalId, content: message })
@@ -166,15 +202,24 @@ export default function MADDashboard() {
       // Check if experiment is currently active
       const isActive = data?.active_work && proposalId in data.active_work
 
-      const res = await fetch(`${SSE_URL}/api/result/${experimentId}`)
+      const res = await fetch(`${API_URL}/experiments/${experimentId}`)
       if (res.ok) {
-        const resultData = await res.json()
-        setSelectedResult({ id: proposalId, content: resultData.content })
+        const experiment = await res.json()
+        if (experiment.results) {
+          // Format results as markdown
+          const resultsContent = `# Experiment ${experimentId} Results\n\n` +
+            `**Status:** ${experiment.status}\n\n` +
+            (experiment.wandb_url ? `**W&B:** [View Run](${experiment.wandb_url})\n\n` : '') +
+            `## Results\n\n\`\`\`json\n${JSON.stringify(experiment.results, null, 2)}\n\`\`\``
+          setSelectedResult({ id: proposalId, content: resultsContent })
+        } else {
+          const message = isActive
+            ? `# Experiment In Progress\n\nExperiment ${experimentId} (${proposalId}) is currently running.\n\nCheck back later for results, or view the Active Experiments section above for real-time status.`
+            : `# Results Not Available\n\nNo results found for experiment ${experimentId} (${proposalId}).\n\n**Status:** ${experiment.status}`
+          setSelectedResult({ id: proposalId, content: message })
+        }
       } else {
-        // No results file - could be running or failed early
-        const message = isActive
-          ? `# Experiment In Progress\n\nExperiment ${experimentId} (${proposalId}) is currently running.\n\nCheck back later for results, or view the Active Experiments section above for real-time status.`
-          : `# Results Not Available\n\nNo results file found for experiment ${experimentId} (${proposalId}).\n\nThis experiment likely failed during implementation before results could be generated. Check the experiment logs in \`experiments/experiment-log-${experimentId}.md\` for details.`
+        const message = `# Experiment Not Found\n\nExperiment ${experimentId} (${proposalId}) was not found.`
         setSelectedResult({ id: proposalId, content: message })
       }
     } catch (err) {
@@ -336,179 +381,177 @@ export default function MADDashboard() {
         </div>
       )}
 
-      {/* Content based on route */}
-      <Routes>
-        <Route path="/" element={
-          <>
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        {isInitialLoad ? (
-          <>
-            <div className="bg-blue-50 p-4 rounded-lg animate-pulse">
-              <div className="h-8 w-12 bg-blue-200 rounded mb-2"></div>
-              <div className="h-4 w-32 bg-blue-200 rounded"></div>
-            </div>
-            <div className="bg-green-50 p-4 rounded-lg animate-pulse">
-              <div className="h-8 w-12 bg-green-200 rounded mb-2"></div>
-              <div className="h-4 w-32 bg-green-200 rounded"></div>
-            </div>
-            <div className="bg-gray-50 p-4 rounded-lg animate-pulse">
-              <div className="h-8 w-12 bg-gray-300 rounded mb-2"></div>
-              <div className="h-4 w-32 bg-gray-300 rounded"></div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <div className="text-2xl font-bold text-blue-900">{activeExperiments}</div>
-              <div className="text-sm text-blue-700">Active Experiments</div>
-            </div>
-            <div className="bg-green-50 p-4 rounded-lg">
-              <div className="text-2xl font-bold text-green-900">{completedToday}</div>
-              <div className="text-sm text-green-700">Completed Today</div>
-            </div>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="text-2xl font-bold text-gray-900">{recentHistory.length}</div>
-              <div className="text-sm text-gray-700">Recent Experiments</div>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Active Experiments */}
-      <div>
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">Active Experiments</h2>
-        {isInitialLoad ? (
-          <div className="bg-gray-50 p-8 rounded-lg animate-pulse">
-            <div className="h-6 bg-gray-300 rounded w-3/4 mb-4"></div>
-            <div className="h-4 bg-gray-300 rounded w-1/2 mb-2"></div>
-            <div className="h-4 bg-gray-300 rounded w-2/3"></div>
+      {/* Content based on active tab */}
+      {activeTab === 'experiments' && (
+        <>
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-4">
+            {isInitialLoad ? (
+              <>
+                <div className="bg-blue-50 p-4 rounded-lg animate-pulse">
+                  <div className="h-8 w-12 bg-blue-200 rounded mb-2"></div>
+                  <div className="h-4 w-32 bg-blue-200 rounded"></div>
+                </div>
+                <div className="bg-green-50 p-4 rounded-lg animate-pulse">
+                  <div className="h-8 w-12 bg-green-200 rounded mb-2"></div>
+                  <div className="h-4 w-32 bg-green-200 rounded"></div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg animate-pulse">
+                  <div className="h-8 w-12 bg-gray-300 rounded mb-2"></div>
+                  <div className="h-4 w-32 bg-gray-300 rounded"></div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-900">{activeExperiments}</div>
+                  <div className="text-sm text-blue-700">Active Experiments</div>
+                </div>
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <div className="text-2xl font-bold text-green-900">{completedToday}</div>
+                  <div className="text-sm text-green-700">Completed Today</div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="text-2xl font-bold text-gray-900">{recentHistory.length}</div>
+                  <div className="text-sm text-gray-700">Recent Experiments</div>
+                </div>
+              </>
+            )}
           </div>
-        ) : activeExperiments === 0 ? (
-          <div className="bg-gray-50 p-8 rounded-lg text-center text-gray-500">
-            No experiments currently running
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {Object.entries(data?.active_work || {}).map(([proposalId, exp]) => (
-              <ExperimentCard
-                key={proposalId}
-                proposalId={proposalId}
-                experiment={exp}
-                sseUrl={SSE_URL}
-                onViewProposal={() => {
-                  navigate(`/mad/proposals/${proposalId}`)
-                }}
-                onViewLog={fetchLog}
-                onViewCode={setSelectedCode}
-              />
-            ))}
-          </div>
-        )}
-      </div>
 
-      {/* Agent Status */}
-      <div>
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">Agent Health</h2>
-        {isInitialLoad ? (
-          <div className="bg-gray-50 p-6 rounded-lg animate-pulse space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="h-4 w-4 bg-gray-300 rounded-full"></div>
-              <div className="h-4 bg-gray-300 rounded w-32"></div>
-              <div className="h-4 bg-gray-300 rounded w-24 ml-auto"></div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="h-4 w-4 bg-gray-300 rounded-full"></div>
-              <div className="h-4 bg-gray-300 rounded w-32"></div>
-              <div className="h-4 bg-gray-300 rounded w-24 ml-auto"></div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="h-4 w-4 bg-gray-300 rounded-full"></div>
-              <div className="h-4 bg-gray-300 rounded w-32"></div>
-              <div className="h-4 bg-gray-300 rounded w-24 ml-auto"></div>
-            </div>
+          {/* Active Experiments */}
+          <div>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Active Experiments</h2>
+            {isInitialLoad ? (
+              <div className="bg-gray-50 p-8 rounded-lg animate-pulse">
+                <div className="h-6 bg-gray-300 rounded w-3/4 mb-4"></div>
+                <div className="h-4 bg-gray-300 rounded w-1/2 mb-2"></div>
+                <div className="h-4 bg-gray-300 rounded w-2/3"></div>
+              </div>
+            ) : activeExperiments === 0 ? (
+              <div className="bg-gray-50 p-8 rounded-lg text-center text-gray-500">
+                No experiments currently running
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {Object.entries(data?.active_work || {}).map(([proposalId, exp]) => (
+                  <ExperimentCard
+                    key={proposalId}
+                    proposalId={proposalId}
+                    experiment={exp}
+                    apiUrl={API_URL}
+                    onViewProposal={() => {
+                      navigate(`/mad/proposals/${proposalId}`)
+                    }}
+                    onViewLog={fetchLog}
+                    onViewCode={setSelectedCode}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        ) : (
-          <AgentStatus sseUrl={SSE_URL} />
-        )}
-      </div>
 
-      {/* Recent Logs */}
-      <div>
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">Recent Logs</h2>
-        <LogViewer sseUrl={SSE_URL} />
-      </div>
-
-      {/* Recent Experiments */}
-      <div>
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">Recent Experiments</h2>
-        {isInitialLoad ? (
-          <div className="space-y-2">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="p-3 bg-gray-50 rounded-lg animate-pulse">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="h-5 w-16 bg-gray-300 rounded"></div>
-                    <div className="h-4 w-48 bg-gray-300 rounded"></div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="h-5 w-20 bg-gray-300 rounded"></div>
-                    <div className="h-4 w-32 bg-gray-300 rounded"></div>
-                  </div>
+          {/* Agent Status */}
+          <div>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Agent Health</h2>
+            {isInitialLoad ? (
+              <div className="bg-gray-50 p-6 rounded-lg animate-pulse space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="h-4 w-4 bg-gray-300 rounded-full"></div>
+                  <div className="h-4 bg-gray-300 rounded w-32"></div>
+                  <div className="h-4 bg-gray-300 rounded w-24 ml-auto"></div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="h-4 w-4 bg-gray-300 rounded-full"></div>
+                  <div className="h-4 bg-gray-300 rounded w-32"></div>
+                  <div className="h-4 bg-gray-300 rounded w-24 ml-auto"></div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="h-4 w-4 bg-gray-300 rounded-full"></div>
+                  <div className="h-4 bg-gray-300 rounded w-32"></div>
+                  <div className="h-4 bg-gray-300 rounded w-24 ml-auto"></div>
                 </div>
               </div>
-            ))}
+            ) : (
+              <AgentStatus apiUrl={API_URL} />
+            )}
           </div>
-        ) : (
-          <div className="space-y-2">
-            {recentHistory.map((item, idx) => (
-              <button
-                key={idx}
-                onClick={() => fetchResult(item.proposal_id)}
-                className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm transition-colors cursor-pointer"
-              >
-                <div>
-                  <span className="font-mono text-xs bg-gray-200 px-2 py-0.5 rounded mr-2">
-                    {item.agent_id}
-                  </span>
-                  <span className="text-gray-900">{item.proposal_id}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                    item.status === 'completed' ? 'bg-green-100 text-green-800' :
-                    item.status === 'failed' ? 'bg-red-100 text-red-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {item.status}
-                  </span>
-                  {item.completed_at && (
-                    <span className="text-gray-500 text-xs">
-                      {new Date(item.completed_at).toLocaleString()}
-                    </span>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {/* Debug Info */}
-      {data && (
-        <details className="text-xs text-gray-500">
-          <summary className="cursor-pointer hover:text-gray-700">Debug Info</summary>
-          <pre className="mt-2 p-4 bg-gray-50 rounded overflow-auto max-h-96">
-            {JSON.stringify(data, null, 2)}
-          </pre>
-        </details>
-      )}
+          {/* Recent Logs */}
+          <div>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Recent Logs</h2>
+            <LogViewer apiUrl={API_URL} />
+          </div>
+
+          {/* Recent Experiments */}
+          <div>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Recent Experiments</h2>
+            {isInitialLoad ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="p-3 bg-gray-50 rounded-lg animate-pulse">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="h-5 w-16 bg-gray-300 rounded"></div>
+                        <div className="h-4 w-48 bg-gray-300 rounded"></div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="h-5 w-20 bg-gray-300 rounded"></div>
+                        <div className="h-4 w-32 bg-gray-300 rounded"></div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {recentHistory.map((item, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => fetchResult(item.proposal_id)}
+                    className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm transition-colors cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-mono text-xs bg-gray-200 px-2 py-0.5 rounded mr-2">
+                        {item.agent_id}
+                      </span>
+                      <span className="text-gray-900">{item.proposal_id}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        item.status === 'completed' ? 'bg-green-100 text-green-800' :
+                        item.status === 'failed' ? 'bg-red-100 text-red-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {item.status}
+                      </span>
+                      {item.completed_at && (
+                        <span className="text-gray-500 text-xs">
+                          {new Date(item.completed_at).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Debug Info */}
+          {data && (
+            <details className="text-xs text-gray-500">
+              <summary className="cursor-pointer hover:text-gray-700">Debug Info</summary>
+              <pre className="mt-2 p-4 bg-gray-50 rounded overflow-auto max-h-96">
+                {JSON.stringify(data, null, 2)}
+              </pre>
+            </details>
+          )}
         </>
-        } />
+      )}
 
-        <Route path="/proposals/*" element={<ProposalsView sseUrl={SSE_URL} />} />
-        <Route path="/tricks/*" element={<TricksView sseUrl={SSE_URL} />} />
-        <Route path="/log" element={<ResearchLog sseUrl={SSE_URL} />} />
-      </Routes>
+      {activeTab === 'proposals' && <ProposalsView apiUrl={API_URL} />}
+      {activeTab === 'tricks' && <TricksView apiUrl={API_URL} />}
+      {activeTab === 'log' && <ResearchLog apiUrl={API_URL} />}
 
       {/* Results Modal */}
       {selectedResult && (
@@ -572,7 +615,7 @@ export default function MADDashboard() {
       {selectedCode && (
         <CodeViewer
           experimentId={selectedCode}
-          sseUrl={SSE_URL}
+          apiUrl={API_URL}
           onClose={() => setSelectedCode(null)}
         />
       )}

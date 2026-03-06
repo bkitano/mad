@@ -13,12 +13,12 @@ interface FileNode {
 
 interface CodeViewerProps {
   experimentId: string
-  sseUrl: string
+  apiUrl: string
   onClose: () => void
   embedded?: boolean
 }
 
-export default function CodeViewer({ experimentId, sseUrl, onClose, embedded = false }: CodeViewerProps) {
+export default function CodeViewer({ experimentId, apiUrl, onClose, embedded = false }: CodeViewerProps) {
   const [fileTree, setFileTree] = useState<FileNode | null>(null)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [fileContent, setFileContent] = useState<string | null>(null)
@@ -38,10 +38,12 @@ export default function CodeViewer({ experimentId, sseUrl, onClose, embedded = f
   const fetchFileTree = async () => {
     try {
       setLoading(true)
-      const res = await fetch(`${sseUrl}/api/experiment-code/${experimentNumber}`)
+      const res = await fetch(`${apiUrl}/experiments/${experimentNumber}/code/tree`)
       if (res.ok) {
         const data = await res.json()
-        setFileTree(data.file_tree)
+        // Transform flat file list into tree structure
+        const tree = buildFileTree(data.files || [])
+        setFileTree(tree)
       } else if (res.status === 404) {
         setError('Code not available yet - experiment may still be setting up')
       } else {
@@ -54,11 +56,44 @@ export default function CodeViewer({ experimentId, sseUrl, onClose, embedded = f
     }
   }
 
+  // Build a tree structure from flat file list
+  const buildFileTree = (files: { path: string; size: number }[]): FileNode => {
+    const root: FileNode = { name: experimentNumber, path: '', type: 'directory', children: [] }
+
+    for (const file of files) {
+      const parts = file.path.split('/')
+      let current = root
+
+      for (let i = 0; i < parts.length; i++) {
+        const name = parts[i]
+        const path = parts.slice(0, i + 1).join('/')
+        const isFile = i === parts.length - 1
+
+        let child = current.children?.find(c => c.name === name)
+        if (!child) {
+          child = {
+            name,
+            path,
+            type: isFile ? 'file' : 'directory',
+            size: isFile ? file.size : undefined,
+            children: isFile ? undefined : []
+          }
+          current.children?.push(child)
+        }
+        if (!isFile) {
+          current = child
+        }
+      }
+    }
+
+    return root
+  }
+
   const fetchFile = async (path: string) => {
     try {
       setLoading(true)
       setSelectedFile(path)
-      const res = await fetch(`${sseUrl}/api/experiment-code/${experimentNumber}/file?path=${encodeURIComponent(path)}`)
+      const res = await fetch(`${apiUrl}/experiments/${experimentNumber}/code/${path}`)
       if (res.ok) {
         const data = await res.json()
         setFileContent(data.content)

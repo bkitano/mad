@@ -13,20 +13,38 @@ interface AgentInfo {
 }
 
 interface AgentStatusProps {
-  sseUrl: string
+  apiUrl: string
 }
 
-export default function AgentStatus({ sseUrl }: AgentStatusProps) {
+export default function AgentStatus({ apiUrl }: AgentStatusProps) {
   const [agents, setAgents] = useState<Record<string, AgentInfo>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await fetch(`${sseUrl}/api/agent-status`)
+        // Use claims endpoint to show active work as "agent status"
+        const res = await fetch(`${apiUrl}/claims?status=active`)
         if (res.ok) {
-          const data = await res.json()
-          setAgents(data.agents || {})
+          const claims = await res.json()
+          // Transform claims into agent status format
+          const agentStatus: Record<string, AgentInfo> = {}
+
+          // Group claims by agent type (derive from agent_id pattern)
+          for (const claim of claims) {
+            const agentType = claim.agent_id?.split('-')[0] || 'experiment'
+            if (!agentStatus[agentType]) {
+              agentStatus[agentType] = {
+                status: 'running',
+                last_update: claim.last_heartbeat,
+                details: { num_parallel_agents: 0 }
+              }
+            }
+            agentStatus[agentType].details.num_parallel_agents =
+              (agentStatus[agentType].details.num_parallel_agents || 0) + 1
+          }
+
+          setAgents(agentStatus)
         }
       } catch (err) {
         console.error('Error fetching agent status:', err)
@@ -40,7 +58,7 @@ export default function AgentStatus({ sseUrl }: AgentStatusProps) {
     // Refresh every 5 seconds
     const interval = setInterval(fetchStatus, 5000)
     return () => clearInterval(interval)
-  }, [sseUrl])
+  }, [apiUrl])
 
   const getStatusColor = (status: string) => {
     switch (status) {

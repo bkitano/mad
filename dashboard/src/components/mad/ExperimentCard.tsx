@@ -9,7 +9,7 @@ interface ExperimentCardProps {
     last_heartbeat: string
     status: string
   }
-  sseUrl: string
+  apiUrl: string
   onViewProposal?: (proposalId: string) => void
   onViewLog?: (proposalId: string) => void
   onViewCode?: (proposalId: string) => void

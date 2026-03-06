@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -22,11 +22,11 @@ interface Proposal {
 }
 
 interface ProposalsViewProps {
-  sseUrl: string
+  apiUrl: string
 }
 
 // Proposals List Component
-function ProposalsList({ sseUrl }: ProposalsViewProps) {
+function ProposalsList({ apiUrl }: ProposalsViewProps) {
   const navigate = useNavigate()
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [loading, setLoading] = useState(true)
@@ -40,10 +40,15 @@ function ProposalsList({ sseUrl }: ProposalsViewProps) {
     setDispatching(proposalId)
     setDispatchResult(null)
     try {
-      const res = await fetch(`${sseUrl}/api/dispatch-experiment/${proposalId}`, { method: 'POST' })
+      // Create experiment from proposal using new API
+      const res = await fetch(`${apiUrl}/experiments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposal_id: proposalId })
+      })
       if (res.ok) {
         const data = await res.json()
-        setDispatchResult({ id: proposalId, success: true, message: data.message })
+        setDispatchResult({ id: proposalId, success: true, message: `Experiment ${data.experiment_id} created` })
       } else {
         const err = await res.json()
         setDispatchResult({ id: proposalId, success: false, message: err.detail || 'Failed to dispatch' })
@@ -55,14 +60,14 @@ function ProposalsList({ sseUrl }: ProposalsViewProps) {
     }
   }
 
-  // Fetch active experiments
+  // Fetch active experiments (claims)
   useEffect(() => {
     const fetchActiveWork = async () => {
       try {
-        const res = await fetch(`${sseUrl}/api/status`)
+        const res = await fetch(`${apiUrl}/claims?status=active`)
         if (res.ok) {
-          const data = await res.json()
-          const activeIds = new Set(Object.keys(data.active_work?.active_work || {}))
+          const claims = await res.json()
+          const activeIds = new Set<string>(claims.map((c: { proposal_id: string }) => c.proposal_id))
           setActiveExperiments(activeIds)
         }
       } catch (err) {
@@ -73,16 +78,16 @@ function ProposalsList({ sseUrl }: ProposalsViewProps) {
     fetchActiveWork()
     const interval = setInterval(fetchActiveWork, 30000)
     return () => clearInterval(interval)
-  }, [sseUrl])
+  }, [apiUrl])
 
   // Fetch proposals list
   useEffect(() => {
     const fetchProposals = async () => {
       try {
-        const res = await fetch(`${sseUrl}/api/proposals`)
+        const res = await fetch(`${apiUrl}/proposals`)
         if (res.ok) {
-          const data = await res.json()
-          setProposals(data.proposals || [])
+          const proposals = await res.json()
+          setProposals(proposals || [])
         }
       } catch (err) {
         console.error('Error fetching proposals:', err)
@@ -92,7 +97,7 @@ function ProposalsList({ sseUrl }: ProposalsViewProps) {
     }
 
     fetchProposals()
-  }, [sseUrl])
+  }, [apiUrl])
 
   // Filter proposals
   const filteredProposals = proposals.filter(p => {
@@ -284,10 +289,14 @@ function ProposalsList({ sseUrl }: ProposalsViewProps) {
   )
 }
 
+interface ProposalDetailProps {
+  apiUrl: string
+  proposalId: string
+}
+
 // Proposal Detail Component
-function ProposalDetail({ sseUrl }: ProposalsViewProps) {
+function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
   const navigate = useNavigate()
-  const { proposalId } = useParams<{ proposalId: string }>()
 
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [proposalContent, setProposalContent] = useState<string>('')
@@ -305,10 +314,15 @@ function ProposalDetail({ sseUrl }: ProposalsViewProps) {
     setDispatching(true)
     setDispatchResult(null)
     try {
-      const res = await fetch(`${sseUrl}/api/dispatch-experiment/${proposalId}`, { method: 'POST' })
+      // Create experiment from proposal using new API
+      const res = await fetch(`${apiUrl}/experiments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposal_id: proposalId })
+      })
       if (res.ok) {
         const data = await res.json()
-        setDispatchResult({ success: true, message: data.message })
+        setDispatchResult({ success: true, message: `Experiment ${data.experiment_id} created` })
       } else {
         const err = await res.json()
         setDispatchResult({ success: false, message: err.detail || 'Failed to dispatch' })
@@ -324,26 +338,26 @@ function ProposalDetail({ sseUrl }: ProposalsViewProps) {
   useEffect(() => {
     const fetchProposals = async () => {
       try {
-        const res = await fetch(`${sseUrl}/api/proposals`)
+        const res = await fetch(`${apiUrl}/proposals`)
         if (res.ok) {
-          const data = await res.json()
-          setProposals(data.proposals || [])
+          const proposals = await res.json()
+          setProposals(proposals || [])
         }
       } catch (err) {
         console.error('Error fetching proposals:', err)
       }
     }
     fetchProposals()
-  }, [sseUrl])
+  }, [apiUrl])
 
-  // Fetch active experiments
+  // Fetch active experiments (claims)
   useEffect(() => {
     const fetchActiveWork = async () => {
       try {
-        const res = await fetch(`${sseUrl}/api/status`)
+        const res = await fetch(`${apiUrl}/claims?status=active`)
         if (res.ok) {
-          const data = await res.json()
-          const activeIds = new Set(Object.keys(data.active_work?.active_work || {}))
+          const claims = await res.json()
+          const activeIds = new Set<string>(claims.map((c: { proposal_id: string }) => c.proposal_id))
           setActiveExperiments(activeIds)
         }
       } catch (err) {
@@ -351,7 +365,7 @@ function ProposalDetail({ sseUrl }: ProposalsViewProps) {
       }
     }
     fetchActiveWork()
-  }, [sseUrl])
+  }, [apiUrl])
 
   // Check if code is available
   useEffect(() => {
@@ -359,7 +373,7 @@ function ProposalDetail({ sseUrl }: ProposalsViewProps) {
       const experimentNumber = proposalId.split('-')[0]
       const checkCodeAvailable = async () => {
         try {
-          const res = await fetch(`${sseUrl}/api/experiment-code/${experimentNumber}`)
+          const res = await fetch(`${apiUrl}/experiments/${experimentNumber}/code/tree`)
           setCodeAvailable(res.ok)
         } catch (err) {
           setCodeAvailable(false)
@@ -367,7 +381,7 @@ function ProposalDetail({ sseUrl }: ProposalsViewProps) {
       }
       checkCodeAvailable()
     }
-  }, [proposalId, sseUrl])
+  }, [proposalId, apiUrl])
 
   // Fetch proposal content
   useEffect(() => {
@@ -375,7 +389,7 @@ function ProposalDetail({ sseUrl }: ProposalsViewProps) {
 
     const fetchContent = async () => {
       try {
-        const res = await fetch(`${sseUrl}/api/proposal/${proposalId}`)
+        const res = await fetch(`${apiUrl}/proposals/${proposalId}`)
         if (res.ok) {
           const data = await res.json()
           setProposalContent(data.content || '')
@@ -386,38 +400,47 @@ function ProposalDetail({ sseUrl }: ProposalsViewProps) {
     }
 
     fetchContent()
-  }, [proposalId, sseUrl])
-
-  // Extract wandb URL from markdown content
-  const extractWandbUrl = (content: string): string | null => {
-    const wandbMatch = content.match(/https:\/\/wandb\.ai\/[^\s)]+/i)
-    return wandbMatch ? wandbMatch[0] : null
-  }
+  }, [proposalId, apiUrl])
 
   // Fetch experiment results
   const fetchExperimentResults = async (experimentNumber: string) => {
     try {
-      const res = await fetch(`${sseUrl}/api/result/${experimentNumber}`)
+      const res = await fetch(`${apiUrl}/experiments/${experimentNumber}`)
       if (res.ok) {
-        const data = await res.json()
-        const content = data.content || ''
-        setExperimentResults(content)
-        setWandbUrl(extractWandbUrl(content))
+        const experiment = await res.json()
+        if (experiment.results) {
+          // Format results as markdown
+          const content = `# Experiment ${experimentNumber} Results\n\n` +
+            `**Status:** ${experiment.status}\n\n` +
+            (experiment.wandb_url ? `**W&B:** [View Run](${experiment.wandb_url})\n\n` : '') +
+            `## Results\n\n\`\`\`json\n${JSON.stringify(experiment.results, null, 2)}\n\`\`\``
+          setExperimentResults(content)
+          setWandbUrl(experiment.wandb_url || null)
+        }
       }
     } catch (err) {
       console.error('Error fetching experiment results:', err)
     }
   }
 
-  // Fetch experiment log
+  // Fetch experiment log (events)
   const fetchExperimentLog = async (experimentNumber: string) => {
     try {
-      const res = await fetch(`${sseUrl}/api/experiment-log/${experimentNumber}`)
+      const res = await fetch(`${apiUrl}/experiments/${experimentNumber}/events?limit=100`)
       if (res.ok) {
-        const data = await res.json()
-        const content = data.content || ''
-        setExperimentLog(content)
-        setWandbUrl(extractWandbUrl(content))
+        const events = await res.json()
+        // Format events as markdown log
+        const content = events.map((event: { timestamp: string; event_type: string; summary: string; agent?: string }) =>
+          `**${new Date(event.timestamp).toLocaleString()}** - [${event.event_type}] ${event.summary}${event.agent ? ` (${event.agent})` : ''}`
+        ).join('\n\n')
+        setExperimentLog(content || '# No Events\n\nNo events recorded for this experiment yet.')
+
+        // Try to extract wandb URL from experiment data
+        const expRes = await fetch(`${apiUrl}/experiments/${experimentNumber}`)
+        if (expRes.ok) {
+          const experiment = await expRes.json()
+          setWandbUrl(experiment.wandb_url || null)
+        }
       }
     } catch (err) {
       console.error('Error fetching experiment log:', err)
@@ -571,7 +594,7 @@ function ProposalDetail({ sseUrl }: ProposalsViewProps) {
         >
           <CodeViewer
             experimentId={proposalId}
-            sseUrl={sseUrl}
+            apiUrl={apiUrl}
             onClose={() => setViewMode('proposal')}
             embedded={true}
           />
@@ -619,11 +642,16 @@ function ProposalDetail({ sseUrl }: ProposalsViewProps) {
 }
 
 // Main Router Component
-export default function ProposalsView({ sseUrl }: ProposalsViewProps) {
-  return (
-    <Routes>
-      <Route path="/" element={<ProposalsList sseUrl={sseUrl} />} />
-      <Route path="/:proposalId" element={<ProposalDetail sseUrl={sseUrl} />} />
-    </Routes>
-  )
+export default function ProposalsView({ apiUrl }: ProposalsViewProps) {
+  const location = useLocation()
+
+  // Check if we're viewing a specific proposal (e.g., /mad/proposals/029-something)
+  const pathParts = location.pathname.split('/').filter(Boolean)
+  const proposalId = pathParts.length > 2 && pathParts[1] === 'proposals' ? pathParts[2] : null
+
+  if (proposalId) {
+    return <ProposalDetail apiUrl={apiUrl} proposalId={proposalId} />
+  }
+
+  return <ProposalsList apiUrl={apiUrl} />
 }

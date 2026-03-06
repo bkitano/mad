@@ -1,24 +1,27 @@
 import { useState, useEffect, useRef } from 'react'
 
 interface LogViewerProps {
-  sseUrl: string
+  apiUrl: string
 }
 
-export default function LogViewer({ sseUrl }: LogViewerProps) {
+export default function LogViewer({ apiUrl }: LogViewerProps) {
   const [logs, setLogs] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [autoScroll, setAutoScroll] = useState(true)
   const logContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Fetch initial logs
+    // Fetch initial logs using events endpoint
     const fetchLogs = async () => {
       try {
-        const res = await fetch(`${sseUrl}/api/logs?n=100`)
+        const res = await fetch(`${apiUrl}/events?limit=100`)
         if (res.ok) {
-          const data = await res.json()
-          // Keep chronological order (oldest to newest)
-          setLogs(data.logs || [])
+          const events = await res.json()
+          // Format events as log lines
+          const logLines = events.map((event: { timestamp: string; event_type: string; summary: string; agent?: string }) =>
+            `[${new Date(event.timestamp).toLocaleString()}] [${event.event_type}] ${event.summary}${event.agent ? ` (${event.agent})` : ''}`
+          )
+          setLogs(logLines || [])
         }
       } catch (err) {
         console.error('Error fetching logs:', err)
@@ -28,7 +31,7 @@ export default function LogViewer({ sseUrl }: LogViewerProps) {
     }
 
     fetchLogs()
-  }, [sseUrl])
+  }, [apiUrl])
 
   // Auto-scroll to bottom when new logs arrive (since newest is at bottom)
   useEffect(() => {
@@ -106,9 +109,9 @@ export default function LogViewer({ sseUrl }: LogViewerProps) {
       </div>
 
       <div className="bg-gray-800 px-4 py-2 flex items-center justify-between text-xs text-gray-400">
-        <span>Showing last {logs.length} lines (newest at bottom)</span>
+        <span>Showing last {logs.length} events (newest at bottom)</span>
         <button
-          onClick={() => window.open(`${sseUrl}/api/logs?n=1000`, '_blank')}
+          onClick={() => window.open(`${apiUrl}/events?limit=1000`, '_blank')}
           className="text-blue-400 hover:text-blue-300 underline"
         >
           View full log
