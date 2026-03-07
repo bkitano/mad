@@ -20,6 +20,7 @@ def _get_conn():
     return psycopg2.connect(url)
 
 
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 

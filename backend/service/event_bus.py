@@ -1,18 +1,13 @@
 """
 Event bus for experiment lifecycle tracking.
 
-Persists events to Postgres (events table). Also maintains in-memory
-subscriber queues for the API's /events/stream SSE endpoint, and
-optionally forwards to webhook sinks.
-
-For Supabase users: enable Realtime on the events table for native
-SSE/websocket subscriptions without needing this in-memory layer.
+Persists events to Postgres (events table) and optionally forwards to
+webhook sinks. Use Supabase Realtime on the events table for live
+SSE/websocket subscriptions.
 """
 
-import asyncio
 import logging
 import os
-from collections import deque
 from typing import Optional
 
 import httpx
@@ -20,12 +15,6 @@ import httpx
 from service.db import emit_event as _db_emit, list_events as _db_list
 
 logger = logging.getLogger(__name__)
-
-# In-memory subscriber queue for SSE streaming
-_subscribers: list[asyncio.Queue] = []
-
-# Recent events buffer for new subscribers to catch up
-_recent: deque[dict] = deque(maxlen=200)
 
 # Webhook config
 WEBHOOK_URL = os.environ.get("MAD_WEBHOOK_URL", "")
@@ -42,7 +31,7 @@ def emit(
     details: Optional[dict] = None,
     parent_id: Optional[int] = None,
 ) -> dict:
-    """Emit an event: persist to Postgres, notify subscribers, optionally webhook."""
+    """Emit an event: persist to Postgres, optionally webhook."""
     event = _db_emit(
         event_type=event_type,
         summary=summary,
@@ -51,14 +40,6 @@ def emit(
         details=details,
         parent_id=parent_id,
     )
-
-    _recent.append(event)
-
-    for q in _subscribers:
-        try:
-            q.put_nowait(event)
-        except asyncio.QueueFull:
-            pass
 
     if WEBHOOK_URL and event_type in WEBHOOK_EVENTS:
         _fire_webhook(event)
@@ -86,24 +67,6 @@ def _fire_webhook(event: dict) -> None:
             )
     except Exception as e:
         logger.warning(f"Webhook failed: {e}")
-
-
-def subscribe() -> asyncio.Queue:
-    q: asyncio.Queue = asyncio.Queue(maxsize=500)
-    for event in _recent:
-        try:
-            q.put_nowait(event)
-        except asyncio.QueueFull:
-            break
-    _subscribers.append(q)
-    return q
-
-
-def unsubscribe(q: asyncio.Queue) -> None:
-    try:
-        _subscribers.remove(q)
-    except ValueError:
-        pass
 
 
 def get_root_event(experiment_id: str) -> Optional[int]:

@@ -123,6 +123,10 @@ class ExperimentClient:
     def update_experiment(self, experiment_id: str, **fields) -> dict:
         return self._patch(f"/experiments/{experiment_id}", json=fields)
 
+    def cancel_experiment(self, experiment_id: str) -> dict:
+        """Cancel a running experiment and its Modal job."""
+        return self._post(f"/experiments/{experiment_id}/cancel")
+
     def verify(self, experiment_id: str) -> dict:
         return self._get(f"/experiments/{experiment_id}/verify")
 

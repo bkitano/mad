@@ -225,15 +225,15 @@ def create_job(payload: dict) -> dict:
     job_id = payload.get("job_id") or str(uuid.uuid4())
 
     if proposal_id == "auto" or not proposal_id:
-        run_next_job.spawn(service_url=service_url)
-        return {"job_id": job_id, "status": "queued", "mode": "auto"}
+        fc = run_next_job.spawn(service_url=service_url)
+        return {"job_id": job_id, "status": "queued", "mode": "auto", "function_call_id": fc.object_id}
     else:
-        run_job.spawn(
+        fc = run_job.spawn(
             proposal_id=proposal_id,
             job_id=job_id,
             service_url=service_url,
         )
-        return {"job_id": job_id, "proposal_id": proposal_id, "status": "queued"}
+        return {"job_id": job_id, "proposal_id": proposal_id, "status": "queued", "function_call_id": fc.object_id}
 
 
 # ── Cron: run every 10 minutes to pick up new proposals ──────────────────────

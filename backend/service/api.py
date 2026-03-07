@@ -9,6 +9,7 @@ Run:
 
 import asyncio
 import json
+import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -17,8 +18,13 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
+from supabase import acreate_client
+
+import httpx as _httpx
 
 from service import db, event_bus, experiment_store
+
+MODAL_CREATE_JOB_URL = os.environ.get("MODAL_CREATE_JOB_URL", "")
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -277,7 +283,25 @@ def get_events(
 
 @app.get("/events/stream")
 async def stream_events():
-    q = event_bus.subscribe()
+    """SSE stream backed by Supabase Realtime."""
+    supabase = await acreate_client(
+        os.environ["SUPABASE_URL"],
+        os.environ["SUPABASE_KEY"],
+    )
+    q: asyncio.Queue = asyncio.Queue()
+
+    def on_insert(payload):
+        record = payload.get("new") or payload
+        q.put_nowait(record)
+
+    channel = supabase.channel("events-sse")
+    channel.on_postgres_changes(
+        event="INSERT",
+        schema="public",
+        table="events",
+        callback=on_insert,
+    )
+    await channel.subscribe()
 
     async def generate():
         try:
@@ -287,7 +311,7 @@ async def stream_events():
         except asyncio.CancelledError:
             pass
         finally:
-            event_bus.unsubscribe(q)
+            await supabase.remove_channel(channel)
 
     return StreamingResponse(
         generate(),
@@ -501,6 +525,40 @@ def create_experiment(req: CreateExperimentRequest):
             parent_id=root_event_id,
         )
 
+    # Submit to Modal if code is ready and endpoint is configured
+    if req.code_files and MODAL_CREATE_JOB_URL:
+        try:
+            modal_resp = _httpx.post(
+                MODAL_CREATE_JOB_URL,
+                json={
+                    "proposal_id": req.proposal_id,
+                    "job_id": experiment_id,
+                    "service_url": os.environ.get("MAD_SERVICE_URL", "http://mad.briankitano.com"),
+                },
+                timeout=15.0,
+            )
+            modal_resp.raise_for_status()
+            modal_result = modal_resp.json()
+            fc_id = modal_result.get("function_call_id")
+            if fc_id:
+                db.update_experiment(experiment_id, modal_job_id=fc_id, status="submitted")
+            event_bus.emit(
+                "experiment.submitted",
+                f"Modal job submitted: {modal_result.get('job_id', experiment_id)}",
+                experiment_id=experiment_id,
+                agent=req.agent_id,
+                details=modal_result,
+                parent_id=root_event_id,
+            )
+        except Exception as e:
+            event_bus.emit(
+                "experiment.submit_error",
+                f"Failed to submit to Modal: {e}",
+                experiment_id=experiment_id,
+                agent=req.agent_id,
+                parent_id=root_event_id,
+            )
+
     exp["root_event_id"] = root_event_id
     return exp
 
@@ -575,6 +633,49 @@ def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
         )
 
     return updated
+
+
+@app.post("/experiments/{experiment_id}/cancel")
+def cancel_experiment(experiment_id: str):
+    """Cancel a running experiment and terminate its Modal job."""
+    exp = db.get_experiment(experiment_id)
+    if exp is None:
+        raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
+
+    if exp.get("status") in ("completed", "failed", "cancelled"):
+        raise HTTPException(status_code=400, detail=f"Experiment already {exp['status']}")
+
+    # Cancel Modal function call if we have a reference
+    modal_job_id = exp.get("modal_job_id")
+    modal_cancelled = False
+    if modal_job_id:
+        try:
+            from modal.functions import FunctionCall
+
+            fc = FunctionCall.from_id(modal_job_id)
+            fc.cancel(terminate_containers=True)
+            modal_cancelled = True
+        except Exception as e:
+            event_bus.emit(
+                "experiment.cancel_error",
+                f"Failed to cancel Modal job {modal_job_id}: {e}",
+                experiment_id=experiment_id,
+                parent_id=event_bus.get_root_event(experiment_id),
+            )
+
+    db.update_experiment(experiment_id, status="cancelled")
+    event_bus.emit(
+        "experiment.cancelled",
+        f"Experiment {experiment_id} cancelled" + (" (Modal job terminated)" if modal_cancelled else ""),
+        experiment_id=experiment_id,
+        parent_id=event_bus.get_root_event(experiment_id),
+    )
+
+    return {
+        "experiment_id": experiment_id,
+        "status": "cancelled",
+        "modal_cancelled": modal_cancelled,
+    }
 
 
 # ── POST /events ─────────────────────────────────────────────────────────────
