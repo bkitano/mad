@@ -25,10 +25,11 @@ import uuid
 import modal
 
 APP_NAME = "mad-worker"
+TEMPLATE_REPO = "https://github.com/bkitano/mad-experiments-template.git"
 
 app = modal.App(APP_NAME)
 
-# Image: opencode + uv-managed deps + project source
+# Image: opencode + uv-managed deps + control plane code only
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("curl", "ca-certificates", "git")
@@ -45,6 +46,24 @@ image = (
 # Secrets: API keys for opencode, wandb, postgres, etc.
 # Create these in Modal dashboard: `modal secret create mad-worker-secrets ...`
 SECRETS = modal.Secret.from_name("mad-worker-secrets")
+
+
+def _clone_template(workspace: str, use_template: bool = False) -> None:
+    """Clone the experiment template repo into the workspace, or skip if use_template is False."""
+    if not use_template:
+        print("[modal-worker] Skipping template clone (use_template=False)")
+        return
+    template_dir = f"{workspace}/template"
+    if os.path.exists(template_dir):
+        return
+    print(f"[modal-worker] Cloning template from {TEMPLATE_REPO}")
+    subprocess.run(
+        ["git", "clone", "--depth", "1", TEMPLATE_REPO, template_dir],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    print(f"[modal-worker] Template cloned to {template_dir}")
 
 
 def _wait_for_opencode(url: str, timeout_s: float = 30.0) -> None:
@@ -76,11 +95,13 @@ def run_job(
     proposal_id: str,
     job_id: str = "",
     service_url: str = "",
+    use_template: bool = False,
 ) -> dict:
     """
     One invocation = one experiment job.
 
-    Starts opencode locally, then runs the worker's experiment cycle.
+    Clones the template repo (unless use_template=False), starts opencode,
+    then runs the worker's experiment cycle.
     """
     import sys
     sys.path.insert(0, "/app")
@@ -93,6 +114,9 @@ def run_job(
     os.makedirs(f"{workspace}/proposals", exist_ok=True)
     os.makedirs(f"{workspace}/code", exist_ok=True)
     os.makedirs(f"{workspace}/experiments", exist_ok=True)
+
+    # Clone experiment template (tasks/, models/, etc.)
+    _clone_template(workspace, use_template=use_template)
 
     # Set env vars the worker expects
     os.environ["MAD_SERVICE_URL"] = service_url
@@ -153,7 +177,7 @@ def run_job(
     cpu=2,
     memory=4096,
 )
-def run_next_job(service_url: str = "") -> dict:
+def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
     """
     Pick the next unclaimed proposal and run it.
     Use this for continuous polling or cron-triggered runs.
@@ -168,6 +192,9 @@ def run_next_job(service_url: str = "") -> dict:
     os.makedirs(f"{workspace}/proposals", exist_ok=True)
     os.makedirs(f"{workspace}/code", exist_ok=True)
     os.makedirs(f"{workspace}/experiments", exist_ok=True)
+
+    # Clone experiment template
+    _clone_template(workspace, use_template=use_template)
 
     os.environ["MAD_SERVICE_URL"] = service_url
     os.environ["MAD_AGENT_ID"] = f"modal-{job_id[:8]}"
@@ -223,15 +250,17 @@ def create_job(payload: dict) -> dict:
     proposal_id = payload.get("proposal_id", "")
     service_url = payload.get("service_url", "")
     job_id = payload.get("job_id") or str(uuid.uuid4())
+    use_template = payload.get("use_template", False)
 
     if proposal_id == "auto" or not proposal_id:
-        fc = run_next_job.spawn(service_url=service_url)
+        fc = run_next_job.spawn(service_url=service_url, use_template=use_template)
         return {"job_id": job_id, "status": "queued", "mode": "auto", "function_call_id": fc.object_id}
     else:
         fc = run_job.spawn(
             proposal_id=proposal_id,
             job_id=job_id,
             service_url=service_url,
+            use_template=use_template,
         )
         return {"job_id": job_id, "proposal_id": proposal_id, "status": "queued", "function_call_id": fc.object_id}
 
