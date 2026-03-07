@@ -468,12 +468,13 @@ def create_experiment(req: CreateExperimentRequest):
         cost_estimate=req.cost_estimate,
     )
 
-    event_bus.emit(
+    created_event = event_bus.emit(
         "experiment.created",
         f"Experiment {experiment_id} created from proposal {req.proposal_id}",
         experiment_id=experiment_id,
         agent=req.agent_id,
     )
+    root_event_id = created_event.get("id")
 
     if req.code_files:
         store_result = experiment_store.store_code_from_dict(experiment_id, req.code_files)
@@ -488,6 +489,7 @@ def create_experiment(req: CreateExperimentRequest):
             f"Code stored: {store_result['manifest']['total_files']} files, hash={store_result['code_hash'][:12]}",
             experiment_id=experiment_id,
             agent=req.agent_id,
+            parent_id=root_event_id,
         )
 
     return exp
@@ -510,6 +512,7 @@ def store_experiment_code(experiment_id: str, req: StoreCodeRequest):
         "experiment.code_written",
         f"Code stored: {store_result['manifest']['total_files']} files",
         experiment_id=experiment_id,
+        parent_id=event_bus.get_root_event(experiment_id),
     )
     return store_result
 
@@ -535,6 +538,7 @@ def store_code_from_disk(experiment_id: str, source_dir: str = Query(...)):
         "experiment.code_written",
         f"Code stored from {source_dir}: {store_result['manifest']['total_files']} files",
         experiment_id=experiment_id,
+        parent_id=event_bus.get_root_event(experiment_id),
     )
     return store_result
 
@@ -557,6 +561,7 @@ def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
             f"Experiment {experiment_id} status → {req.status}",
             experiment_id=experiment_id,
             details=updates,
+            parent_id=event_bus.get_root_event(experiment_id),
         )
 
     return updated

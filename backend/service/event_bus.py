@@ -106,6 +106,18 @@ def unsubscribe(q: asyncio.Queue) -> None:
         pass
 
 
+def get_root_event(experiment_id: str) -> Optional[int]:
+    """Return the id of the experiment.created event for the given experiment, or None."""
+    rows = _db_list(
+        experiment_id=experiment_id,
+        event_type="experiment.created",
+        limit=1,
+    )
+    if rows:
+        return rows[0].get("id")
+    return None
+
+
 def query(
     experiment_id: Optional[str] = None,
     event_type: Optional[str] = None,
