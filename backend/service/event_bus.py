@@ -40,6 +40,7 @@ def emit(
     experiment_id: Optional[str] = None,
     agent: str = "",
     details: Optional[dict] = None,
+    parent_id: Optional[int] = None,
 ) -> dict:
     """Emit an event: persist to Postgres, notify subscribers, optionally webhook."""
     event = _db_emit(
@@ -48,6 +49,7 @@ def emit(
         experiment_id=experiment_id,
         agent=agent,
         details=details,
+        parent_id=parent_id,
     )
 
     _recent.append(event)
@@ -108,6 +110,7 @@ def query(
     experiment_id: Optional[str] = None,
     event_type: Optional[str] = None,
     since: Optional[str] = None,
+    parent_id: Optional[int] = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[dict]:
@@ -115,6 +118,7 @@ def query(
         experiment_id=experiment_id,
         event_type=event_type,
         since=since,
+        parent_id=parent_id,
         limit=limit,
         offset=offset,
     )

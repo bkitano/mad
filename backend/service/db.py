@@ -139,13 +139,14 @@ def emit_event(
     experiment_id: Optional[str] = None,
     agent: str = "",
     details: Optional[dict] = None,
+    parent_id: Optional[int] = None,
 ) -> dict:
     conn = _get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                """INSERT INTO events (type, experiment_id, agent_id, summary, details)
-                   VALUES (%s, %s, %s, %s, %s)
+                """INSERT INTO events (type, experiment_id, agent_id, summary, details, parent_id)
+                   VALUES (%s, %s, %s, %s, %s, %s)
                    RETURNING *""",
                 (
                     event_type,
@@ -153,6 +154,7 @@ def emit_event(
                     agent,
                     summary,
                     json.dumps(details) if details else None,
+                    parent_id,
                 ),
             )
             row = dict(cur.fetchone())
@@ -169,6 +171,7 @@ def list_events(
     experiment_id: Optional[str] = None,
     event_type: Optional[str] = None,
     since: Optional[str] = None,
+    parent_id: Optional[int] = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[dict]:
@@ -184,6 +187,9 @@ def list_events(
     if since:
         conditions.append("created_at >= %s")
         params.append(since)
+    if parent_id is not None:
+        conditions.append("parent_id = %s")
+        params.append(parent_id)
 
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
     params.extend([limit, offset])

@@ -64,6 +64,7 @@ class EmitEventRequest(BaseModel):
     experiment_id: Optional[str] = None
     agent: str = ""
     details: Optional[dict] = None
+    parent_id: Optional[int] = None
 
 
 class DispatchTaskRequest(BaseModel):
@@ -251,6 +252,7 @@ def get_events(
     experiment_id: Optional[str] = None,
     event_type: Optional[str] = None,
     since: Optional[str] = None,
+    parent_id: Optional[int] = None,
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
@@ -258,6 +260,7 @@ def get_events(
         experiment_id=experiment_id,
         event_type=event_type,
         since=since,
+        parent_id=parent_id,
         limit=limit,
         offset=offset,
     )
@@ -282,6 +285,23 @@ async def stream_events():
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/events/{event_id}")
+def get_event(event_id: int):
+    rows = db._fetch("SELECT * FROM events WHERE id = %s", (event_id,))
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
+    return rows[0]
+
+
+@app.get("/events/{event_id}/children")
+def get_event_children(
+    event_id: int,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    return event_bus.query(parent_id=event_id, limit=limit, offset=offset)
 
 
 # ── GET /proposals ───────────────────────────────────────────────────────────
@@ -553,6 +573,7 @@ def post_event(req: EmitEventRequest):
         experiment_id=req.experiment_id,
         agent=req.agent,
         details=req.details,
+        parent_id=req.parent_id,
     )
 
 

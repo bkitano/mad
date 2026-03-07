@@ -21,8 +21,9 @@ Usage:
     # Report results
     client.update_experiment(exp["id"], status="completed", results={...}, wandb_url="...")
 
-    # Emit events
-    client.emit_event("info", "Starting training", experiment_id=exp["id"])
+    # Emit events (with optional parent_id for event chaining)
+    event = client.emit_event("error", "Training failed", experiment_id=exp["id"])
+    client.emit_event("debug.started", "Debugger investigating", parent_id=event["id"])
 
     # Check what to work on
     tasks = client.get_pending_tasks("experiment")
@@ -137,6 +138,7 @@ class ExperimentClient:
         experiment_id: Optional[str] = None,
         agent: str = "",
         details: Optional[dict] = None,
+        parent_id: Optional[int] = None,
     ) -> dict:
         return self._post("/events", json={
             "event_type": event_type,
@@ -144,6 +146,7 @@ class ExperimentClient:
             "experiment_id": experiment_id,
             "agent": agent,
             "details": details,
+            "parent_id": parent_id,
         })
 
     def get_events(
@@ -151,6 +154,7 @@ class ExperimentClient:
         experiment_id: Optional[str] = None,
         event_type: Optional[str] = None,
         since: Optional[str] = None,
+        parent_id: Optional[int] = None,
         limit: int = 100,
     ) -> list:
         params = {"limit": limit}
@@ -160,7 +164,15 @@ class ExperimentClient:
             params["event_type"] = event_type
         if since:
             params["since"] = since
+        if parent_id is not None:
+            params["parent_id"] = parent_id
         return self._get("/events", params=params)
+
+    def get_event(self, event_id: int) -> dict:
+        return self._get(f"/events/{event_id}")
+
+    def get_event_children(self, event_id: int, limit: int = 100) -> list:
+        return self._get(f"/events/{event_id}/children", params={"limit": limit})
 
     # ── Proposals ────────────────────────────────────────────────────────────
 
