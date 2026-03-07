@@ -164,6 +164,7 @@ async def run_agent_on_proposal(
     proposal_content: str,
     experiment_id: str,
     client: ExperimentClient,
+    root_event_id: Optional[int] = None,
 ) -> dict:
     """
     Run the full experiment agent on a proposal via agents.opencode_query.
@@ -233,6 +234,7 @@ Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
                             experiment_id=experiment_id,
                             agent=AGENT_ID,
                             details={"full_text": block.text[:2000]},
+                            parent_id=root_event_id,
                         )
                     except Exception:
                         pass  # don't let event failures kill the agent
@@ -298,6 +300,7 @@ async def run_experiment_cycle(
         # 5. Create experiment record in API (server assigns run suffix if needed)
         exp_record = client.create_experiment(proposal_id=proposal_id, agent_id=AGENT_ID)
         experiment_id = exp_record["id"]
+        root_event_id = exp_record.get("root_event_id")
         log(f"Created experiment {experiment_id}")
 
         client.emit_event(
@@ -305,6 +308,7 @@ async def run_experiment_cycle(
             f"Worker {AGENT_ID} starting agent on {proposal_id}",
             experiment_id=experiment_id,
             agent=AGENT_ID,
+            parent_id=root_event_id,
         )
         client.update_experiment(experiment_id, status="running")
 
@@ -316,7 +320,8 @@ async def run_experiment_cycle(
 
         try:
             result = await run_agent_on_proposal(
-                proposal_id, proposal_content, experiment_id, client
+                proposal_id, proposal_content, experiment_id, client,
+                root_event_id=root_event_id,
             )
         finally:
             stop_heartbeat.set()
@@ -334,6 +339,7 @@ async def run_experiment_cycle(
             experiment_id=experiment_id,
             agent=AGENT_ID,
             details={"results_preview": result["results_text"][:500]},
+            parent_id=root_event_id,
         )
 
         return True

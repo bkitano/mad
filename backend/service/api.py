@@ -492,6 +492,7 @@ def create_experiment(req: CreateExperimentRequest):
             parent_id=root_event_id,
         )
 
+    exp["root_event_id"] = root_event_id
     return exp
 
 
