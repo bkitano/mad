@@ -196,7 +196,7 @@ function ProposalsList({ apiUrl }: ProposalsViewProps) {
             className="text-left p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
           >
             <button
-              onClick={() => navigate(`/mad/proposals/${proposal.id}`)}
+              onClick={() => navigate(`/proposals/${proposal.id}`)}
               className="text-left w-full"
             >
               <div className="space-y-2">
@@ -468,7 +468,7 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
   return (
     <div>
       <button
-        onClick={() => navigate('/mad/proposals')}
+        onClick={() => navigate('/proposals')}
         className="mb-4 text-blue-600 hover:text-blue-800 text-sm"
       >
         ← Back to proposals list
@@ -645,7 +645,7 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
 export default function ProposalsView({ apiUrl }: ProposalsViewProps) {
   const location = useLocation()
 
-  // Check if we're viewing a specific proposal (e.g., /mad/proposals/029-something)
+  // Check if we're viewing a specific proposal (e.g., /proposals/029-something)
   const pathParts = location.pathname.split('/').filter(Boolean)
   const proposalId = pathParts.length > 2 && pathParts[1] === 'proposals' ? pathParts[2] : null
 

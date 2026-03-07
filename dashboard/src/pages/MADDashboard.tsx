@@ -319,7 +319,7 @@ export default function MADDashboard() {
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex gap-8">
           <button
-            onClick={() => navigate('/mad')}
+            onClick={() => navigate('/')}
             className={`py-2 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'experiments'
                 ? 'border-blue-500 text-blue-600'
@@ -329,7 +329,7 @@ export default function MADDashboard() {
             Experiments
           </button>
           <button
-            onClick={() => navigate('/mad/proposals')}
+            onClick={() => navigate('/proposals')}
             className={`py-2 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'proposals'
                 ? 'border-blue-500 text-blue-600'
@@ -339,7 +339,7 @@ export default function MADDashboard() {
             Proposals
           </button>
           <button
-            onClick={() => navigate('/mad/tricks')}
+            onClick={() => navigate('/tricks')}
             className={`py-2 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'tricks'
                 ? 'border-blue-500 text-blue-600'
@@ -349,7 +349,7 @@ export default function MADDashboard() {
             Tricks
           </button>
           <button
-            onClick={() => navigate('/mad/log')}
+            onClick={() => navigate('/log')}
             className={`py-2 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'log'
                 ? 'border-blue-500 text-blue-600'
@@ -441,7 +441,7 @@ export default function MADDashboard() {
                     experiment={exp}
                     apiUrl={API_URL}
                     onViewProposal={() => {
-                      navigate(`/mad/proposals/${proposalId}`)
+                      navigate(`/proposals/${proposalId}`)
                     }}
                     onViewLog={fetchLog}
                     onViewCode={setSelectedCode}

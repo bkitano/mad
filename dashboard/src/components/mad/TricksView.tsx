@@ -114,7 +114,7 @@ function TricksList({ apiUrl }: TricksViewProps) {
         {filteredTricks.map(trick => (
           <button
             key={trick.id}
-            onClick={() => navigate(`/mad/tricks/${trick.id}`)}
+            onClick={() => navigate(`/tricks/${trick.id}`)}
             className="text-left p-3 border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
           >
             <div className="font-mono text-xs text-gray-500 mb-1">
@@ -180,7 +180,7 @@ function TrickDetail({ apiUrl, trickId }: TrickDetailProps) {
   return (
     <div>
       <button
-        onClick={() => navigate('/mad/tricks')}
+        onClick={() => navigate('/tricks')}
         className="mb-4 text-blue-600 hover:text-blue-800 text-sm"
       >
         ← Back to tricks list
@@ -208,7 +208,7 @@ function TrickDetail({ apiUrl, trickId }: TrickDetailProps) {
 export default function TricksView({ apiUrl }: TricksViewProps) {
   const location = useLocation()
 
-  // Check if we're viewing a specific trick (e.g., /mad/tricks/some-trick)
+  // Check if we're viewing a specific trick (e.g., /tricks/some-trick)
   const pathParts = location.pathname.split('/').filter(Boolean)
   const trickId = pathParts.length > 2 && pathParts[1] === 'tricks' ? pathParts[2] : null
 
