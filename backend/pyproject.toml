@@ -29,6 +29,11 @@ dependencies = [
     "psycopg2-binary>=2.9.0",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["tasks*", "models*", "train*", "agents*", "service*"]
