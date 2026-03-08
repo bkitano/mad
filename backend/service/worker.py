@@ -179,7 +179,7 @@ async def run_agent_on_proposal(
     The agent has Bash/Read/Write/Glob/Grep access and handles everything:
     code generation, Modal submission, experiment logging.
     """
-    from agents.opencode_query import query, OpenCodeAgentOptions as ClaudeAgentOptions, AssistantMessage, ResultMessage, ToolCallMessage, ToolResultMessage
+    from agents.opencode_query import query, OpenCodeAgentOptions
 
     # Write proposal to workspace so the agent can reference it by path
     PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
@@ -217,9 +217,9 @@ Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
     messages = []
     log(f"Starting agent for {proposal_id} (experiment {experiment_id})")
 
-    async for message in query(
+    async for event in query(
         prompt=prompt,
-        options=ClaudeAgentOptions(
+        options=OpenCodeAgentOptions(
             model="glm5",
             system_prompt=system_prompt,
             allowed_tools=["Read", "Write", "Glob", "Grep", "Bash"],
@@ -228,56 +228,29 @@ Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
         ),
     ):
         try:
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if block.text:
-                        messages.append(block.text)
-                        preview = block.text[:500].replace("\n", " ")
-                        log(f"  agent: {preview[:200]}")
-                        client.emit_event(
-                            "agent.message",
-                            preview,
-                            experiment_id=experiment_id,
-                            agent=AGENT_ID,
-                            details={"full_text": block.text[:2000]},
-                            parent_id=root_event_id,
-                        )
-            elif isinstance(message, ToolCallMessage):
-                log(f"  tool call: {message.tool_name}")
-                client.emit_event(
-                    "agent.tool_call",
-                    f"Tool call: {message.tool_name}",
-                    experiment_id=experiment_id,
-                    agent=AGENT_ID,
-                    details={
-                        "tool_name": message.tool_name,
-                        "tool_input": {k: str(v)[:500] for k, v in message.tool_input.items()},
-                    },
-                    parent_id=root_event_id,
-                )
-            elif isinstance(message, ToolResultMessage):
-                log(f"  tool result: {message.tool_name}")
-                client.emit_event(
-                    "agent.tool_result",
-                    f"Tool result: {message.tool_name}",
-                    experiment_id=experiment_id,
-                    agent=AGENT_ID,
-                    details={
-                        "tool_name": message.tool_name,
-                        "output": message.output[:2000],
-                    },
-                    parent_id=root_event_id,
-                )
-            elif isinstance(message, ResultMessage):
-                log(f"  agent result: {message.result}")
-                client.emit_event(
-                    "agent.result",
-                    f"Agent session result: {message.result}",
-                    experiment_id=experiment_id,
-                    agent=AGENT_ID,
-                    details={"result": message.result},
-                    parent_id=root_event_id,
-                )
+            etype = event.get("type", "")
+            props = event.get("properties", {})
+            # Build a short summary for the log
+            summary = etype
+            part = props.get("part", {})
+            if part.get("type") == "text":
+                text = part.get("text", "")
+                summary = text[:200].replace("\n", " ")
+                messages.append(text)
+            elif part.get("type") == "tool":
+                tool = part.get("tool", "")
+                status = part.get("state", {}).get("status", "")
+                summary = f"{tool} ({status})"
+
+            log(f"  {etype}: {summary[:200]}")
+            client.emit_event(
+                etype,
+                summary[:500],
+                experiment_id=experiment_id,
+                agent=AGENT_ID,
+                details=props,
+                parent_id=root_event_id,
+            )
         except Exception:
             pass  # don't let event failures kill the agent
 
@@ -372,7 +345,7 @@ async def run_experiment_cycle(
             f"Agent finished: {result['status']}",
             experiment_id=experiment_id,
             agent=AGENT_ID,
-            details={"results_preview": result["results_text"][:500]},
+            details={"results": result},
             parent_id=root_event_id,
         )
 
