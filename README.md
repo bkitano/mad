@@ -28,3 +28,6 @@ set -a; source .env; opencode serve
 cd mad/backend/
 rm -rf ../.e2e/*; export MAD_WORKSPACE="$HOME/Desktop/projects/mad/.e2e/"; export MAD_SERVICE_URL=<local-api-host:port>; uv run python -m service.worker --proposal   999-mnist-e2e-test
 ```
+
+## Deploying to Modal
+

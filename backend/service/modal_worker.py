@@ -38,9 +38,8 @@ image = (
         "ln -s /root/.opencode/bin/opencode /usr/local/bin/opencode",
     )
     .uv_sync()  # installs deps from pyproject.toml / uv.lock
-    .add_local_python_source("agents")
     .add_local_python_source("service")
-    .add_local_file("agents/opencode.jsonc", remote_path="/workspace/opencode.jsonc")
+    .add_local_file("opencode.jsonc", remote_path="/workspace/opencode.jsonc")
 )
 
 # Secrets: API keys for opencode, wandb, postgres, etc.
@@ -81,6 +80,33 @@ def _wait_for_opencode(url: str, timeout_s: float = 30.0) -> None:
             last_err = e
         time.sleep(0.5)
     raise RuntimeError(f"opencode not ready after {timeout_s}s; last_err={last_err!r}")
+
+
+def _verify_opencode_config(url: str) -> None:
+    """Verify the opencode server has the expected provider config."""
+    import httpx
+
+    r = httpx.get(f"{url}/config", timeout=5.0)
+    r.raise_for_status()
+    config = r.json()
+
+    providers = config.get("provider", {})
+    if "opencode-go" not in providers:
+        raise RuntimeError(
+            f"opencode config missing 'opencode-go' provider. "
+            f"Got providers: {list(providers.keys())}. "
+            f"Full config: {config}"
+        )
+
+    oc_provider = providers["opencode-go"]
+    api_key = oc_provider.get("options", {}).get("apiKey", "")
+    if not api_key or api_key.startswith("{env:"):
+        raise RuntimeError(
+            f"opencode-go provider apiKey not resolved (got '{api_key}'). "
+            f"Ensure OPENCODE_GO_API_KEY is set in mad-worker-secrets."
+        )
+
+    print(f"[modal-worker] opencode config verified: providers={list(providers.keys())}")
 
 
 @app.function(
@@ -135,6 +161,7 @@ def run_job(
 
     try:
         _wait_for_opencode("http://127.0.0.1:4096")
+        _verify_opencode_config("http://127.0.0.1:4096")
         print(f"[modal-worker] opencode ready, running proposal {proposal_id}")
 
         # Import and run the existing worker logic
@@ -211,6 +238,7 @@ def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
 
     try:
         _wait_for_opencode("http://127.0.0.1:4096")
+        _verify_opencode_config("http://127.0.0.1:4096")
 
         from service.client import ExperimentClient
         from service.worker import run_experiment_cycle

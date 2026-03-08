@@ -67,7 +67,7 @@ The server is available at `http://mad.briankitano.com`.
 ### 4. Deploy Modal workers
 
 ```bash
-modal deploy service/modal_worker.py
+uv run python -m modal deploy service/modal_worker.py
 ```
 
 This prints a web endpoint URL like `https://briankitano--mad-worker-create-job.modal.run`. Set it as `MODAL_CREATE_JOB_URL` in your `.env` and restart the API server.

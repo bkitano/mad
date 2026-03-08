@@ -179,7 +179,7 @@ async def run_agent_on_proposal(
     The agent has Bash/Read/Write/Glob/Grep access and handles everything:
     code generation, Modal submission, experiment logging.
     """
-    from agents.opencode_query import query, OpenCodeAgentOptions
+    from service.opencode_query import query, OpenCodeAgentOptions
 
     # Write proposal to workspace so the agent can reference it by path
     PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
