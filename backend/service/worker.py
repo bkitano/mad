@@ -28,6 +28,7 @@ Usage:
 import argparse
 import asyncio
 import os
+import subprocess
 import time
 import uuid
 from pathlib import Path
@@ -368,6 +369,23 @@ async def run_experiment_cycle(
 # ── Entry Point ───────────────────────────────────────────────────────────────
 
 
+def _start_opencode_server() -> subprocess.Popen:
+    """Start `opencode serve` as a background subprocess."""
+    log("Starting opencode serve...")
+    proc = subprocess.Popen(
+        ["opencode", "serve"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    # Give it a moment to bind the port
+    time.sleep(2)
+    if proc.poll() is not None:
+        output = proc.stdout.read().decode() if proc.stdout else ""
+        raise RuntimeError(f"opencode serve exited immediately: {output}")
+    log("opencode serve is running")
+    return proc
+
+
 async def main_async():
     parser = argparse.ArgumentParser(description="MAD Experiment Worker")
     parser.add_argument("--once", action="store_true", help="Run one cycle and exit")
@@ -379,27 +397,35 @@ async def main_async():
     service_url = args.service_url or os.environ.get("MAD_SERVICE_URL", "http://localhost:8000")
     client = ExperimentClient(base_url=service_url)
 
+    # Start opencode server before doing any work
+    opencode_proc = _start_opencode_server()
+
     log(f"Worker starting, service={service_url}, workspace={WORKSPACE}")
 
-    if args.once or args.proposal:
-        await run_experiment_cycle(client, specific_proposal=args.proposal, dry_run=args.dry_run)
-        return
+    try:
+        if args.once or args.proposal:
+            await run_experiment_cycle(client, specific_proposal=args.proposal, dry_run=args.dry_run)
+            return
 
-    log(f"Running continuously, poll interval={POLL_INTERVAL}s")
-    while True:
-        try:
-            did_work = await run_experiment_cycle(client, dry_run=args.dry_run)
-            if not did_work:
-                log(f"No work available, sleeping {POLL_INTERVAL}s")
-                await asyncio.sleep(POLL_INTERVAL)
-            else:
-                await asyncio.sleep(10)
-        except KeyboardInterrupt:
-            log("Shutting down")
-            break
-        except Exception as e:
-            log(f"Cycle error: {e}, retrying in 60s")
-            await asyncio.sleep(60)
+        log(f"Running continuously, poll interval={POLL_INTERVAL}s")
+        while True:
+            try:
+                did_work = await run_experiment_cycle(client, dry_run=args.dry_run)
+                if not did_work:
+                    log(f"No work available, sleeping {POLL_INTERVAL}s")
+                    await asyncio.sleep(POLL_INTERVAL)
+                else:
+                    await asyncio.sleep(10)
+            except KeyboardInterrupt:
+                log("Shutting down")
+                break
+            except Exception as e:
+                log(f"Cycle error: {e}, retrying in 60s")
+                await asyncio.sleep(60)
+    finally:
+        log("Stopping opencode serve...")
+        opencode_proc.terminate()
+        opencode_proc.wait(timeout=5)
 
 
 def main():
