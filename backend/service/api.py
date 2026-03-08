@@ -51,12 +51,21 @@ def startup():
 # ── Pydantic models ─────────────────────────────────────────────────────────
 
 
+class CreateProposalRequest(BaseModel):
+    filename: str
+    title: str
+    content: str
+    experiment_number: Optional[int] = None
+    status: str = "draft"
+    priority: Optional[str] = None
+    hypothesis: Optional[str] = None
+    based_on: Optional[str] = None
+
+
 class CreateExperimentRequest(BaseModel):
     proposal_id: str
     agent_id: str = ""
-    config: Optional[dict] = None
     cost_estimate: Optional[float] = None
-    code_files: Optional[dict[str, str]] = None
 
 
 class StoreCodeRequest(BaseModel):
@@ -401,6 +410,34 @@ def get_proposal(proposal_id: str):
     }
 
 
+# ── POST /proposals ─────────────────────────────────────────────────────────
+
+
+@app.post("/proposals")
+def create_proposal(req: CreateProposalRequest):
+    """Create or upsert a proposal in the database."""
+    row = db.create_proposal(
+        filename=req.filename,
+        title=req.title,
+        content=req.content,
+        experiment_number=req.experiment_number,
+        status=req.status,
+        priority=req.priority,
+        hypothesis=req.hypothesis,
+        based_on=req.based_on,
+    )
+    return {
+        "id": row["filename"].removesuffix(".md"),
+        "filename": row["filename"],
+        "experiment_number": row["experiment_number"],
+        "title": row["title"],
+        "status": row["status"],
+        "priority": row["priority"],
+        "hypothesis": row.get("hypothesis"),
+        "content": row["content"],
+    }
+
+
 # ── GET /stats ───────────────────────────────────────────────────────────────
 
 
@@ -497,7 +534,6 @@ def create_experiment(req: CreateExperimentRequest):
         experiment_id=experiment_id,
         proposal_id=req.proposal_id,
         agent_id=req.agent_id,
-        config=req.config,
         cost_estimate=req.cost_estimate,
     )
 
@@ -509,24 +545,8 @@ def create_experiment(req: CreateExperimentRequest):
     )
     root_event_id = created_event.get("id")
 
-    if req.code_files:
-        store_result = experiment_store.store_code_from_dict(experiment_id, req.code_files)
-        db.update_experiment(
-            experiment_id,
-            code_dir=store_result["code_dir"],
-            code_hash=store_result["code_hash"],
-            status="code_ready",
-        )
-        event_bus.emit(
-            "experiment.code_written",
-            f"Code stored: {store_result['manifest']['total_files']} files, hash={store_result['code_hash'][:12]}",
-            experiment_id=experiment_id,
-            agent=req.agent_id,
-            parent_id=root_event_id,
-        )
-
-    # Submit to Modal if code is ready and endpoint is configured
-    if req.code_files and MODAL_CREATE_JOB_URL:
+    # Submit to Modal if endpoint is configured
+    if MODAL_CREATE_JOB_URL:
         try:
             modal_resp = _httpx.post(
                 MODAL_CREATE_JOB_URL,

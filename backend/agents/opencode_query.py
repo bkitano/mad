@@ -55,6 +55,18 @@ class AssistantMessage:
 
 
 @dataclass
+class ToolCallMessage:
+    tool_name: str
+    tool_input: dict
+    part_id: str = ""
+
+@dataclass
+class ToolResultMessage:
+    tool_name: str
+    output: str
+    part_id: str = ""
+
+@dataclass
 class ResultMessage:
     result: str
 
@@ -76,8 +88,8 @@ class OpenCodeAgentOptions:
 
 _MODEL_MAP: dict[str, tuple[str, str]] = {
     # Default aliases → Anthropic
-    "opus":   ("anthropic", "claude-sonnet-4-6"),
-    "sonnet": ("anthropic", "claude-sonnet-4-6"),
+    "opus":   ("anthropic", "claude-sonnet-4-5"),
+    "sonnet": ("anthropic", "claude-sonnet-4-5"),
     "haiku":  ("anthropic", "claude-haiku-4-5-20251001"),
     # Modal GLM-5 (if MODAL_GLM5_TOKEN is set)
     "glm5":   ("modal", "zai-org/GLM-5-FP8"),
@@ -117,7 +129,7 @@ async def _sse_reader(http: httpx.AsyncClient, queue: asyncio.Queue) -> None:
 async def query(
     prompt: str,
     options: Optional[OpenCodeAgentOptions] = None,
-) -> AsyncGenerator[AssistantMessage | ResultMessage, None]:
+) -> AsyncGenerator[AssistantMessage | ToolCallMessage | ToolResultMessage | ResultMessage, None]:
     """
     Async generator: sends `prompt` to OpenCode and yields normalized messages.
 
@@ -188,17 +200,40 @@ async def query(
 
                     if etype == "message.part.updated":
                         part = props.get("part", {})
-                        if (
-                            part.get("type") == "text"
-                            and part.get("sessionID") == session_id
-                        ):
+                        if part.get("sessionID") != session_id:
+                            continue
+                        part_type = part.get("type", "")
+                        part_id: str = part.get("id", "default")
+
+                        if part_type == "text":
                             full_text: str = part.get("text", "") or ""
-                            part_id: str = part.get("id", "default")
                             prev = seen_text_len.get(part_id, 0)
                             delta = full_text[prev:]
                             if delta:
                                 seen_text_len[part_id] = len(full_text)
                                 yield AssistantMessage(content=[TextBlock(text=delta)])
+
+                        elif part_type == "tool-invocation":
+                            tool_name = part.get("toolName", "") or part.get("tool", "")
+                            tool_input = part.get("input", {}) or part.get("args", {})
+                            if part_id not in seen_text_len:
+                                seen_text_len[part_id] = 1
+                                yield ToolCallMessage(
+                                    tool_name=tool_name,
+                                    tool_input=tool_input if isinstance(tool_input, dict) else {},
+                                    part_id=part_id,
+                                )
+
+                        elif part_type == "tool-result":
+                            tool_name = part.get("toolName", "") or part.get("tool", "")
+                            output = part.get("text", "") or part.get("output", "") or ""
+                            if part_id not in seen_text_len:
+                                seen_text_len[part_id] = 1
+                                yield ToolResultMessage(
+                                    tool_name=tool_name,
+                                    output=output[:2000] if isinstance(output, str) else str(output)[:2000],
+                                    part_id=part_id,
+                                )
 
                     elif etype == "session.idle":
                         if props.get("sessionID") == session_id:

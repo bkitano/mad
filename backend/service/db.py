@@ -61,6 +61,41 @@ def init_db() -> None:
     pass
 
 
+# ── Proposals ────────────────────────────────────────────────────────────────
+
+
+def create_proposal(
+    filename: str,
+    title: str,
+    content: str,
+    experiment_number: Optional[int] = None,
+    status: str = "draft",
+    priority: Optional[str] = None,
+    hypothesis: Optional[str] = None,
+    based_on: Optional[str] = None,
+) -> dict:
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Delete existing proposal with same filename if any (upsert)
+            cur.execute("DELETE FROM proposals WHERE filename = %s", (filename,))
+            cur.execute(
+                """INSERT INTO proposals
+                   (filename, experiment_number, title, status, priority, hypothesis, based_on, content)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                   RETURNING *""",
+                (filename, experiment_number, title, status, priority, hypothesis, based_on, content),
+            )
+            row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 # ── Experiments ──────────────────────────────────────────────────────────────
 
 
@@ -68,7 +103,6 @@ def create_experiment(
     experiment_id: str,
     proposal_id: str,
     agent_id: str = "",
-    config: Optional[dict] = None,
     cost_estimate: Optional[float] = None,
 ) -> dict:
     conn = _get_conn()
@@ -76,13 +110,12 @@ def create_experiment(
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO experiments
-                   (id, proposal_id, status, agent_id, config, cost_estimate)
-                   VALUES (%s, %s, 'created', %s, %s, %s)""",
+                   (id, proposal_id, status, agent_id, cost_estimate)
+                   VALUES (%s, %s, 'created', %s, %s)""",
                 (
                     experiment_id,
                     proposal_id,
                     agent_id,
-                    json.dumps(config or {}),
                     cost_estimate,
                 ),
             )
