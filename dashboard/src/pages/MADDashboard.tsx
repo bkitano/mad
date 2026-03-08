@@ -57,7 +57,6 @@ export default function MADDashboard() {
   const [selectedLog, setSelectedLog] = useState<{ id: string; content: string } | null>(null)
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
-  const [showDescription, setShowDescription] = useState(true)
 
   // Fetch initial state immediately
   useEffect(() => {
@@ -248,72 +247,6 @@ export default function MADDashboard() {
         </p>
       </div>
 
-      {/* About Section - show on experiments tab */}
-      {activeTab === 'experiments' && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg overflow-hidden">
-          <button
-            onClick={() => setShowDescription(!showDescription)}
-            className="w-full px-6 py-4 flex items-center justify-between hover:bg-blue-100 transition-colors"
-          >
-            <h3 className="text-lg font-semibold text-gray-900">About This Dashboard</h3>
-            <svg
-              className={`w-5 h-5 text-gray-600 transition-transform ${showDescription ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {showDescription && (
-            <div className="px-6 pb-6 text-sm text-gray-700 space-y-3">
-              <p>
-                <strong>MAD (Multi-Agent Design)</strong> is an experiment in autonomous research. The goal is to see if AI agents can
-                explore novel algorithms for efficient sequence modeling at the intersection of three dimensions:
-              </p>
-
-              <ul className="list-disc list-inside space-y-1 ml-4 text-gray-700">
-                <li><strong>Hardware Efficiency:</strong> Memory management patterns and optimized kernel implementations</li>
-                <li><strong>Computational Complexity:</strong> Algorithmic techniques and approximations to reduce computation</li>
-                <li><strong>Theoretical Expressivity:</strong> State tracking, associative recall, and representational capacity</li>
-              </ul>
-
-              <div>
-                <p className="font-medium text-gray-900 mb-1">The approach:</p>
-                <ul className="list-disc list-inside space-y-1 ml-2">
-                  <li><strong>Research Agent:</strong> Tries to extract core ideas from papers as reusable "tricks," then combine them in novel ways to generate proposals with minimal experiments to show signs of life</li>
-                  <li><strong>Experiment Agents:</strong> Attempt to autonomously implement proposals, write training code, and run experiments on Modal's serverless GPUs</li>
-                  <li><strong>Evaluation:</strong> Run small-scale language modeling benchmarks to see if ideas show promise worth exploring further</li>
-                </ul>
-              </div>
-
-              <p>
-                This dashboard streams live updates via Server-Sent Events (SSE), letting you watch the process unfold
-                in real-time—from paper analysis to proposal generation to GPU experiments—with minimal human intervention.
-              </p>
-
-              <div className="pt-2 border-t border-blue-200 space-y-2">
-                <p className="text-xs text-gray-600">
-                  <strong>Tech stack:</strong> Built with <a href="https://modal.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Modal</a> (serverless GPU compute)
-                  and <a href="https://github.com/anthropics/anthropic-sdk-python" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Claude Agents SDK</a> (autonomous agent orchestration).
-                  Running continuously on Modal's infrastructure.
-                </p>
-                <p className="text-xs text-gray-600">
-                  <strong>🔗 Public Repository:</strong> <a href="https://github.com/bkitano/mad" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">github.com/bkitano/mad</a>
-                </p>
-                <p className="text-xs text-gray-600 italic">
-                  An exploration of how far we can push AI agents in scientific discovery: can they propose ideas, write code,
-                  debug failures, and iterate on results autonomously? We're finding out.
-                </p>
-                <p className="text-xs text-purple-700 font-medium">
-                  💜 This project burns through ~800M tokens/day of Claude + GPU credits—if you'd like to sponsor compute time, I'd love Modal/Anthropic credits uwu
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-200">

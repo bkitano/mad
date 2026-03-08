@@ -11,7 +11,7 @@ export default function Layout({ children }: LayoutProps) {
       <header className="border-b border-gray-200">
         <div className="max-w-3xl mx-auto px-4 py-6 flex items-center justify-between">
           <Link to="/" className="text-xl font-semibold text-gray-900 hover:text-gray-600">
-            Brian Kitano
+            😡 MAD
           </Link>
           <nav className="flex gap-6">
             <Link to="/notes" className="text-gray-600 hover:text-gray-900">
