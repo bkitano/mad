@@ -188,11 +188,28 @@ def run_job(
                 run_experiment_cycle(client, specific_proposal=proposal_id)
             )
 
+            status = "completed" if did_work else "no_work"
+
+            # Grace period: keep tunnel open so frontends can send follow-up messages
+            client.emit_event(
+                "worker.grace_period",
+                f"Experiment {status}, opencode staying up for 2 min grace period",
+                agent=f"modal-{job_id[:8]}",
+                details={
+                    "opencode_url": tunnel.url,
+                    "job_id": job_id,
+                    "proposal_id": proposal_id,
+                    "grace_seconds": 120,
+                },
+            )
+            print(f"[modal-worker] experiment {status}, grace period 120s — tunnel still open at {tunnel.url}")
+            time.sleep(120)
+
             return {
                 "job_id": job_id,
                 "proposal_id": proposal_id,
                 "opencode_url": tunnel.url,
-                "status": "completed" if did_work else "no_work",
+                "status": status,
             }
 
     except Exception as e:
@@ -276,10 +293,26 @@ def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
 
             did_work = asyncio.run(run_experiment_cycle(client))
 
+            status = "completed" if did_work else "no_work"
+
+            # Grace period: keep tunnel open so frontends can send follow-up messages
+            client.emit_event(
+                "worker.grace_period",
+                f"Experiment {status}, opencode staying up for 2 min grace period",
+                agent=f"modal-{job_id[:8]}",
+                details={
+                    "opencode_url": tunnel.url,
+                    "job_id": job_id,
+                    "grace_seconds": 120,
+                },
+            )
+            print(f"[modal-worker] experiment {status}, grace period 120s — tunnel still open at {tunnel.url}")
+            time.sleep(120)
+
             return {
                 "job_id": job_id,
                 "opencode_url": tunnel.url,
-                "status": "completed" if did_work else "no_work",
+                "status": status,
             }
 
     except Exception as e:
