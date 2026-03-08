@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import ExperimentCard from '../components/mad/ExperimentCard'
-import AgentStatus from '../components/mad/AgentStatus'
 import LogViewer from '../components/mad/LogViewer'
 import ProposalsView from '../components/mad/ProposalsView'
 import TricksView from '../components/mad/TricksView'
@@ -31,9 +30,25 @@ interface DashboardData {
   server_timestamp?: string
 }
 
+interface Experiment {
+  id: string
+  proposal_id: string
+  status: string
+  agent_id: string
+  wandb_url?: string
+  results?: Record<string, unknown>
+  error?: string
+  error_class?: string
+  cost_actual?: number
+  cost_estimate?: number
+  created_at: string
+  completed_at?: string
+  submitted_at?: string
+}
+
 type TabType = 'experiments' | 'proposals' | 'tricks' | 'log'
 
-const API_URL = 'https://mad.briankitano.com'
+const API_URL = import.meta.env.VITE_API_URL || 'https://mad.briankitano.com'
 
 export default function MADDashboard() {
   const navigate = useNavigate()
@@ -57,6 +72,36 @@ export default function MADDashboard() {
   const [selectedLog, setSelectedLog] = useState<{ id: string; content: string } | null>(null)
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
+
+  // All experiments list
+  const [experiments, setExperiments] = useState<Experiment[]>([])
+  const [experimentsLoading, setExperimentsLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState<string>('')
+  const [experimentsPage, setExperimentsPage] = useState(0)
+  const EXPERIMENTS_PER_PAGE = 25
+
+  // Fetch all experiments
+  useEffect(() => {
+    const fetchExperiments = async () => {
+      setExperimentsLoading(true)
+      try {
+        const params = new URLSearchParams({
+          limit: String(EXPERIMENTS_PER_PAGE),
+          offset: String(experimentsPage * EXPERIMENTS_PER_PAGE),
+        })
+        if (statusFilter) params.set('status', statusFilter)
+        const res = await fetch(`${API_URL}/experiments?${params}`)
+        if (res.ok) {
+          setExperiments(await res.json())
+        }
+      } catch (err) {
+        console.error('Error fetching experiments:', err)
+      } finally {
+        setExperimentsLoading(false)
+      }
+    }
+    fetchExperiments()
+  }, [statusFilter, experimentsPage])
 
   // Fetch initial state immediately
   useEffect(() => {
@@ -229,13 +274,13 @@ export default function MADDashboard() {
 
   // Calculate stats
   const activeExperiments = data ? Object.keys(data.active_work).length : 0
-  const recentHistory = data?.history?.slice(0, 5) || []
-  const completedToday = data?.history?.filter(item => {
-    if (!item.completed_at) return false
-    const completed = new Date(item.completed_at)
+  const totalExperiments = experiments.length
+  const completedToday = experiments.filter(exp => {
+    if (!exp.completed_at) return false
+    const completed = new Date(exp.completed_at)
     const today = new Date()
     return completed.toDateString() === today.toDateString()
-  }).length || 0
+  }).length
 
   return (
     <div className="space-y-8">
@@ -345,8 +390,8 @@ export default function MADDashboard() {
                   <div className="text-sm text-green-700">Completed Today</div>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-gray-900">{recentHistory.length}</div>
-                  <div className="text-sm text-gray-700">Recent Experiments</div>
+                  <div className="text-2xl font-bold text-gray-900">{totalExperiments}</div>
+                  <div className="text-sm text-gray-700">Experiments (this page)</div>
                 </div>
               </>
             )}
@@ -384,42 +429,34 @@ export default function MADDashboard() {
             )}
           </div>
 
-          {/* Agent Status */}
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Agent Health</h2>
-            {isInitialLoad ? (
-              <div className="bg-gray-50 p-6 rounded-lg animate-pulse space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="h-4 w-4 bg-gray-300 rounded-full"></div>
-                  <div className="h-4 bg-gray-300 rounded w-32"></div>
-                  <div className="h-4 bg-gray-300 rounded w-24 ml-auto"></div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="h-4 w-4 bg-gray-300 rounded-full"></div>
-                  <div className="h-4 bg-gray-300 rounded w-32"></div>
-                  <div className="h-4 bg-gray-300 rounded w-24 ml-auto"></div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="h-4 w-4 bg-gray-300 rounded-full"></div>
-                  <div className="h-4 bg-gray-300 rounded w-32"></div>
-                  <div className="h-4 bg-gray-300 rounded w-24 ml-auto"></div>
-                </div>
-              </div>
-            ) : (
-              <AgentStatus apiUrl={API_URL} />
-            )}
-          </div>
-
           {/* Recent Logs */}
           <div>
             <h2 className="text-2xl font-semibold text-gray-900 mb-4">Recent Logs</h2>
             <LogViewer apiUrl={API_URL} />
           </div>
 
-          {/* Recent Experiments */}
+          {/* All Experiments */}
           <div>
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Recent Experiments</h2>
-            {isInitialLoad ? (
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-semibold text-gray-900">All Experiments</h2>
+              <div className="flex items-center gap-2">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => { setStatusFilter(e.target.value); setExperimentsPage(0) }}
+                  className="text-sm border border-gray-300 rounded-md px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All statuses</option>
+                  <option value="created">Created</option>
+                  <option value="code_ready">Code Ready</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="running">Running</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+            </div>
+            {experimentsLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="p-3 bg-gray-50 rounded-lg animate-pulse">
@@ -436,37 +473,103 @@ export default function MADDashboard() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="space-y-2">
-                {recentHistory.map((item, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => fetchResult(item.proposal_id)}
-                    className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm transition-colors cursor-pointer"
-                  >
-                    <div>
-                      <span className="font-mono text-xs bg-gray-200 px-2 py-0.5 rounded mr-2">
-                        {item.agent_id}
-                      </span>
-                      <span className="text-gray-900">{item.proposal_id}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        item.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        item.status === 'failed' ? 'bg-red-100 text-red-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {item.status}
-                      </span>
-                      {item.completed_at && (
-                        <span className="text-gray-500 text-xs">
-                          {new Date(item.completed_at).toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                ))}
+            ) : experiments.length === 0 ? (
+              <div className="bg-gray-50 p-8 rounded-lg text-center text-gray-500">
+                No experiments found{statusFilter ? ` with status "${statusFilter}"` : ''}
               </div>
+            ) : (
+              <>
+                <div className="overflow-hidden rounded-lg border border-gray-200">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Proposal</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agent</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {experiments.map((exp) => (
+                        <tr
+                          key={exp.id}
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={() => fetchResult(exp.proposal_id)}
+                        >
+                          <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">{exp.id}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 max-w-[200px] truncate">{exp.proposal_id}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              exp.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              exp.status === 'failed' ? 'bg-red-100 text-red-800' :
+                              exp.status === 'running' ? 'bg-blue-100 text-blue-800' :
+                              exp.status === 'cancelled' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {exp.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            {exp.agent_id && (
+                              <span className="font-mono text-xs bg-gray-200 px-2 py-0.5 rounded">{exp.agent_id}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500">
+                            {new Date(exp.created_at).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500">
+                            {exp.cost_actual != null ? `$${exp.cost_actual.toFixed(2)}` : exp.cost_estimate != null ? `~$${exp.cost_estimate.toFixed(2)}` : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                              {exp.wandb_url && (
+                                <a href={exp.wandb_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-xs underline">W&B</a>
+                              )}
+                              <button
+                                onClick={() => setSelectedCode(exp.id)}
+                                className="text-blue-600 hover:text-blue-800 text-xs underline"
+                              >
+                                Code
+                              </button>
+                              <button
+                                onClick={() => fetchLog(exp.proposal_id)}
+                                className="text-blue-600 hover:text-blue-800 text-xs underline"
+                              >
+                                Log
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Pagination */}
+                <div className="flex items-center justify-between mt-3">
+                  <span className="text-sm text-gray-500">
+                    Page {experimentsPage + 1} · Showing {experiments.length} experiment{experiments.length !== 1 ? 's' : ''}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setExperimentsPage(p => Math.max(0, p - 1))}
+                      disabled={experimentsPage === 0}
+                      className="px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => setExperimentsPage(p => p + 1)}
+                      disabled={experiments.length < EXPERIMENTS_PER_PAGE}
+                      className="px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
           </div>
 
