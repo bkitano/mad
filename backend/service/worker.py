@@ -27,11 +27,15 @@ Usage:
 
 import argparse
 import asyncio
+import json
 import os
+import subprocess
 import time
 import uuid
 from pathlib import Path
 from typing import Optional
+
+import httpx
 
 from service.client import ExperimentClient
 
@@ -125,6 +129,129 @@ If the experiment fails at any point:
 
 def log(msg: str):
     print(f"[{AGENT_ID}] {msg}", flush=True)
+
+
+def _wait_for_opencode(url: str, timeout_s: float = 30.0) -> None:
+    """Block until opencode HTTP server is ready."""
+    deadline = time.time() + timeout_s
+    last_err = None
+    while time.time() < deadline:
+        try:
+            r = httpx.get(f"{url}/session", timeout=2.0)
+            if r.status_code < 500:
+                return
+        except Exception as e:
+            last_err = e
+        time.sleep(0.5)
+    raise RuntimeError(f"opencode not ready after {timeout_s}s; last_err={last_err!r}")
+
+
+async def opencode_event_forwarder(
+    opencode_url: str,
+    client: ExperimentClient,
+    agent_id: str,
+    stop_event: asyncio.Event,
+) -> None:
+    """
+    Persistent SSE listener that forwards ALL opencode events to the MAD service.
+
+    Runs as a background task for the lifetime of the worker (including the
+    grace period), so any session — whether started by run_experiment_cycle
+    or by a frontend — gets its events captured.
+    """
+    while not stop_event.is_set():
+        try:
+            async with httpx.AsyncClient(base_url=opencode_url, timeout=None) as http:
+                async with http.stream("GET", "/event") as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if stop_event.is_set():
+                            break
+                        if not line.startswith("data:"):
+                            continue
+                        data_str = line[5:].strip()
+                        if not data_str:
+                            continue
+                        try:
+                            event = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+
+                        etype = event.get("type", "")
+                        if etype == "message.part.delta":
+                            continue
+
+                        props = event.get("properties", {})
+                        part = props.get("part", {})
+                        if part.get("type") == "text":
+                            summary = part.get("text", "")[:500].replace("\n", " ")
+                        elif part.get("type") == "tool":
+                            tool = part.get("tool", "")
+                            status = part.get("state", {}).get("status", "")
+                            summary = f"{tool} ({status})"
+                        else:
+                            summary = etype
+
+                        experiment_id = props.get("experimentID")
+
+                        try:
+                            client.emit_event(
+                                etype,
+                                summary[:500],
+                                experiment_id=experiment_id,
+                                agent=agent_id,
+                                details=props,
+                            )
+                        except Exception:
+                            pass
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            if stop_event.is_set():
+                break
+            log(f"[event-forwarder] SSE connection lost ({e}), reconnecting in 1s...")
+            await asyncio.sleep(1)
+
+
+async def run_with_forwarder(
+    opencode_url: str,
+    client: ExperimentClient,
+    agent_id: str,
+    coro,
+    grace_seconds: int = 120,
+    grace_event_details: dict | None = None,
+) -> object:
+    """
+    Run `coro` with a background SSE forwarder, then keep listening for
+    `grace_seconds` more before shutting down.
+    """
+    stop = asyncio.Event()
+    forwarder = asyncio.create_task(
+        opencode_event_forwarder(opencode_url, client, agent_id, stop)
+    )
+
+    try:
+        result = await coro
+
+        if grace_event_details:
+            client.emit_event(
+                "worker.grace_period",
+                f"Experiment done, opencode staying up for {grace_seconds}s grace period",
+                agent=agent_id,
+                details=grace_event_details,
+            )
+            log(f"Grace period {grace_seconds}s — forwarder still active")
+
+        await asyncio.sleep(grace_seconds)
+        return result
+    finally:
+        stop.set()
+        forwarder.cancel()
+        try:
+            await forwarder
+        except asyncio.CancelledError:
+            pass
 
 
 def select_proposal(client: ExperimentClient) -> Optional[dict]:
@@ -243,16 +370,12 @@ Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
                 summary = f"{tool} ({status})"
 
             log(f"  {etype}: {summary[:200]}")
-            client.emit_event(
-                etype,
-                summary[:500],
-                experiment_id=experiment_id,
-                agent=AGENT_ID,
-                details=props,
-                parent_id=root_event_id,
-            )
+            # NOTE: per-event emission to MAD service is handled by the
+            # persistent SSE forwarder in modal_worker._opencode_event_forwarder.
+            # No need to emit here — the forwarder captures all session and
+            # global events directly from the opencode /event stream.
         except Exception:
-            pass  # don't let event failures kill the agent
+            pass
 
     # Check for results file written by agent
     results_file = EXPERIMENTS_DIR / f"{experiment_id}_results.md"
@@ -374,32 +497,80 @@ async def main_async():
     parser.add_argument("--proposal", help="Specific proposal ID to implement")
     parser.add_argument("--dry-run", action="store_true", help="Claim + read, don't run agent")
     parser.add_argument("--service-url", default=None, help="API server URL")
+    parser.add_argument("--opencode-port", type=int, default=4096, help="Port for opencode server")
+    parser.add_argument("--grace-seconds", type=int, default=120, help="Grace period after experiment")
     args = parser.parse_args()
 
     service_url = args.service_url or os.environ.get("MAD_SERVICE_URL", "http://localhost:8000")
     client = ExperimentClient(base_url=service_url)
+    opencode_url = f"http://127.0.0.1:{args.opencode_port}"
 
     log(f"Worker starting, service={service_url}, workspace={WORKSPACE}")
 
-    if args.once or args.proposal:
-        await run_experiment_cycle(client, specific_proposal=args.proposal, dry_run=args.dry_run)
-        return
+    # Start opencode as a subprocess
+    opencode_proc = subprocess.Popen(
+        ["opencode", "serve", "--hostname", "127.0.0.1", "--port", str(args.opencode_port)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        cwd=str(WORKSPACE),
+    )
 
-    log(f"Running continuously, poll interval={POLL_INTERVAL}s")
-    while True:
+    try:
+        _wait_for_opencode(opencode_url)
+        log(f"opencode ready at {opencode_url}")
+
+        if args.once or args.proposal:
+            await run_with_forwarder(
+                opencode_url=opencode_url,
+                client=client,
+                agent_id=AGENT_ID,
+                coro=run_experiment_cycle(client, specific_proposal=args.proposal, dry_run=args.dry_run),
+                grace_seconds=args.grace_seconds,
+                grace_event_details={
+                    "opencode_url": opencode_url,
+                    "grace_seconds": args.grace_seconds,
+                },
+            )
+            return
+
+        log(f"Running continuously, poll interval={POLL_INTERVAL}s")
+        # For continuous mode, run the forwarder for the entire lifetime
+        stop = asyncio.Event()
+        forwarder = asyncio.create_task(
+            opencode_event_forwarder(opencode_url, client, AGENT_ID, stop)
+        )
+
         try:
-            did_work = await run_experiment_cycle(client, dry_run=args.dry_run)
-            if not did_work:
-                log(f"No work available, sleeping {POLL_INTERVAL}s")
-                await asyncio.sleep(POLL_INTERVAL)
-            else:
-                await asyncio.sleep(10)
-        except KeyboardInterrupt:
-            log("Shutting down")
-            break
-        except Exception as e:
-            log(f"Cycle error: {e}, retrying in 60s")
-            await asyncio.sleep(60)
+            while True:
+                try:
+                    did_work = await run_experiment_cycle(client, dry_run=args.dry_run)
+                    if not did_work:
+                        log(f"No work available, sleeping {POLL_INTERVAL}s")
+                        await asyncio.sleep(POLL_INTERVAL)
+                    else:
+                        await asyncio.sleep(10)
+                except KeyboardInterrupt:
+                    log("Shutting down")
+                    break
+                except Exception as e:
+                    log(f"Cycle error: {e}, retrying in 60s")
+                    await asyncio.sleep(60)
+        finally:
+            stop.set()
+            forwarder.cancel()
+            try:
+                await forwarder
+            except asyncio.CancelledError:
+                pass
+
+    finally:
+        opencode_proc.terminate()
+        try:
+            opencode_proc.wait(timeout=5)
+        except Exception:
+            opencode_proc.kill()
+        log("opencode process terminated")
 
 
 def main():
