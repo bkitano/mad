@@ -166,17 +166,17 @@ def run_job(
             print(f"[modal-worker] opencode ready, running proposal {proposal_id}")
             print(f"[modal-worker] opencode public URL: {tunnel.url}")
 
-            # Import and run the existing worker logic
             from service.client import ExperimentClient
-            from service.worker import run_experiment_cycle
+            from service.worker import run_experiment_cycle, run_with_forwarder
 
             client = ExperimentClient(base_url=service_url)
+            agent_id = f"modal-{job_id[:8]}"
 
             # Emit event with the public opencode URL so frontends can connect
             client.emit_event(
                 "worker.opencode_url",
                 f"OpenCode server available at {tunnel.url}",
-                agent=f"modal-{job_id[:8]}",
+                agent=agent_id,
                 details={
                     "opencode_url": tunnel.url,
                     "job_id": job_id,
@@ -184,32 +184,26 @@ def run_job(
                 },
             )
 
-            did_work = asyncio.run(
-                run_experiment_cycle(client, specific_proposal=proposal_id)
-            )
-
-            status = "completed" if did_work else "no_work"
-
-            # Grace period: keep tunnel open so frontends can send follow-up messages
-            client.emit_event(
-                "worker.grace_period",
-                f"Experiment {status}, opencode staying up for 2 min grace period",
-                agent=f"modal-{job_id[:8]}",
-                details={
+            # Run experiment with persistent SSE forwarder + grace period
+            did_work = asyncio.run(run_with_forwarder(
+                opencode_url="http://127.0.0.1:4096",
+                client=client,
+                agent_id=agent_id,
+                coro=run_experiment_cycle(client, specific_proposal=proposal_id),
+                grace_seconds=120,
+                grace_event_details={
                     "opencode_url": tunnel.url,
                     "job_id": job_id,
                     "proposal_id": proposal_id,
                     "grace_seconds": 120,
                 },
-            )
-            print(f"[modal-worker] experiment {status}, grace period 120s — tunnel still open at {tunnel.url}")
-            time.sleep(120)
+            ))
 
             return {
                 "job_id": job_id,
                 "proposal_id": proposal_id,
                 "opencode_url": tunnel.url,
-                "status": status,
+                "status": "completed" if did_work else "no_work",
             }
 
     except Exception as e:
@@ -276,43 +270,40 @@ def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
             print(f"[modal-worker] opencode public URL: {tunnel.url}")
 
             from service.client import ExperimentClient
-            from service.worker import run_experiment_cycle
+            from service.worker import run_experiment_cycle, run_with_forwarder
 
             client = ExperimentClient(base_url=service_url)
+            agent_id = f"modal-{job_id[:8]}"
 
             # Emit event with the public opencode URL so frontends can connect
             client.emit_event(
                 "worker.opencode_url",
                 f"OpenCode server available at {tunnel.url}",
-                agent=f"modal-{job_id[:8]}",
+                agent=agent_id,
                 details={
                     "opencode_url": tunnel.url,
                     "job_id": job_id,
                 },
             )
 
-            did_work = asyncio.run(run_experiment_cycle(client))
-
-            status = "completed" if did_work else "no_work"
-
-            # Grace period: keep tunnel open so frontends can send follow-up messages
-            client.emit_event(
-                "worker.grace_period",
-                f"Experiment {status}, opencode staying up for 2 min grace period",
-                agent=f"modal-{job_id[:8]}",
-                details={
+            # Run experiment with persistent SSE forwarder + grace period
+            did_work = asyncio.run(run_with_forwarder(
+                opencode_url="http://127.0.0.1:4096",
+                client=client,
+                agent_id=agent_id,
+                coro=run_experiment_cycle(client),
+                grace_seconds=120,
+                grace_event_details={
                     "opencode_url": tunnel.url,
                     "job_id": job_id,
                     "grace_seconds": 120,
                 },
-            )
-            print(f"[modal-worker] experiment {status}, grace period 120s — tunnel still open at {tunnel.url}")
-            time.sleep(120)
+            ))
 
             return {
                 "job_id": job_id,
                 "opencode_url": tunnel.url,
-                "status": status,
+                "status": "completed" if did_work else "no_work",
             }
 
     except Exception as e:
