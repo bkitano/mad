@@ -92,7 +92,7 @@ _MODEL_MAP: dict[str, tuple[str, str]] = {
     "sonnet": ("anthropic", "claude-sonnet-4-5"),
     "haiku":  ("anthropic", "claude-haiku-4-5-20251001"),
     # Modal GLM-5 (if MODAL_GLM5_TOKEN is set)
-    "glm5":   ("modal", "zai-org/GLM-5-FP8"),
+    "glm5":   ("opencode-go", "glm5"),
     # opencode provider fallback models
     "big-pickle":   ("opencode", "big-pickle"),
     "gpt-5-nano":   ("opencode", "gpt-5-nano"),
@@ -138,10 +138,10 @@ async def query(
     if options is None:
         options = OpenCodeAgentOptions()
 
-    provider_id, model_id = _MODEL_MAP.get(
-        options.model,
-        ("anthropic", options.model),  # pass through raw model IDs
-    )
+    # provider_id, model_id = _MODEL_MAP.get(
+    #     options.model,
+    #     ("anthropic", options.model),  # pass through raw model IDs
+    # )
 
     async with _SEMAPHORE:
         async with httpx.AsyncClient(base_url=BASE_URL, timeout=60.0) as http:
@@ -153,7 +153,7 @@ async def query(
             # 2. Build the message body
             body: dict = {
                 "parts": [{"type": "text", "text": prompt}],
-                "model": {"providerID": provider_id, "modelID": model_id},
+                # "model": {"providerID": provider_id, "modelID": model_id},
             }
             if options.system_prompt:
                 body["system"] = options.system_prompt
@@ -213,22 +213,25 @@ async def query(
                                 seen_text_len[part_id] = len(full_text)
                                 yield AssistantMessage(content=[TextBlock(text=delta)])
 
-                        elif part_type == "tool-invocation":
-                            tool_name = part.get("toolName", "") or part.get("tool", "")
-                            tool_input = part.get("input", {}) or part.get("args", {})
-                            if part_id not in seen_text_len:
-                                seen_text_len[part_id] = 1
+                        elif part_type == "tool":
+                            tool_name = part.get("tool", "")
+                            state = part.get("state", {})
+                            status = state.get("status", "")
+                            tool_input = state.get("input", {})
+                            # Yield tool call when we first see this part
+                            call_key = f"{part_id}:call"
+                            if call_key not in seen_text_len:
+                                seen_text_len[call_key] = 1
                                 yield ToolCallMessage(
                                     tool_name=tool_name,
                                     tool_input=tool_input if isinstance(tool_input, dict) else {},
                                     part_id=part_id,
                                 )
-
-                        elif part_type == "tool-result":
-                            tool_name = part.get("toolName", "") or part.get("tool", "")
-                            output = part.get("text", "") or part.get("output", "") or ""
-                            if part_id not in seen_text_len:
-                                seen_text_len[part_id] = 1
+                            # Yield tool result when completed
+                            result_key = f"{part_id}:result"
+                            if status == "completed" and result_key not in seen_text_len:
+                                seen_text_len[result_key] = 1
+                                output = state.get("output", "") or state.get("text", "") or ""
                                 yield ToolResultMessage(
                                     tool_name=tool_name,
                                     output=output[:2000] if isinstance(output, str) else str(output)[:2000],

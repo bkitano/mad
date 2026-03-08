@@ -220,7 +220,7 @@ Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
     async for message in query(
         prompt=prompt,
         options=ClaudeAgentOptions(
-            model="opus",
+            model="glm5",
             system_prompt=system_prompt,
             allowed_tools=["Read", "Write", "Glob", "Grep", "Bash"],
             permission_mode="acceptEdits",

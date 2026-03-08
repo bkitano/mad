@@ -4,9 +4,11 @@
 POSTGRES_URL=""
 SUPABASE_URL=""
 SUPABASE_KEY=""
-MODAL_CREATE_JOB_URL="https://miravoice--mad-worker-create-job.modal.run"
-WANDB_API_KEY="" # this you really set in modal
-ANTHROPIC_API_KEY="" # need this for opencode
+MODAL_CREATE_JOB_URL=""
+WANDB_API_KEY=""
+ANTHROPIC_API_KEY=""
+OPENCODE_GO_API_KEY=""
+OPENCODE_CONFIG="./opencode.jsonc"
 ```
 
 1. Start the API.
@@ -17,8 +19,8 @@ set -a; source ../.env; uv run uvicorn service.api:app --port 8001 --reload
 
 2. Start up Opencode in a directory `mad/.e2e/`
 ```
-cd mad/.e2e/
-set -a; source ../.env; opencode serve
+cd mad/
+set -a; source .env; opencode serve
 ```
 
 3. Run the worker
