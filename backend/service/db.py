@@ -8,16 +8,36 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
-
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
+
+_pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
+
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _pool
+    if _pool is None or _pool.closed:
+        _pool = psycopg2.pool.ThreadedConnectionPool(
+            1, 10,
+            user=os.environ["PGUSER"],
+            password=os.environ["PGPASSWORD"],
+            host=os.environ["PGHOST"],
+            port=os.environ.get("PGPORT", "6543"),
+            dbname=os.environ.get("PGDATABASE", "postgres"),
+        )
+    return _pool
 
 
 def _get_conn():
-    url = os.environ.get("POSTGRES_URL")
-    if not url:
-        raise RuntimeError("POSTGRES_URL not configured")
-    return psycopg2.connect(url)
+    return _get_pool().getconn()
+
+
+def _put_conn(conn):
+    try:
+        _get_pool().putconn(conn)
+    except Exception:
+        pass
 
 
 
@@ -32,7 +52,7 @@ def _fetch(sql: str, params: tuple = ()) -> list[dict]:
             cur.execute(sql, params)
             return [dict(row) for row in cur.fetchall()]
     finally:
-        conn.close()
+        _put_conn(conn)
 
 
 def _fetch_one(sql: str, params: tuple = ()) -> Optional[dict]:
@@ -53,7 +73,7 @@ def _execute(sql: str, params: tuple = ()) -> int:
         conn.rollback()
         raise
     finally:
-        conn.close()
+        _put_conn(conn)
 
 
 def init_db() -> None:
@@ -93,7 +113,7 @@ def create_proposal(
         conn.rollback()
         raise
     finally:
-        conn.close()
+        _put_conn(conn)
 
 
 # ── Experiments ──────────────────────────────────────────────────────────────
@@ -124,7 +144,7 @@ def create_experiment(
         conn.rollback()
         raise
     finally:
-        conn.close()
+        _put_conn(conn)
     return get_experiment(experiment_id)
 
 
@@ -198,7 +218,7 @@ def emit_event(
         conn.rollback()
         raise
     finally:
-        conn.close()
+        _put_conn(conn)
 
 
 def list_events(
@@ -274,7 +294,7 @@ def claim_proposal(proposal_id: str, agent_id: str) -> bool:
                     return True
                 return False
     finally:
-        conn.close()
+        _put_conn(conn)
 
 
 def heartbeat_claim(proposal_id: str, agent_id: str, details: Optional[str] = None) -> bool:
@@ -300,7 +320,7 @@ def list_claims(status: Optional[str] = "active") -> list[dict]:
     except Exception:
         conn.rollback()
     finally:
-        conn.close()
+        _put_conn(conn)
 
     if status:
         return _fetch(
@@ -318,7 +338,7 @@ def is_proposal_claimed(proposal_id: str) -> bool:
     except Exception:
         conn.rollback()
     finally:
-        conn.close()
+        _put_conn(conn)
 
     row = _fetch_one(
         "SELECT 1 FROM claims WHERE proposal_id = %s AND status = 'active'",
