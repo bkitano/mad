@@ -163,51 +163,57 @@ def api():
 def test_mnist_e2e(api):
     """Submit MNIST conv-net training, verify modal worker, events, and wandb."""
 
-    # ── 1. Create experiment with MNIST training code ─────────────────────────
-    # Use a proposal_id that starts with a number (required by the API).
-    # The API auto-generates experiment_id from the numeric prefix.
+    # ── 1. Create a proposal in the DB ────────────────────────────────────────
     proposal_id = "999-mnist-e2e-test"
 
+    proposal_content = f"""# MNIST Conv-Net E2E Test
+
+## Hypothesis
+A small conv-net can achieve >95% test accuracy on MNIST in 2 epochs.
+
+## Minimum Viable Experiment
+Train a 2-layer conv-net on MNIST for 2 epochs with batch size 256.
+
+## Training Code
+
+```python
+{TRAIN_PY}
+```
+"""
+
+    resp = api.post("/proposals", json={
+        "filename": f"{proposal_id}.md",
+        "title": "MNIST Conv-Net E2E Test",
+        "content": proposal_content,
+        "experiment_number": 999,
+        "status": "approved",
+        "hypothesis": "A small conv-net can achieve >95% test accuracy on MNIST in 2 epochs.",
+    })
+    assert resp.status_code == 200, f"Failed to create proposal: {resp.text}"
+    proposal = resp.json()
+    print(f"\n  Created proposal: {proposal['id']}")
+
+    # ── 2. Create experiment from the proposal ────────────────────────────────
     resp = api.post("/experiments", json={
         "proposal_id": proposal_id,
         "agent_id": "e2e-mnist-test",
-        "code_files": {"train.py": TRAIN_PY},
-        "config": {
-            "model": "SmallConvNet",
-            "dataset": "MNIST",
-            "epochs": 2,
-            "batch_size": 256,
-        },
     })
     assert resp.status_code == 200, f"Failed to create experiment: {resp.text}"
     experiment = resp.json()
     experiment_id = experiment["id"]
     root_event_id = experiment.get("root_event_id")
-    print(f"\n  Created experiment: {experiment_id}")
+    print(f"  Created experiment: {experiment_id}")
     print(f"  Root event ID: {root_event_id}")
 
-    # ── 2. Verify experiment was created with code ────────────────────────────
+    # ── 3. Verify experiment was created ──────────────────────────────────────
     resp = api.get(f"/experiments/{experiment_id}")
     assert resp.status_code == 200
     exp = resp.json()
-    assert exp["status"] in ("created", "code_ready", "submitted"), f"Unexpected status: {exp['status']}"
+    assert exp["status"] in ("created", "submitted"), f"Unexpected status: {exp['status']}"
     assert exp["proposal_id"] == proposal_id
     print(f"  Experiment status: {exp['status']}")
 
-    # ── 3. Verify code was stored ─────────────────────────────────────────────
-    resp = api.get(f"/experiments/{experiment_id}/code/tree")
-    if resp.status_code == 200:
-        tree = resp.json()
-        print(f"  Code stored: {tree['total_files']} files, hash={tree['code_hash'][:12]}")
-        assert tree["total_files"] >= 1
-        file_paths = [f["path"] for f in tree["files"]]
-        assert "train.py" in file_paths
-    else:
-        print(f"  Code tree not available (status {resp.status_code}) — may be expected if store is off")
-
     # ── 4. Check that modal worker was submitted (if Modal is configured) ─────
-    resp = api.get(f"/experiments/{experiment_id}")
-    exp = resp.json()
     if exp.get("modal_job_id"):
         print(f"  Modal job ID: {exp['modal_job_id']}")
     else:
@@ -280,8 +286,6 @@ def test_mnist_e2e(api):
     print(f"  DB event types: {event_types}")
 
     assert "experiment.created" in event_types, "Missing experiment.created event"
-    if exp.get("modal_job_id"):
-        assert "experiment.code_written" in event_types, "Missing experiment.code_written event"
 
     # ── 8. Check for wandb logs ───────────────────────────────────────────────
     resp = api.get(f"/experiments/{experiment_id}")

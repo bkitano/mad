@@ -77,16 +77,12 @@ class ExperimentClient:
         self,
         proposal_id: str,
         agent_id: str = "",
-        config: Optional[dict] = None,
         cost_estimate: Optional[float] = None,
-        code_files: Optional[dict[str, str]] = None,
     ) -> dict:
         return self._post("/experiments", json={
             "proposal_id": proposal_id,
             "agent_id": agent_id,
-            "config": config,
             "cost_estimate": cost_estimate,
-            "code_files": code_files,
         })
 
     def store_code(self, experiment_id: str, files: dict[str, str]) -> dict:
@@ -189,6 +185,28 @@ class ExperimentClient:
     def get_proposal(self, proposal_id: str) -> dict:
         """Get full proposal content + metadata."""
         return self._get(f"/proposals/{proposal_id}")
+
+    def create_proposal(
+        self,
+        filename: str,
+        title: str,
+        content: str,
+        experiment_number: Optional[int] = None,
+        status: str = "draft",
+        priority: Optional[str] = None,
+        hypothesis: Optional[str] = None,
+        based_on: Optional[str] = None,
+    ) -> dict:
+        return self._post("/proposals", json={
+            "filename": filename,
+            "title": title,
+            "content": content,
+            "experiment_number": experiment_number,
+            "status": status,
+            "priority": priority,
+            "hypothesis": hypothesis,
+            "based_on": based_on,
+        })
 
     # ── Claims (distributed work coordination) ──────────────────────────────
 

@@ -145,13 +145,20 @@ def select_proposal(client: ExperimentClient) -> Optional[dict]:
     return candidates[0]
 
 
-async def _heartbeat_loop(client: ExperimentClient, proposal_id: str, detail: str, stop: asyncio.Event):
-    """Send heartbeats every 5 minutes until stop is set."""
+async def _heartbeat_loop(client: ExperimentClient, proposal_id: str, experiment_id: str, detail: str, stop: asyncio.Event, root_event_id: Optional[int] = None):
+    """Send heartbeats every 30 seconds until stop is set."""
     while not stop.is_set():
         try:
-            await asyncio.sleep(300)
+            await asyncio.sleep(30)
             if not stop.is_set():
-                client.heartbeat(proposal_id, AGENT_ID, detail)
+                client.emit_event(
+                    "worker.heartbeat",
+                    f"Worker {AGENT_ID} heartbeat on {proposal_id}",
+                    experiment_id=experiment_id,
+                    agent=AGENT_ID,
+                    details={"proposal_id": proposal_id, "detail": detail},
+                    parent_id=root_event_id,
+                )
         except Exception:
             pass
 
@@ -172,7 +179,7 @@ async def run_agent_on_proposal(
     The agent has Bash/Read/Write/Glob/Grep access and handles everything:
     code generation, Modal submission, experiment logging.
     """
-    from agents.opencode_query import query, OpenCodeAgentOptions as ClaudeAgentOptions
+    from agents.opencode_query import query, OpenCodeAgentOptions as ClaudeAgentOptions, AssistantMessage, ResultMessage, ToolCallMessage, ToolResultMessage
 
     # Write proposal to workspace so the agent can reference it by path
     PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
@@ -220,14 +227,13 @@ Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
             cwd=str(WORKSPACE),
         ),
     ):
-        # Log text output from agent and emit as events
-        if hasattr(message, "content"):
-            for block in getattr(message, "content", []):
-                if hasattr(block, "text") and block.text:
-                    messages.append(block.text)
-                    preview = block.text[:500].replace("\n", " ")
-                    log(f"  agent: {preview[:200]}")
-                    try:
+        try:
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if block.text:
+                        messages.append(block.text)
+                        preview = block.text[:500].replace("\n", " ")
+                        log(f"  agent: {preview[:200]}")
                         client.emit_event(
                             "agent.message",
                             preview,
@@ -236,8 +242,44 @@ Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
                             details={"full_text": block.text[:2000]},
                             parent_id=root_event_id,
                         )
-                    except Exception:
-                        pass  # don't let event failures kill the agent
+            elif isinstance(message, ToolCallMessage):
+                log(f"  tool call: {message.tool_name}")
+                client.emit_event(
+                    "agent.tool_call",
+                    f"Tool call: {message.tool_name}",
+                    experiment_id=experiment_id,
+                    agent=AGENT_ID,
+                    details={
+                        "tool_name": message.tool_name,
+                        "tool_input": {k: str(v)[:500] for k, v in message.tool_input.items()},
+                    },
+                    parent_id=root_event_id,
+                )
+            elif isinstance(message, ToolResultMessage):
+                log(f"  tool result: {message.tool_name}")
+                client.emit_event(
+                    "agent.tool_result",
+                    f"Tool result: {message.tool_name}",
+                    experiment_id=experiment_id,
+                    agent=AGENT_ID,
+                    details={
+                        "tool_name": message.tool_name,
+                        "output": message.output[:2000],
+                    },
+                    parent_id=root_event_id,
+                )
+            elif isinstance(message, ResultMessage):
+                log(f"  agent result: {message.result}")
+                client.emit_event(
+                    "agent.result",
+                    f"Agent session result: {message.result}",
+                    experiment_id=experiment_id,
+                    agent=AGENT_ID,
+                    details={"result": message.result},
+                    parent_id=root_event_id,
+                )
+        except Exception:
+            pass  # don't let event failures kill the agent
 
     # Check for results file written by agent
     results_file = EXPERIMENTS_DIR / f"{experiment_id}_results.md"
@@ -275,16 +317,8 @@ async def run_experiment_cycle(
     proposal_id = proposal["id"]
     log(f"Selected proposal: {proposal_id}")
 
-    # 2. Claim
-    claim_result = client.claim(proposal_id, AGENT_ID)
-    if not claim_result.get("claimed"):
-        log(f"Could not claim {proposal_id}: {claim_result.get('reason', 'unknown')}")
-        return False
-
-    log(f"Claimed {proposal_id}")
-
     try:
-        # 3. Fetch full proposal content
+        # 2. Fetch full proposal content
         full_proposal = client.get_proposal(proposal_id)
         proposal_content = full_proposal.get("content", "")
 
@@ -293,11 +327,11 @@ async def run_experiment_cycle(
             log(f"Has MVE: {full_proposal.get('has_mve')}")
             return True
 
-        # 4. Derive experiment ID
+        # 3. Derive experiment ID
         match = re.match(r"(\d+)", proposal_id)
         experiment_id = match.group(1).zfill(3) if match else proposal_id[:3]
 
-        # 5. Create experiment record in API (server assigns run suffix if needed)
+        # 4. Create experiment record in API (server assigns run suffix if needed)
         exp_record = client.create_experiment(proposal_id=proposal_id, agent_id=AGENT_ID)
         experiment_id = exp_record["id"]
         root_event_id = exp_record.get("root_event_id")
@@ -312,10 +346,10 @@ async def run_experiment_cycle(
         )
         client.update_experiment(experiment_id, status="running")
 
-        # 6. Run agent with background heartbeat
+        # 5. Run agent with background heartbeat
         stop_heartbeat = asyncio.Event()
         heartbeat_task = asyncio.create_task(
-            _heartbeat_loop(client, proposal_id, "running agent", stop_heartbeat)
+            _heartbeat_loop(client, proposal_id, experiment_id, "running agent", stop_heartbeat, root_event_id=root_event_id)
         )
 
         try:
@@ -327,7 +361,7 @@ async def run_experiment_cycle(
             stop_heartbeat.set()
             heartbeat_task.cancel()
 
-        # 7. Report outcome
+        # 6. Report outcome
         log(f"Agent finished. Status: {result['status']}")
         client.update_experiment(
             experiment_id,
@@ -355,8 +389,7 @@ async def run_experiment_cycle(
         return False
 
     finally:
-        client.release(proposal_id, AGENT_ID, status="completed")
-        log(f"Released claim on {proposal_id}")
+        log(f"Finished working on {proposal_id}")
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
