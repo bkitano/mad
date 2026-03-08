@@ -150,9 +150,9 @@ def run_job(
     os.environ["MAD_WORKSPACE"] = workspace
     os.environ["OPENCODE_BASE_URL"] = "http://127.0.0.1:4096"
 
-    # Start opencode as a subprocess
+    # Start opencode as a subprocess — bind 0.0.0.0 so the tunnel proxy can reach it
     opencode_proc = subprocess.Popen(
-        ["opencode", "serve", "--hostname", "127.0.0.1", "--port", "4096"],
+        ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -160,25 +160,40 @@ def run_job(
     )
 
     try:
-        _wait_for_opencode("http://127.0.0.1:4096")
-        _verify_opencode_config("http://127.0.0.1:4096")
-        print(f"[modal-worker] opencode ready, running proposal {proposal_id}")
+        with modal.forward(4096) as tunnel:
+            _wait_for_opencode("http://127.0.0.1:4096")
+            _verify_opencode_config("http://127.0.0.1:4096")
+            print(f"[modal-worker] opencode ready, running proposal {proposal_id}")
+            print(f"[modal-worker] opencode public URL: {tunnel.url}")
 
-        # Import and run the existing worker logic
-        from service.client import ExperimentClient
-        from service.worker import run_experiment_cycle
+            # Import and run the existing worker logic
+            from service.client import ExperimentClient
+            from service.worker import run_experiment_cycle
 
-        client = ExperimentClient(base_url=service_url)
+            client = ExperimentClient(base_url=service_url)
 
-        did_work = asyncio.run(
-            run_experiment_cycle(client, specific_proposal=proposal_id)
-        )
+            # Emit event with the public opencode URL so frontends can connect
+            client.emit_event(
+                "worker.opencode_url",
+                f"OpenCode server available at {tunnel.url}",
+                agent=f"modal-{job_id[:8]}",
+                details={
+                    "opencode_url": tunnel.url,
+                    "job_id": job_id,
+                    "proposal_id": proposal_id,
+                },
+            )
 
-        return {
-            "job_id": job_id,
-            "proposal_id": proposal_id,
-            "status": "completed" if did_work else "no_work",
-        }
+            did_work = asyncio.run(
+                run_experiment_cycle(client, specific_proposal=proposal_id)
+            )
+
+            return {
+                "job_id": job_id,
+                "proposal_id": proposal_id,
+                "opencode_url": tunnel.url,
+                "status": "completed" if did_work else "no_work",
+            }
 
     except Exception as e:
         print(f"[modal-worker] ERROR: {e}")
@@ -228,8 +243,9 @@ def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
     os.environ["MAD_WORKSPACE"] = workspace
     os.environ["OPENCODE_BASE_URL"] = "http://127.0.0.1:4096"
 
+    # Bind 0.0.0.0 so the tunnel proxy can reach it
     opencode_proc = subprocess.Popen(
-        ["opencode", "serve", "--hostname", "127.0.0.1", "--port", "4096"],
+        ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -237,19 +253,34 @@ def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
     )
 
     try:
-        _wait_for_opencode("http://127.0.0.1:4096")
-        _verify_opencode_config("http://127.0.0.1:4096")
+        with modal.forward(4096) as tunnel:
+            _wait_for_opencode("http://127.0.0.1:4096")
+            _verify_opencode_config("http://127.0.0.1:4096")
+            print(f"[modal-worker] opencode public URL: {tunnel.url}")
 
-        from service.client import ExperimentClient
-        from service.worker import run_experiment_cycle
+            from service.client import ExperimentClient
+            from service.worker import run_experiment_cycle
 
-        client = ExperimentClient(base_url=service_url)
-        did_work = asyncio.run(run_experiment_cycle(client))
+            client = ExperimentClient(base_url=service_url)
 
-        return {
-            "job_id": job_id,
-            "status": "completed" if did_work else "no_work",
-        }
+            # Emit event with the public opencode URL so frontends can connect
+            client.emit_event(
+                "worker.opencode_url",
+                f"OpenCode server available at {tunnel.url}",
+                agent=f"modal-{job_id[:8]}",
+                details={
+                    "opencode_url": tunnel.url,
+                    "job_id": job_id,
+                },
+            )
+
+            did_work = asyncio.run(run_experiment_cycle(client))
+
+            return {
+                "job_id": job_id,
+                "opencode_url": tunnel.url,
+                "status": "completed" if did_work else "no_work",
+            }
 
     except Exception as e:
         return {"job_id": job_id, "status": "failed", "error": str(e)}
