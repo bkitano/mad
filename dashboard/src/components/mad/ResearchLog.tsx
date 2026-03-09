@@ -38,7 +38,7 @@ export default function ResearchLog({ apiUrl }: ResearchLogProps) {
           // Group events by date to simulate log entries
           const groupedByDate: Record<string, typeof events> = {}
           for (const event of events) {
-            const date = new Date(event.timestamp).toDateString()
+            const date = new Date(event.created_at).toDateString()
             if (!groupedByDate[date]) {
               groupedByDate[date] = []
             }
@@ -51,7 +51,7 @@ export default function ResearchLog({ apiUrl }: ResearchLogProps) {
             modified: new Date(date).getTime(),
             title: `Activity on ${date}`,
             date,
-            experiments: String(dateEvents.filter((e: { event_type: string }) => e.event_type.startsWith('experiment.')).length)
+            experiments: String(dateEvents.filter((e: { type: string }) => e.type.startsWith('experiment.')).length)
           }))
 
           setLogs(logEntries)
@@ -59,8 +59,8 @@ export default function ResearchLog({ apiUrl }: ResearchLogProps) {
           // Store content for each log entry
           const newContents = new Map(logContents)
           for (const [date, dateEvents] of Object.entries(groupedByDate)) {
-            const content = (dateEvents as Array<{ timestamp: string; event_type: string; summary: string; agent?: string }>)
-              .map(e => `**${new Date(e.timestamp).toLocaleTimeString()}** - [${e.event_type}] ${e.summary}${e.agent ? ` (${e.agent})` : ''}`)
+            const content = (dateEvents as Array<{ created_at: string; type: string; summary: string; agent_id?: string; experiment_id?: string }>)
+              .map(e => `**${new Date(e.created_at).toLocaleTimeString()}** - [${e.type}]${e.agent_id ? ` [${e.agent_id}]` : ''} ${e.summary}`)
               .join('\n\n')
             newContents.set(date, content)
           }

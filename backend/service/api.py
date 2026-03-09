@@ -300,7 +300,8 @@ async def stream_events():
     q: asyncio.Queue = asyncio.Queue()
 
     def on_insert(payload):
-        record = payload.get("new") or payload
+        data = payload.get("data", {})
+        record = data.get("record") or payload.get("new") or payload
         q.put_nowait(record)
 
     channel = supabase.channel("events-sse")

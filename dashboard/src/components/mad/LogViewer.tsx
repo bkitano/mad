@@ -18,8 +18,8 @@ export default function LogViewer({ apiUrl }: LogViewerProps) {
         if (res.ok) {
           const events = await res.json()
           // Format events as log lines
-          const logLines = events.map((event: { timestamp: string; event_type: string; summary: string; agent?: string }) =>
-            `[${new Date(event.timestamp).toLocaleString()}] [${event.event_type}] ${event.summary}${event.agent ? ` (${event.agent})` : ''}`
+          const logLines = events.map((event: { created_at: string; type: string; summary: string; agent_id?: string; experiment_id?: string }) =>
+            `[${new Date(event.created_at).toLocaleString()}] [${event.type}]${event.agent_id ? ` [${event.agent_id}]` : ''}${event.experiment_id ? ` [${event.experiment_id}]` : ''} ${event.summary}`
           )
           setLogs(logLines || [])
         }
@@ -31,6 +31,20 @@ export default function LogViewer({ apiUrl }: LogViewerProps) {
     }
 
     fetchLogs()
+
+    // Subscribe to SSE stream for realtime updates
+    const eventSource = new EventSource(`${apiUrl}/events/stream`)
+    eventSource.onmessage = (msg) => {
+      try {
+        const event = JSON.parse(msg.data)
+        const line = `[${new Date(event.created_at).toLocaleString()}] [${event.type}]${event.agent_id ? ` [${event.agent_id}]` : ''}${event.experiment_id ? ` [${event.experiment_id}]` : ''} ${event.summary}`
+        setLogs(prev => [...prev, line])
+      } catch {
+        // ignore unparseable messages
+      }
+    }
+
+    return () => eventSource.close()
   }, [apiUrl])
 
   // Auto-scroll to bottom when new logs arrive (since newest is at bottom)

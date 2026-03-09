@@ -163,10 +163,10 @@ export default function MADDashboard() {
       eventSource.onmessage = (e) => {
         try {
           const event = JSON.parse(e.data)
-          console.log('Received event:', event.event_type)
+          console.log('Received event:', event.type)
 
           // Handle claim-related events to update active work
-          if (event.event_type === 'claim.acquired' || event.event_type === 'claim.released') {
+          if (event.type === 'claim.acquired' || event.type === 'claim.released') {
             // Refetch claims on claim changes
             fetch(`${API_URL}/claims?status=active`)
               .then(res => res.json())
@@ -188,7 +188,7 @@ export default function MADDashboard() {
           }
 
           // Handle experiment events
-          if (event.event_type?.startsWith('experiment.')) {
+          if (event.type?.startsWith('experiment.')) {
             setLastUpdate(new Date())
           }
         } catch (err) {
@@ -223,8 +223,8 @@ export default function MADDashboard() {
       if (res.ok) {
         const events = await res.json()
         // Format events as markdown log
-        const logContent = events.map((event: { timestamp: string; event_type: string; summary: string; agent?: string }) =>
-          `**${new Date(event.timestamp).toLocaleString()}** - [${event.event_type}] ${event.summary}${event.agent ? ` (${event.agent})` : ''}`
+        const logContent = events.map((event: { created_at: string; type: string; summary: string; agent_id?: string; experiment_id?: string }) =>
+          `**${new Date(event.created_at).toLocaleString()}** - [${event.type}]${event.agent_id ? ` [${event.agent_id}]` : ''} ${event.summary}`
         ).join('\n\n')
         setSelectedLog({ id: proposalId, content: logContent || '# No Events\n\nNo events recorded for this experiment yet.' })
       } else {

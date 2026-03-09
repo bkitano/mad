@@ -66,7 +66,7 @@ def _clone_template(workspace: str, use_template: bool = False) -> None:
 
 
 def _wait_for_opencode(url: str, timeout_s: float = 30.0) -> None:
-    """Block until opencode HTTP server is ready."""
+    """Block until opencode HTTP server is ready (used before OpencodeService.start)."""
     import httpx
 
     deadline = time.time() + timeout_s
@@ -167,7 +167,8 @@ def run_job(
             print(f"[modal-worker] opencode public URL: {tunnel.url}")
 
             from service.client import ExperimentClient
-            from service.worker import run_experiment_cycle, run_with_forwarder
+            from service.opencode import OpencodeService
+            from service.worker import run_experiment_cycle
 
             client = ExperimentClient(base_url=service_url)
             agent_id = f"modal-{job_id[:8]}"
@@ -184,20 +185,30 @@ def run_job(
                 },
             )
 
-            # Run experiment with persistent SSE forwarder + grace period
-            did_work = asyncio.run(run_with_forwarder(
-                opencode_url="http://127.0.0.1:4096",
-                client=client,
-                agent_id=agent_id,
-                coro=run_experiment_cycle(client, specific_proposal=proposal_id),
-                grace_seconds=120,
-                grace_event_details={
-                    "opencode_url": tunnel.url,
-                    "job_id": job_id,
-                    "proposal_id": proposal_id,
-                    "grace_seconds": 120,
-                },
-            ))
+            async def _run():
+                opencode = OpencodeService(port=4096, client=client, agent_id=agent_id)
+                # Server already running — just start the forwarder
+                opencode._proc = opencode_proc
+                opencode.start_forwarder_only()
+
+                try:
+                    did_work = await run_experiment_cycle(
+                        client, opencode, specific_proposal=proposal_id,
+                    )
+                    await opencode.grace_period(
+                        120,
+                        details={
+                            "opencode_url": tunnel.url,
+                            "job_id": job_id,
+                            "proposal_id": proposal_id,
+                            "grace_seconds": 120,
+                        },
+                    )
+                    return did_work
+                finally:
+                    await opencode.stop()
+
+            did_work = asyncio.run(_run())
 
             return {
                 "job_id": job_id,
@@ -270,7 +281,8 @@ def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
             print(f"[modal-worker] opencode public URL: {tunnel.url}")
 
             from service.client import ExperimentClient
-            from service.worker import run_experiment_cycle, run_with_forwarder
+            from service.opencode import OpencodeService
+            from service.worker import run_experiment_cycle
 
             client = ExperimentClient(base_url=service_url)
             agent_id = f"modal-{job_id[:8]}"
@@ -286,19 +298,26 @@ def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
                 },
             )
 
-            # Run experiment with persistent SSE forwarder + grace period
-            did_work = asyncio.run(run_with_forwarder(
-                opencode_url="http://127.0.0.1:4096",
-                client=client,
-                agent_id=agent_id,
-                coro=run_experiment_cycle(client),
-                grace_seconds=120,
-                grace_event_details={
-                    "opencode_url": tunnel.url,
-                    "job_id": job_id,
-                    "grace_seconds": 120,
-                },
-            ))
+            async def _run():
+                opencode = OpencodeService(port=4096, client=client, agent_id=agent_id)
+                opencode._proc = opencode_proc
+                opencode._forwarder = asyncio.create_task(opencode._event_forwarder())
+
+                try:
+                    did_work = await run_experiment_cycle(client, opencode)
+                    await opencode.grace_period(
+                        120,
+                        details={
+                            "opencode_url": tunnel.url,
+                            "job_id": job_id,
+                            "grace_seconds": 120,
+                        },
+                    )
+                    return did_work
+                finally:
+                    await opencode.stop()
+
+            did_work = asyncio.run(_run())
 
             return {
                 "job_id": job_id,

@@ -430,8 +430,8 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
       if (res.ok) {
         const events = await res.json()
         // Format events as markdown log
-        const content = events.map((event: { timestamp: string; event_type: string; summary: string; agent?: string }) =>
-          `**${new Date(event.timestamp).toLocaleString()}** - [${event.event_type}] ${event.summary}${event.agent ? ` (${event.agent})` : ''}`
+        const content = events.map((event: { created_at: string; type: string; summary: string; agent_id?: string; experiment_id?: string }) =>
+          `**${new Date(event.created_at).toLocaleString()}** - [${event.type}]${event.agent_id ? ` [${event.agent_id}]` : ''} ${event.summary}`
         ).join('\n\n')
         setExperimentLog(content || '# No Events\n\nNo events recorded for this experiment yet.')
 
