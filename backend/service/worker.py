@@ -29,6 +29,7 @@ import argparse
 import asyncio
 import os
 import re
+import signal
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -302,6 +303,10 @@ async def run_experiment_cycle(
         root_event_id = exp_record.get("root_event_id")
         log(f"Created experiment {experiment_id}")
 
+        # Track current experiment on client so signal handlers can reference it
+        client._current_experiment_id = experiment_id
+        client._current_root_event_id = root_event_id
+
         # Tag the forwarder so all subsequent opencode events get this context
         opencode.metadata.update({
             "experiment_id": experiment_id,
@@ -361,10 +366,40 @@ async def run_experiment_cycle(
     finally:
         # Clear metadata so stale context doesn't leak into the next cycle
         opencode.metadata.clear()
+        client._current_experiment_id = None
+        client._current_root_event_id = None
         log(f"Finished working on {proposal_id}")
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
+
+
+def _install_signal_handlers(client: ExperimentClient):
+    """Install handlers for SIGTERM/SIGINT that emit a termination event before exiting."""
+    loop = asyncio.get_running_loop()
+
+    def _handle_signal(sig: signal.Signals):
+        sig_name = sig.name
+        log(f"Received {sig_name}, emitting termination event")
+        try:
+            # Get current experiment context from metadata if available
+            experiment_id = getattr(client, "_current_experiment_id", None)
+            parent_id = getattr(client, "_current_root_event_id", None)
+            client.emit_event(
+                "worker.terminated",
+                f"Worker {AGENT_ID} terminated by {sig_name}",
+                experiment_id=experiment_id,
+                agent=AGENT_ID,
+                details={"signal": sig_name},
+                parent_id=parent_id,
+            )
+        except Exception as e:
+            log(f"Failed to emit termination event: {e}")
+        # Re-raise as KeyboardInterrupt so the asyncio loop shuts down cleanly
+        raise SystemExit(128 + sig.value)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, _handle_signal, sig)
 
 
 async def main_async():
@@ -385,8 +420,13 @@ async def main_async():
 
     log(f"Worker starting, service={service_url}, workspace={WORKSPACE}")
 
+    _install_signal_handlers(client)
+
     try:
         if args.once or args.proposal:
+            # Track current experiment context on client for signal handler access
+            client._current_experiment_id = None
+            client._current_root_event_id = None
             await run_experiment_cycle(
                 client, opencode,
                 specific_proposal=args.proposal, dry_run=args.dry_run,
@@ -398,6 +438,8 @@ async def main_async():
             return
 
         log(f"Running continuously, poll interval={POLL_INTERVAL}s")
+        client._current_experiment_id = None
+        client._current_root_event_id = None
         while True:
             try:
                 did_work = await run_experiment_cycle(client, opencode, dry_run=args.dry_run)
