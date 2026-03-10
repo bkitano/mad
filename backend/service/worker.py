@@ -116,6 +116,18 @@ Maintain `experiments/experiment-log-{exp_id}.md`:
 - Training run details (Modal job ID, URL, metrics)
 - Final results and verdict
 
+After experiments complete, create `experiments/{exp_id}_results.md` with a JSON block:
+
+```json
+{
+  "wandb_run_id": "mad-lab/mad-architecture-search/abc123",
+  "modal_job_id": "fc-xyz789",
+  "final_metrics": {"val_loss": 0.12, "val_acc": 0.95}
+}
+```
+
+The `wandb_run_id` MUST be in `entity/project/run_id` format — this is used for verification.
+
 If the experiment fails at any point:
 - Write full error details to the log
 - Create experiments/{exp_id}_results.md documenting the failure

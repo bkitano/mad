@@ -14,6 +14,8 @@ import re
 from pathlib import Path
 from typing import Optional
 
+import wandb
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
@@ -244,24 +246,62 @@ def get_experiment_events(
     return event_bus.query(experiment_id=experiment_id, limit=limit)
 
 
+def _verify_wandb(wandb_url: str | None, wandb_run_id: str | None) -> dict:
+    """Call W&B API to validate the run actually exists and has metrics."""
+    if not wandb_url and not wandb_run_id:
+        return {"verified": False, "reason": "no wandb_url or wandb_run_id"}
+    run_ref = wandb_run_id or wandb_url
+    try:
+        api = wandb.Api()
+        run = api.run(run_ref)
+        summary = dict(run.summary)
+        return {
+            "verified": run.state == "finished",
+            "state": run.state,
+            "duration_seconds": run.summary.get("_runtime"),
+            "metrics": {k: v for k, v in summary.items() if not k.startswith("_")},
+            "created_at": str(run.created_at),
+        }
+    except Exception as e:
+        return {"verified": False, "reason": str(e)}
+
+
 @app.get("/experiments/{experiment_id}/verify")
 def verify_experiment(experiment_id: str):
     exp = db.get_experiment(experiment_id)
     if exp is None:
         raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
 
+    wandb_details = _verify_wandb(exp.get("wandb_url"), exp.get("wandb_run_id"))
+
+    # Compare claimed metrics vs W&B actuals if both exist
+    metrics_match = None
+    claimed_results = exp.get("results") or {}
+    claimed_metrics = claimed_results.get("final_metrics") if isinstance(claimed_results, dict) else None
+    actual_metrics = wandb_details.get("metrics")
+    if claimed_metrics and actual_metrics:
+        discrepancies = {
+            k: {"claimed": claimed_metrics[k], "actual": actual_metrics.get(k)}
+            for k in claimed_metrics
+            if k in actual_metrics and abs(claimed_metrics[k] - actual_metrics[k]) > 0.01
+        }
+        metrics_match = {"match": len(discrepancies) == 0, "discrepancies": discrepancies}
+
     checks = {
         "code_stored": experiment_store.get_code_dir(experiment_id) is not None,
         "code_integrity": experiment_store.verify_integrity(experiment_id),
         "modal_submitted": bool(exp.get("modal_job_id")),
         "modal_url": bool(exp.get("modal_url")),
-        "wandb_tracked": bool(exp.get("wandb_url")),
+        "wandb_details": wandb_details,
         "has_results": bool(exp.get("results")),
         "status": exp.get("status"),
     }
+    if metrics_match is not None:
+        checks["metrics_match"] = metrics_match
+
     checks["fully_verified"] = all([
         checks["code_stored"], checks["code_integrity"],
-        checks["modal_submitted"], checks["wandb_tracked"],
+        checks["modal_submitted"], wandb_details.get("verified"),
         checks["has_results"], checks["status"] == "completed",
     ])
 
