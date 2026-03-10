@@ -6,6 +6,7 @@ import ProposalsView from '../components/mad/ProposalsView'
 import TricksView from '../components/mad/TricksView'
 import ResearchLog from '../components/mad/ResearchLog'
 import CodeViewer from '../components/mad/CodeViewer'
+import WorkersView from '../components/mad/WorkersView'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -46,7 +47,7 @@ interface Experiment {
   submitted_at?: string
 }
 
-type TabType = 'experiments' | 'proposals' | 'tricks' | 'log'
+type TabType = 'experiments' | 'proposals' | 'tricks' | 'log' | 'workers'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://mad.briankitano.com'
 
@@ -60,6 +61,7 @@ export default function MADDashboard() {
     if (path.includes('/proposals')) return 'proposals'
     if (path.includes('/tricks')) return 'tricks'
     if (path.includes('/log')) return 'log'
+    if (path.includes('/workers')) return 'workers'
     return 'experiments'
   }
   const activeTab = getActiveTab()
@@ -336,6 +338,16 @@ export default function MADDashboard() {
           >
             Research Log
           </button>
+          <button
+            onClick={() => navigate('/workers')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'workers'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Workers
+          </button>
         </nav>
       </div>
 
@@ -588,6 +600,7 @@ export default function MADDashboard() {
       {activeTab === 'proposals' && <ProposalsView apiUrl={API_URL} />}
       {activeTab === 'tricks' && <TricksView apiUrl={API_URL} />}
       {activeTab === 'log' && <ResearchLog apiUrl={API_URL} />}
+      {activeTab === 'workers' && <WorkersView apiUrl={API_URL} />}
 
       {/* Results Modal */}
       {selectedResult && (
