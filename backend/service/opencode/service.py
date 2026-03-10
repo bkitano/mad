@@ -41,11 +41,9 @@ class OpencodeService:
         self,
         port: int,
         client: ExperimentClient,
-        agent_id: str,
     ):
         self.url = f"http://127.0.0.1:{port}"
         self.client = client
-        self.agent_id = agent_id
         self.metadata: dict = {}  # e.g. {"experiment_id": ..., "parent_id": ...}
         self.is_started: bool = False
         self._proc: Optional[subprocess.Popen] = None
@@ -300,7 +298,6 @@ class OpencodeService:
                                     event.type,
                                     summary[:500],
                                     experiment_id=experiment_id,
-                                    agent=self.agent_id,
                                     details=props,
                                     parent_id=parent_id,
                                 )
@@ -323,7 +320,6 @@ class OpencodeService:
             self.client.emit_event(
                 "worker.grace_period",
                 f"Experiment done, opencode staying up for {seconds}s grace period",
-                agent=self.agent_id,
                 experiment_id=self.metadata.get("experiment_id"),
                 parent_id=self.metadata.get("parent_id"),
                 details=details,

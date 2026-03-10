@@ -3,7 +3,6 @@ import { useState } from 'react'
 interface ExperimentCardProps {
   proposalId: string
   experiment: {
-    agent_id: string
     proposal_id: string
     started_at: string
     last_heartbeat: string
@@ -56,13 +55,6 @@ export default function ExperimentCard({ proposalId, experiment, onViewProposal,
           </div>
 
           <div className="space-y-1 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-gray-500">Agent:</span>
-              <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">
-                {experiment.agent_id}
-              </span>
-            </div>
-
             <div className="flex items-center gap-4 text-gray-600">
               <span>Runtime: {formatRuntime()}</span>
               <span>•</span>

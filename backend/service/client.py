@@ -10,7 +10,7 @@ Usage:
     client = ExperimentClient()  # defaults to http://localhost:8000
 
     # Create experiment
-    exp = client.create_experiment("042-monarch-gated", agent_id="exp-agent-01")
+    exp = client.create_experiment("042-monarch-gated")
 
     # Store code
     client.store_code(exp["id"], {"train.py": "...", "config.yaml": "..."})
@@ -76,12 +76,10 @@ class ExperimentClient:
     def create_experiment(
         self,
         proposal_id: str,
-        agent_id: str = "",
         cost_estimate: Optional[float] = None,
     ) -> dict:
         return self._post("/experiments", json={
             "proposal_id": proposal_id,
-            "agent_id": agent_id,
             "cost_estimate": cost_estimate,
         })
 
@@ -103,18 +101,14 @@ class ExperimentClient:
     def submit(
         self,
         experiment_id: str,
-        agent_id: str = "",
         config_file: str = "config.yaml",
     ) -> dict:
         return self._post(f"/experiments/{experiment_id}/submit", json={
-            "agent_id": agent_id,
             "config_file": config_file,
         })
 
-    def retry(self, experiment_id: str, agent_id: str = "") -> dict:
-        return self._post(f"/experiments/{experiment_id}/retry", json={
-            "agent_id": agent_id,
-        })
+    def retry(self, experiment_id: str) -> dict:
+        return self._post(f"/experiments/{experiment_id}/retry")
 
     def update_experiment(self, experiment_id: str, **fields) -> dict:
         return self._patch(f"/experiments/{experiment_id}", json=fields)
@@ -136,7 +130,6 @@ class ExperimentClient:
         event_type: str,
         summary: str,
         experiment_id: Optional[str] = None,
-        agent: str = "",
         details: Optional[dict] = None,
         parent_id: Optional[int] = None,
     ) -> dict:
@@ -144,7 +137,6 @@ class ExperimentClient:
             "event_type": event_type,
             "summary": summary,
             "experiment_id": experiment_id,
-            "agent": agent,
             "details": details,
             "parent_id": parent_id,
         })
@@ -207,38 +199,6 @@ class ExperimentClient:
             "hypothesis": hypothesis,
             "based_on": based_on,
         })
-
-    # ── Claims (distributed work coordination) ──────────────────────────────
-
-    def claim(self, proposal_id: str, agent_id: str) -> dict:
-        """Claim a proposal for work. Check result['claimed'] for success."""
-        return self._post("/claims", json={
-            "agent_id": agent_id,
-            "proposal_id": proposal_id,
-        })
-
-    def heartbeat(self, proposal_id: str, agent_id: str, details: Optional[str] = None) -> dict:
-        """Send heartbeat on a claim. Call every ~5 minutes during work."""
-        return self._post("/claims/heartbeat", json={
-            "agent_id": agent_id,
-            "proposal_id": proposal_id,
-            "details": details,
-        })
-
-    def release(self, proposal_id: str, agent_id: str, status: str = "completed") -> dict:
-        """Release a claim when done."""
-        return self._post("/claims/release", json={
-            "agent_id": agent_id,
-            "proposal_id": proposal_id,
-            "status": status,
-        })
-
-    def list_claims(self, status: str = "active") -> list:
-        return self._get("/claims", params={"status": status})
-
-    def is_claimed(self, proposal_id: str) -> bool:
-        result = self._get(f"/claims/{proposal_id}")
-        return result.get("claimed", False)
 
     def get_code_review(self, experiment_id: str) -> str:
         """Get all code as plaintext for review."""

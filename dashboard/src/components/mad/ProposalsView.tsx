@@ -60,14 +60,14 @@ function ProposalsList({ apiUrl }: ProposalsViewProps) {
     }
   }
 
-  // Fetch active experiments (claims)
+  // Fetch active experiments (running status)
   useEffect(() => {
     const fetchActiveWork = async () => {
       try {
-        const res = await fetch(`${apiUrl}/claims?status=active`)
+        const res = await fetch(`${apiUrl}/experiments?status=running`)
         if (res.ok) {
-          const claims = await res.json()
-          const activeIds = new Set<string>(claims.map((c: { proposal_id: string }) => c.proposal_id))
+          const exps = await res.json()
+          const activeIds = new Set<string>(exps.map((e: { proposal_id: string }) => e.proposal_id))
           setActiveExperiments(activeIds)
         }
       } catch (err) {
@@ -350,14 +350,14 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
     fetchProposals()
   }, [apiUrl])
 
-  // Fetch active experiments (claims)
+  // Fetch active experiments (running status)
   useEffect(() => {
     const fetchActiveWork = async () => {
       try {
-        const res = await fetch(`${apiUrl}/claims?status=active`)
+        const res = await fetch(`${apiUrl}/experiments?status=running`)
         if (res.ok) {
-          const claims = await res.json()
-          const activeIds = new Set<string>(claims.map((c: { proposal_id: string }) => c.proposal_id))
+          const exps = await res.json()
+          const activeIds = new Set<string>(exps.map((e: { proposal_id: string }) => e.proposal_id))
           setActiveExperiments(activeIds)
         }
       } catch (err) {
@@ -430,8 +430,8 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
       if (res.ok) {
         const events = await res.json()
         // Format events as markdown log
-        const content = events.map((event: { created_at: string; type: string; summary: string; agent_id?: string; experiment_id?: string }) =>
-          `**${new Date(event.created_at).toLocaleString()}** - [${event.type}]${event.agent_id ? ` [${event.agent_id}]` : ''} ${event.summary}`
+        const content = events.map((event: { created_at: string; type: string; summary: string; experiment_id?: string }) =>
+          `**${new Date(event.created_at).toLocaleString()}** - [${event.type}] ${event.summary}`
         ).join('\n\n')
         setExperimentLog(content || '# No Events\n\nNo events recorded for this experiment yet.')
 

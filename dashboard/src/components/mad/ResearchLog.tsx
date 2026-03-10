@@ -59,8 +59,8 @@ export default function ResearchLog({ apiUrl }: ResearchLogProps) {
           // Store content for each log entry
           const newContents = new Map(logContents)
           for (const [date, dateEvents] of Object.entries(groupedByDate)) {
-            const content = (dateEvents as Array<{ created_at: string; type: string; summary: string; agent_id?: string; experiment_id?: string }>)
-              .map(e => `**${new Date(e.created_at).toLocaleTimeString()}** - [${e.type}]${e.agent_id ? ` [${e.agent_id}]` : ''} ${e.summary}`)
+            const content = (dateEvents as Array<{ created_at: string; type: string; summary: string; experiment_id?: string }>)
+              .map(e => `**${new Date(e.created_at).toLocaleTimeString()}** - [${e.type}] ${e.summary}`)
               .join('\n\n')
             newContents.set(date, content)
           }

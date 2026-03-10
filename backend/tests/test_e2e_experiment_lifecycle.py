@@ -35,7 +35,6 @@ def test_create_stream_cancel(api):
 
     resp = api.post("/experiments", json={
         "proposal_id": proposal_id,
-        "agent_id": "e2e-test",
         "code_files": {"train.py": "print('hello from e2e test')"},
     })
     assert resp.status_code == 200, f"Failed to create experiment: {resp.text}"

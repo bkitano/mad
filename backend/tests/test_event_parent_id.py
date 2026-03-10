@@ -13,7 +13,6 @@ FAKE_EXPERIMENT = {
     "id": "042",
     "proposal_id": "042-test",
     "status": "created",
-    "agent_id": "agent-1",
     "config": {},
     "cost_estimate": None,
 }
@@ -22,7 +21,6 @@ FAKE_CREATED_EVENT = {
     "id": 1,
     "type": "experiment.created",
     "experiment_id": "042",
-    "agent_id": "agent-1",
     "summary": "Experiment 042 created from proposal 042-test",
     "parent_id": None,
 }
@@ -51,14 +49,13 @@ def test_create_experiment_emits_created_event_without_parent(mock_db, mock_even
     mock_db.create_experiment.return_value = FAKE_EXPERIMENT
     mock_event_bus.emit.return_value = FAKE_CREATED_EVENT
 
-    resp = client.post("/experiments", json={"proposal_id": "042-test", "agent_id": "agent-1"})
+    resp = client.post("/experiments", json={"proposal_id": "042-test"})
     assert resp.status_code == 200
 
     mock_event_bus.emit.assert_called_once_with(
         "experiment.created",
         "Experiment 042 created from proposal 042-test",
         experiment_id="042",
-        agent="agent-1",
     )
 
 
@@ -75,7 +72,6 @@ def test_create_experiment_with_code_sets_parent_id(mock_db, mock_event_bus, moc
         "/experiments",
         json={
             "proposal_id": "042-test",
-            "agent_id": "agent-1",
             "code_files": {"train.py": "print('hi')"},
         },
     )

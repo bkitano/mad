@@ -74,7 +74,6 @@ class CreateProposalRequest(BaseModel):
 
 class CreateExperimentRequest(BaseModel):
     proposal_id: str
-    agent_id: str = ""
     cost_estimate: Optional[float] = None
 
 
@@ -96,7 +95,6 @@ class EmitEventRequest(BaseModel):
     event_type: str
     summary: str
     experiment_id: Optional[str] = None
-    agent: str = ""
     details: Optional[dict] = None
     parent_id: Optional[int] = None
 
@@ -111,23 +109,6 @@ class DispatchTaskRequest(BaseModel):
 class DirectiveUpdateRequest(BaseModel):
     agent_name: str
     directive: str
-
-
-class ClaimRequest(BaseModel):
-    agent_id: str
-    proposal_id: str
-
-
-class HeartbeatRequest(BaseModel):
-    agent_id: str
-    proposal_id: str
-    details: Optional[str] = None
-
-
-class ReleaseRequest(BaseModel):
-    agent_id: str
-    proposal_id: str
-    status: str = "completed"
 
 
 class SendMessageRequest(BaseModel):
@@ -473,55 +454,6 @@ def get_stats():
     }
 
 
-# ── Claims ───────────────────────────────────────────────────────────────────
-
-
-@app.get("/claims")
-def get_claims(status: Optional[str] = Query("active")):
-    return proposals.list_claims(status=status)
-
-
-@app.post("/claims")
-def claim(req: ClaimRequest):
-    success = proposals.claim(req.proposal_id, req.agent_id)
-    if not success:
-        return {"claimed": False, "proposal_id": req.proposal_id, "reason": "already claimed"}
-
-    event_bus.emit(
-        "claim.acquired",
-        f"Proposal {req.proposal_id} claimed by {req.agent_id}",
-        agent=req.agent_id,
-        details={"proposal_id": req.proposal_id},
-    )
-    return {"claimed": True, "proposal_id": req.proposal_id, "agent_id": req.agent_id}
-
-
-@app.post("/claims/heartbeat")
-def claim_heartbeat(req: HeartbeatRequest):
-    success = proposals.heartbeat_claim(req.proposal_id, req.agent_id, req.details)
-    if not success:
-        raise HTTPException(status_code=404, detail="Claim not found or wrong agent")
-    return {"ok": True}
-
-
-@app.post("/claims/release")
-def release(req: ReleaseRequest):
-    success = proposals.release_claim(req.proposal_id, req.agent_id, req.status)
-
-    event_bus.emit(
-        "claim.released",
-        f"Proposal {req.proposal_id} released by {req.agent_id} ({req.status})",
-        agent=req.agent_id,
-        details={"proposal_id": req.proposal_id, "status": req.status},
-    )
-    return {"released": success}
-
-
-@app.get("/claims/{proposal_id}")
-def check_claim(proposal_id: str):
-    return {"proposal_id": proposal_id, "claimed": proposals.is_claimed(proposal_id)}
-
-
 # ── POST /experiments ────────────────────────────────────────────────────────
 
 
@@ -543,7 +475,6 @@ def create_experiment(req: CreateExperimentRequest):
     exp = experiments.create(
         experiment_id=experiment_id,
         proposal_id=req.proposal_id,
-        agent_id=req.agent_id,
         cost_estimate=req.cost_estimate,
     )
 
@@ -551,7 +482,6 @@ def create_experiment(req: CreateExperimentRequest):
         "experiment.created",
         f"Experiment {experiment_id} created from proposal {req.proposal_id}",
         experiment_id=experiment_id,
-        agent=req.agent_id,
     )
     root_event_id = created_event.get("id")
 
@@ -576,7 +506,6 @@ def create_experiment(req: CreateExperimentRequest):
                 "experiment.submitted",
                 f"Modal job submitted: {modal_result.get('job_id', experiment_id)}",
                 experiment_id=experiment_id,
-                agent=req.agent_id,
                 details=modal_result,
                 parent_id=root_event_id,
             )
@@ -585,7 +514,6 @@ def create_experiment(req: CreateExperimentRequest):
                 "experiment.submit_error",
                 f"Failed to submit to Modal: {e}",
                 experiment_id=experiment_id,
-                agent=req.agent_id,
                 parent_id=root_event_id,
             )
 
@@ -807,7 +735,6 @@ def post_event(req: EmitEventRequest):
         event_type=req.event_type,
         summary=req.summary,
         experiment_id=req.experiment_id,
-        agent=req.agent,
         details=req.details,
         parent_id=req.parent_id,
     )
@@ -909,7 +836,6 @@ def update_directive(req: DirectiveUpdateRequest):
         event_bus.emit(
             "directive.updated",
             f"Micro directive for {req.agent_name}: {req.directive[:100]}",
-            agent=req.agent_name,
         )
         return {"target": req.agent_name, "file": str(directive_file)}
 

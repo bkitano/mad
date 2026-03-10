@@ -30,7 +30,6 @@ import asyncio
 import os
 import re
 import signal
-import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -38,7 +37,6 @@ from service.client import ExperimentClient
 from service.opencode import OpenCodeAgentOptions, OpencodeService
 from service.opencode.types import EventMessagePartUpdated, TextPart, ToolPart
 
-AGENT_ID = os.environ.get("MAD_AGENT_ID", f"worker-{uuid.uuid4().hex[:8]}")
 POLL_INTERVAL = int(os.environ.get("MAD_POLL_INTERVAL", "300"))  # seconds
 
 # Workspace dirs inside this container
@@ -133,18 +131,16 @@ Human operators may inject additional prompts into this session at any time. Tre
 def log(msg: str):
     from datetime import datetime
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{ts}] [{AGENT_ID}] {msg}", flush=True)
+    print(f"[{ts}] [worker] {msg}", flush=True)
 
 
 def select_proposal(client: ExperimentClient) -> Optional[dict]:
-    """Pick the best unclaimed, unimplemented proposal."""
+    """Pick the best unimplemented proposal."""
     proposals = client.list_proposals(status="proposed")
-    claims = client.list_claims()
-    claimed_ids = {c["proposal_id"] for c in claims}
 
     candidates = [
         p for p in proposals
-        if p["id"] not in claimed_ids and p.get("has_mve")
+        if p.get("has_mve")
     ]
     if not candidates:
         return None
@@ -162,9 +158,8 @@ async def _heartbeat_loop(client: ExperimentClient, proposal_id: str, experiment
             if not stop.is_set():
                 client.emit_event(
                     "worker.heartbeat",
-                    f"Worker {AGENT_ID} heartbeat on {proposal_id}",
+                    f"Worker heartbeat on {proposal_id}",
                     experiment_id=experiment_id,
-                    agent=AGENT_ID,
                     details={"proposal_id": proposal_id, "detail": detail},
                     parent_id=root_event_id,
                 )
@@ -302,7 +297,7 @@ async def run_experiment_cycle(
         experiment_id = match.group(1).zfill(3) if match else proposal_id[:3]
 
         # 4. Create experiment record in API (server assigns run suffix if needed)
-        exp_record = client.create_experiment(proposal_id=proposal_id, agent_id=AGENT_ID)
+        exp_record = client.create_experiment(proposal_id=proposal_id)
         experiment_id = exp_record["id"]
         root_event_id = exp_record.get("root_event_id")
         log(f"Created experiment {experiment_id}")
@@ -319,9 +314,8 @@ async def run_experiment_cycle(
 
         client.emit_event(
             "info",
-            f"Worker {AGENT_ID} starting agent on {proposal_id}",
+            f"Worker starting agent on {proposal_id}",
             experiment_id=experiment_id,
-            agent=AGENT_ID,
             parent_id=root_event_id,
         )
         client.update_experiment(experiment_id, status="running")
@@ -350,7 +344,6 @@ async def run_experiment_cycle(
             "completed" if result["status"] == "completed" else "failed",
             f"Agent finished: {result['status']}",
             experiment_id=experiment_id,
-            agent=AGENT_ID,
             details={"results": result},
             parent_id=root_event_id,
         )
@@ -362,7 +355,6 @@ async def run_experiment_cycle(
         client.emit_event(
             "error",
             f"Worker error: {str(e)[:200]}",
-            agent=AGENT_ID,
             details={"error": str(e)},
         )
         return False
@@ -386,14 +378,12 @@ def _install_signal_handlers(client: ExperimentClient):
         sig_name = sig.name
         log(f"Received {sig_name}, emitting termination event")
         try:
-            # Get current experiment context from metadata if available
             experiment_id = getattr(client, "_current_experiment_id", None)
             parent_id = getattr(client, "_current_root_event_id", None)
             client.emit_event(
                 "worker.terminated",
-                f"Worker {AGENT_ID} terminated by {sig_name}",
+                f"Worker terminated by {sig_name}",
                 experiment_id=experiment_id,
-                agent=AGENT_ID,
                 details={"signal": sig_name},
                 parent_id=parent_id,
             )
@@ -420,20 +410,21 @@ async def main_async():
     service_url = args.service_url or os.environ.get("MAD_SERVICE_URL", "http://localhost:8000")
     client = ExperimentClient(base_url=service_url)
 
-    opencode = OpencodeService(port=args.opencode_port, client=client, agent_id=AGENT_ID)
+    opencode = OpencodeService(port=args.opencode_port, client=client)
     opencode.start()
 
     log(f"Worker starting, service={service_url}, workspace={WORKSPACE}")
 
     # Register with the API server
+    worker_id = f"worker-{os.getpid()}"
     try:
         _httpx = __import__("httpx")
         _httpx.post(
             f"{service_url}/workers/register",
-            json={"worker_id": AGENT_ID, "opencode_url": opencode.url},
+            json={"worker_id": worker_id, "opencode_url": opencode.url},
             timeout=5.0,
         )
-        log(f"Registered as worker {AGENT_ID} → {opencode.url}")
+        log(f"Registered as worker {worker_id} → {opencode.url}")
     except Exception as e:
         log(f"Warning: failed to register with API server: {e}")
 
