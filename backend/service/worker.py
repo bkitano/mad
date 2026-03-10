@@ -120,6 +120,10 @@ If the experiment fails at any point:
 - Write full error details to the log
 - Create experiments/{exp_id}_results.md documenting the failure
 - Never leave a silent failure
+
+## Human Messages
+
+Human operators may inject additional prompts into this session at any time. Treat these as high-priority guidance that overrides or augments your current plan.
 """
 
 
@@ -322,7 +326,7 @@ async def run_experiment_cycle(
         )
         client.update_experiment(experiment_id, status="running")
 
-        # 5. Run agent with background heartbeat
+        # 5. Run agent with background heartbeat and message relay
         stop_heartbeat = asyncio.Event()
         heartbeat_task = asyncio.create_task(
             _heartbeat_loop(client, proposal_id, experiment_id, "running agent", stop_heartbeat, root_event_id=root_event_id)
@@ -410,6 +414,7 @@ async def main_async():
     parser.add_argument("--service-url", default=None, help="API server URL")
     parser.add_argument("--opencode-port", type=int, default=4096, help="Port for opencode server")
     parser.add_argument("--grace-seconds", type=int, default=120, help="Grace period after experiment")
+    parser.add_argument("--idle", action="store_true", help="Start opencode server and sit idle (no proposals)")
     args = parser.parse_args()
 
     service_url = args.service_url or os.environ.get("MAD_SERVICE_URL", "http://localhost:8000")
@@ -420,9 +425,27 @@ async def main_async():
 
     log(f"Worker starting, service={service_url}, workspace={WORKSPACE}")
 
+    # Register with the API server
+    try:
+        _httpx = __import__("httpx")
+        _httpx.post(
+            f"{service_url}/workers/register",
+            json={"worker_id": AGENT_ID, "opencode_url": opencode.url},
+            timeout=5.0,
+        )
+        log(f"Registered as worker {AGENT_ID} → {opencode.url}")
+    except Exception as e:
+        log(f"Warning: failed to register with API server: {e}")
+
     _install_signal_handlers(client)
 
     try:
+        if args.idle:
+            log("Idle mode — opencode server running, no proposals will be processed")
+            log(f"  opencode URL: {opencode.url}")
+            while True:
+                await asyncio.sleep(3600)
+
         if args.once or args.proposal:
             # Track current experiment context on client for signal handler access
             client._current_experiment_id = None
