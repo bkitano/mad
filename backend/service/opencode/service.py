@@ -41,9 +41,11 @@ class OpencodeService:
         self,
         port: int,
         client: ExperimentClient,
+        worker_id: Optional[str] = None,
     ):
         self.url = f"http://127.0.0.1:{port}"
         self.client = client
+        self.worker_id = worker_id
         self.metadata: dict = {}  # e.g. {"experiment_id": ..., "parent_id": ...}
         self.is_started: bool = False
         self._proc: Optional[subprocess.Popen] = None
@@ -300,6 +302,7 @@ class OpencodeService:
                                     experiment_id=experiment_id,
                                     details=props,
                                     parent_id=parent_id,
+                                    worker_id=self.worker_id,
                                 )
                             except Exception:
                                 pass
@@ -323,6 +326,7 @@ class OpencodeService:
                 experiment_id=self.metadata.get("experiment_id"),
                 parent_id=self.metadata.get("parent_id"),
                 details=details,
+                worker_id=self.worker_id,
             )
             _log(f"Grace period {seconds}s — forwarder still active")
         await asyncio.sleep(seconds)

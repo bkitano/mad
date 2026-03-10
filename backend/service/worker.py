@@ -30,6 +30,7 @@ import asyncio
 import os
 import re
 import signal
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -37,6 +38,7 @@ from service.client import ExperimentClient
 from service.opencode import OpenCodeAgentOptions, OpencodeService
 from service.opencode.types import EventMessagePartUpdated, TextPart, ToolPart
 
+WORKER_ID = os.environ.get("MAD_WORKER_ID", f"worker-{uuid.uuid4().hex[:8]}")
 POLL_INTERVAL = int(os.environ.get("MAD_POLL_INTERVAL", "300"))  # seconds
 
 # Workspace dirs inside this container
@@ -131,7 +133,7 @@ Human operators may inject additional prompts into this session at any time. Tre
 def log(msg: str):
     from datetime import datetime
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{ts}] [worker] {msg}", flush=True)
+    print(f"[{ts}] [{WORKER_ID}] {msg}", flush=True)
 
 
 def select_proposal(client: ExperimentClient) -> Optional[dict]:
@@ -158,10 +160,11 @@ async def _heartbeat_loop(client: ExperimentClient, proposal_id: str, experiment
             if not stop.is_set():
                 client.emit_event(
                     "worker.heartbeat",
-                    f"Worker heartbeat on {proposal_id}",
+                    f"Worker {WORKER_ID} heartbeat on {proposal_id}",
                     experiment_id=experiment_id,
                     details={"proposal_id": proposal_id, "detail": detail},
                     parent_id=root_event_id,
+                    worker_id=WORKER_ID,
                 )
         except Exception:
             pass
@@ -297,7 +300,7 @@ async def run_experiment_cycle(
         experiment_id = match.group(1).zfill(3) if match else proposal_id[:3]
 
         # 4. Create experiment record in API (server assigns run suffix if needed)
-        exp_record = client.create_experiment(proposal_id=proposal_id)
+        exp_record = client.create_experiment(proposal_id=proposal_id, worker_id=WORKER_ID)
         experiment_id = exp_record["id"]
         root_event_id = exp_record.get("root_event_id")
         log(f"Created experiment {experiment_id}")
@@ -314,9 +317,10 @@ async def run_experiment_cycle(
 
         client.emit_event(
             "info",
-            f"Worker starting agent on {proposal_id}",
+            f"Worker {WORKER_ID} starting agent on {proposal_id}",
             experiment_id=experiment_id,
             parent_id=root_event_id,
+            worker_id=WORKER_ID,
         )
         client.update_experiment(experiment_id, status="running")
 
@@ -346,6 +350,7 @@ async def run_experiment_cycle(
             experiment_id=experiment_id,
             details={"results": result},
             parent_id=root_event_id,
+            worker_id=WORKER_ID,
         )
 
         return True
@@ -354,8 +359,9 @@ async def run_experiment_cycle(
         log(f"ERROR: {e}")
         client.emit_event(
             "error",
-            f"Worker error: {str(e)[:200]}",
+            f"Worker {WORKER_ID} error: {str(e)[:200]}",
             details={"error": str(e)},
+            worker_id=WORKER_ID,
         )
         return False
 
@@ -382,10 +388,11 @@ def _install_signal_handlers(client: ExperimentClient):
             parent_id = getattr(client, "_current_root_event_id", None)
             client.emit_event(
                 "worker.terminated",
-                f"Worker terminated by {sig_name}",
+                f"Worker {WORKER_ID} terminated by {sig_name}",
                 experiment_id=experiment_id,
-                details={"signal": sig_name},
+                details={"signal": sig_name, "worker_id": WORKER_ID},
                 parent_id=parent_id,
+                worker_id=WORKER_ID,
             )
         except Exception as e:
             log(f"Failed to emit termination event: {e}")
@@ -410,21 +417,20 @@ async def main_async():
     service_url = args.service_url or os.environ.get("MAD_SERVICE_URL", "http://localhost:8000")
     client = ExperimentClient(base_url=service_url)
 
-    opencode = OpencodeService(port=args.opencode_port, client=client)
+    opencode = OpencodeService(port=args.opencode_port, client=client, worker_id=WORKER_ID)
     opencode.start()
 
     log(f"Worker starting, service={service_url}, workspace={WORKSPACE}")
 
     # Register with the API server
-    worker_id = f"worker-{os.getpid()}"
     try:
         _httpx = __import__("httpx")
         _httpx.post(
             f"{service_url}/workers/register",
-            json={"worker_id": worker_id, "opencode_url": opencode.url},
+            json={"worker_id": WORKER_ID, "opencode_url": opencode.url},
             timeout=5.0,
         )
-        log(f"Registered as worker {worker_id} → {opencode.url}")
+        log(f"Registered as worker {WORKER_ID} → {opencode.url}")
     except Exception as e:
         log(f"Warning: failed to register with API server: {e}")
 

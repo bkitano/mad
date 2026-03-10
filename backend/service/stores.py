@@ -25,12 +25,13 @@ class ExperimentsStore:
         experiment_id: str,
         proposal_id: str,
         cost_estimate: Optional[float] = None,
+        worker_id: Optional[str] = None,
     ) -> dict:
         self.db._execute(
             """INSERT INTO experiments
-               (id, proposal_id, status, cost_estimate)
-               VALUES (%s, %s, 'created', %s)""",
-            (experiment_id, proposal_id, cost_estimate),
+               (id, proposal_id, status, cost_estimate, worker_id)
+               VALUES (%s, %s, 'created', %s, %s)""",
+            (experiment_id, proposal_id, cost_estimate, worker_id),
         )
         return self.get(experiment_id)
 
@@ -78,13 +79,14 @@ class EventsStore:
         experiment_id: Optional[str] = None,
         details: Optional[dict] = None,
         parent_id: Optional[int] = None,
+        worker_id: Optional[str] = None,
     ) -> dict:
         with self.db.get_connection() as conn, conn.cursor(
             cursor_factory=psycopg2.extras.RealDictCursor
         ) as cur:
             cur.execute(
-                """INSERT INTO events (type, experiment_id, summary, details, parent_id)
-                   VALUES (%s, %s, %s, %s, %s)
+                """INSERT INTO events (type, experiment_id, summary, details, parent_id, worker_id)
+                   VALUES (%s, %s, %s, %s, %s, %s)
                    RETURNING *""",
                 (
                     event_type,
@@ -92,6 +94,7 @@ class EventsStore:
                     summary,
                     json.dumps(details) if details else None,
                     parent_id,
+                    worker_id,
                 ),
             )
             return dict(cur.fetchone())

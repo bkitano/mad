@@ -75,6 +75,7 @@ class CreateProposalRequest(BaseModel):
 class CreateExperimentRequest(BaseModel):
     proposal_id: str
     cost_estimate: Optional[float] = None
+    worker_id: Optional[str] = None
 
 
 class StoreCodeRequest(BaseModel):
@@ -97,6 +98,7 @@ class EmitEventRequest(BaseModel):
     experiment_id: Optional[str] = None
     details: Optional[dict] = None
     parent_id: Optional[int] = None
+    worker_id: Optional[str] = None
 
 
 class DispatchTaskRequest(BaseModel):
@@ -476,12 +478,14 @@ def create_experiment(req: CreateExperimentRequest):
         experiment_id=experiment_id,
         proposal_id=req.proposal_id,
         cost_estimate=req.cost_estimate,
+        worker_id=req.worker_id,
     )
 
     created_event = event_bus.emit(
         "experiment.created",
         f"Experiment {experiment_id} created from proposal {req.proposal_id}",
         experiment_id=experiment_id,
+        worker_id=req.worker_id,
     )
     root_event_id = created_event.get("id")
 
@@ -737,6 +741,7 @@ def post_event(req: EmitEventRequest):
         experiment_id=req.experiment_id,
         details=req.details,
         parent_id=req.parent_id,
+        worker_id=req.worker_id,
     )
 
 

@@ -77,10 +77,12 @@ class ExperimentClient:
         self,
         proposal_id: str,
         cost_estimate: Optional[float] = None,
+        worker_id: Optional[str] = None,
     ) -> dict:
         return self._post("/experiments", json={
             "proposal_id": proposal_id,
             "cost_estimate": cost_estimate,
+            "worker_id": worker_id,
         })
 
     def store_code(self, experiment_id: str, files: dict[str, str]) -> dict:
@@ -132,6 +134,7 @@ class ExperimentClient:
         experiment_id: Optional[str] = None,
         details: Optional[dict] = None,
         parent_id: Optional[int] = None,
+        worker_id: Optional[str] = None,
     ) -> dict:
         return self._post("/events", json={
             "event_type": event_type,
@@ -139,6 +142,7 @@ class ExperimentClient:
             "experiment_id": experiment_id,
             "details": details,
             "parent_id": parent_id,
+            "worker_id": worker_id,
         })
 
     def get_events(
