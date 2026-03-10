@@ -9,6 +9,7 @@ Run:
 
 import asyncio
 import json
+import logging
 import os
 import re
 from pathlib import Path
@@ -27,6 +28,8 @@ import httpx as _httpx
 from service.db import DatabaseManager
 from service.stores import ExperimentsStore, EventsStore, ProposalsStore
 from service import event_bus, experiment_store
+
+logger = logging.getLogger(__name__)
 
 db = DatabaseManager()
 experiments = ExperimentsStore(db)
@@ -270,6 +273,7 @@ def _verify_wandb(wandb_url: str | None, wandb_run_id: str | None) -> dict:
             "created_at": str(run.created_at),
         }
     except Exception as e:
+        logger.error("wandb verify failed: %s: %s", type(e).__name__, e)
         return {"verified": False, "reason": str(e)}
 
 
@@ -287,11 +291,15 @@ def verify_experiment(experiment_id: str):
     claimed_metrics = claimed_results.get("final_metrics") if isinstance(claimed_results, dict) else None
     actual_metrics = wandb_details.get("metrics")
     if claimed_metrics and actual_metrics:
-        discrepancies = {
-            k: {"claimed": claimed_metrics[k], "actual": actual_metrics.get(k)}
-            for k in claimed_metrics
-            if k in actual_metrics and abs(claimed_metrics[k] - actual_metrics[k]) > 0.01
-        }
+        discrepancies = {}
+        for k in claimed_metrics:
+            if k not in actual_metrics:
+                continue
+            cv, av = claimed_metrics[k], actual_metrics[k]
+            if isinstance(cv, bool) or isinstance(av, bool) or not isinstance(cv, (int, float)) or not isinstance(av, (int, float)):
+                discrepancies[k] = {"claimed": cv, "actual": av}
+            elif abs(cv - av) > 0.01:
+                discrepancies[k] = {"claimed": cv, "actual": av}
         metrics_match = {"match": len(discrepancies) == 0, "discrepancies": discrepancies}
 
     checks = {
