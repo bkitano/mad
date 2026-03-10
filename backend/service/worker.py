@@ -154,41 +154,6 @@ def select_proposal(client: ExperimentClient) -> Optional[dict]:
     return candidates[0]
 
 
-async def _message_relay_loop(
-    client: ExperimentClient,
-    opencode: OpencodeService,
-    experiment_id: str,
-    stop: asyncio.Event,
-    poll_interval: float = 5.0,
-) -> None:
-    """Poll for message.to_agent events and inject them into the active OpenCode session."""
-    since: Optional[str] = None
-
-    while not stop.is_set():
-        await asyncio.sleep(poll_interval)
-        if stop.is_set():
-            break
-        try:
-            messages = client.get_events(
-                experiment_id=experiment_id,
-                event_type="message.to_agent",
-                since=since,
-            )
-            for msg in reversed(messages):  # oldest first (API returns newest first)
-                content = (msg.get("details") or {}).get("content") or msg.get("summary", "")
-                if content:
-                    try:
-                        await opencode.send_message(content)
-                        log(f"  Relayed message to agent: <REDACTED> (len={len(content)})")
-                        ts = msg.get("created_at")
-                        if ts and (since is None or ts > since):
-                            since = ts
-                    except Exception as e:
-                        log(f"  Failed to relay message: {e}")
-        except Exception as e:
-            log(f"  Message relay error: {e}")
-
-
 async def _heartbeat_loop(client: ExperimentClient, proposal_id: str, experiment_id: str, detail: str, stop: asyncio.Event, root_event_id: Optional[int] = None):
     """Send heartbeats every 30 seconds until stop is set."""
     while not stop.is_set():
@@ -366,10 +331,6 @@ async def run_experiment_cycle(
         heartbeat_task = asyncio.create_task(
             _heartbeat_loop(client, proposal_id, experiment_id, "running agent", stop_heartbeat, root_event_id=root_event_id)
         )
-        stop_relay = asyncio.Event()
-        relay_task = asyncio.create_task(
-            _message_relay_loop(client, opencode, experiment_id, stop_relay)
-        )
 
         try:
             result = await run_agent_on_proposal(
@@ -378,8 +339,6 @@ async def run_experiment_cycle(
         finally:
             stop_heartbeat.set()
             heartbeat_task.cancel()
-            stop_relay.set()
-            relay_task.cancel()
 
         # 6. Report outcome
         log(f"Agent finished. Status: {result['status']}")
@@ -455,6 +414,7 @@ async def main_async():
     parser.add_argument("--service-url", default=None, help="API server URL")
     parser.add_argument("--opencode-port", type=int, default=4096, help="Port for opencode server")
     parser.add_argument("--grace-seconds", type=int, default=120, help="Grace period after experiment")
+    parser.add_argument("--idle", action="store_true", help="Start opencode server and sit idle (no proposals)")
     args = parser.parse_args()
 
     service_url = args.service_url or os.environ.get("MAD_SERVICE_URL", "http://localhost:8000")
@@ -465,9 +425,27 @@ async def main_async():
 
     log(f"Worker starting, service={service_url}, workspace={WORKSPACE}")
 
+    # Register with the API server
+    try:
+        _httpx = __import__("httpx")
+        _httpx.post(
+            f"{service_url}/workers/register",
+            json={"worker_id": AGENT_ID, "opencode_url": opencode.url},
+            timeout=5.0,
+        )
+        log(f"Registered as worker {AGENT_ID} → {opencode.url}")
+    except Exception as e:
+        log(f"Warning: failed to register with API server: {e}")
+
     _install_signal_handlers(client)
 
     try:
+        if args.idle:
+            log("Idle mode — opencode server running, no proposals will be processed")
+            log(f"  opencode URL: {opencode.url}")
+            while True:
+                await asyncio.sleep(3600)
+
         if args.once or args.proposal:
             # Track current experiment context on client for signal handler access
             client._current_experiment_id = None

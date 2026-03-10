@@ -286,6 +286,7 @@ class OpencodeService:
                                 continue
 
                             summary = self._summarize(event)
+                            _log(f"  {event.type}: {summary[:200]}")
 
                             # Pull experiment_id from metadata (falls back to event props)
                             props = raw.get("properties", {})

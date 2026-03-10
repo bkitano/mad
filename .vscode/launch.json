@@ -25,6 +25,20 @@
                 "MAD_WORKSPACE": "${workspaceFolder}/.e2e/",
                 "MAD_SERVICE_URL": "http://localhost:8001"
             }
+        },
+        {
+            "name": "MAD Worker (idle)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "service.worker",
+            "args": ["--idle"],
+            "cwd": "${workspaceFolder}/backend",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "MAD_WORKSPACE": "${workspaceFolder}/.e2e/",
+                "MAD_SERVICE_URL": "http://localhost:8001"
+            }
         }
     ]
 }

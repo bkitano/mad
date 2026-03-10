@@ -33,6 +33,9 @@ proposals = ProposalsStore(db)
 
 MODAL_CREATE_JOB_URL = os.environ.get("MODAL_CREATE_JOB_URL", "")
 
+# Worker registry: worker_id -> opencode base URL
+_worker_registry: dict[str, str] = {}
+
 PROJECT_ROOT = Path(__file__).parent.parent
 
 app = FastAPI(
@@ -130,6 +133,16 @@ class ReleaseRequest(BaseModel):
 class SendMessageRequest(BaseModel):
     content: str
     sender: str = "human"
+
+
+class WorkerRegisterRequest(BaseModel):
+    worker_id: str
+    opencode_url: str
+
+
+class WorkerPromptRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
 
 
 # ── GET /experiments ─────────────────────────────────────────────────────────
@@ -652,22 +665,94 @@ def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
     return updated
 
 
-@app.post("/experiments/{experiment_id}/message", status_code=201)
-def send_message_to_experiment(experiment_id: str, req: SendMessageRequest):
-    exp = db.get_experiment(experiment_id)
-    if exp is None:
-        raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
-    if exp.get("status") not in ("running", "submitted"):
-        raise HTTPException(status_code=409, detail=f"Experiment is not running (status={exp.get('status')})")
-    event = event_bus.emit(
-        "message.to_agent",
-        req.content[:500],
-        experiment_id=experiment_id,
-        agent=req.sender,
-        details={"content": req.content, "sender": req.sender},
-        parent_id=event_bus.get_root_event(experiment_id),
-    )
-    return event
+# ── Worker proxy ─────────────────────────────────────────────────────────────
+
+
+def _get_worker_url(worker_id: str) -> str:
+    url = _worker_registry.get(worker_id)
+    if not url:
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not registered")
+    return url
+
+
+@app.get("/workers")
+def list_workers():
+    """List all registered workers."""
+    return {wid: {"opencode_url": url} for wid, url in _worker_registry.items()}
+
+
+@app.post("/workers/register")
+def register_worker(req: WorkerRegisterRequest):
+    """Register a worker's opencode URL."""
+    _worker_registry[req.worker_id] = req.opencode_url.rstrip("/")
+    return {"worker_id": req.worker_id, "opencode_url": _worker_registry[req.worker_id]}
+
+
+@app.delete("/workers/{worker_id}")
+def unregister_worker(worker_id: str):
+    """Unregister a worker."""
+    removed = _worker_registry.pop(worker_id, None)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not registered")
+    return {"worker_id": worker_id, "status": "removed"}
+
+
+@app.get("/workers/{worker_id}/sessions")
+async def list_worker_sessions(worker_id: str):
+    """List sessions on a worker's opencode server."""
+    url = _get_worker_url(worker_id)
+    async with _httpx.AsyncClient(base_url=url, timeout=10.0) as http:
+        resp = await http.get("/session")
+        resp.raise_for_status()
+        return resp.json()
+
+
+@app.post("/workers/{worker_id}/sessions")
+async def create_worker_session(worker_id: str):
+    """Create a new session on a worker's opencode server."""
+    url = _get_worker_url(worker_id)
+    async with _httpx.AsyncClient(base_url=url, timeout=10.0) as http:
+        resp = await http.post("/session", json={})
+        resp.raise_for_status()
+        return resp.json()
+
+
+@app.post("/workers/{worker_id}/prompt")
+async def worker_prompt(worker_id: str, req: WorkerPromptRequest):
+    """Send a message to a worker (fire-and-forget). Auto-creates session if needed."""
+    url = _get_worker_url(worker_id)
+    async with _httpx.AsyncClient(base_url=url, timeout=30.0) as http:
+        session_id = req.session_id
+        if not session_id:
+            resp = await http.post("/session", json={})
+            resp.raise_for_status()
+            session_id = resp.json()["id"]
+
+        resp = await http.post(
+            f"/session/{session_id}/prompt_async",
+            json={"parts": [{"type": "text", "text": req.message}]},
+        )
+        resp.raise_for_status()
+        return {"session_id": session_id, "status": "sent"}
+
+
+@app.post("/workers/{worker_id}/prompt/sync")
+async def worker_prompt_sync(worker_id: str, req: WorkerPromptRequest):
+    """Send a message and wait for the full response."""
+    url = _get_worker_url(worker_id)
+    async with _httpx.AsyncClient(base_url=url, timeout=None) as http:
+        session_id = req.session_id
+        if not session_id:
+            resp = await http.post("/session", json={})
+            resp.raise_for_status()
+            session_id = resp.json()["id"]
+
+        resp = await http.post(
+            f"/session/{session_id}/message",
+            json={"parts": [{"type": "text", "text": req.message}]},
+        )
+        resp.raise_for_status()
+        return {"session_id": session_id, "response": resp.json()}
 
 
 @app.post("/experiments/{experiment_id}/cancel")
