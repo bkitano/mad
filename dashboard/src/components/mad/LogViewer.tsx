@@ -18,8 +18,8 @@ export default function LogViewer({ apiUrl }: LogViewerProps) {
         if (res.ok) {
           const events = await res.json()
           // Format events as log lines
-          const logLines = events.map((event: { created_at: string; type: string; summary: string; agent_id?: string; experiment_id?: string }) =>
-            `[${new Date(event.created_at).toLocaleString()}] [${event.type}]${event.agent_id ? ` [${event.agent_id}]` : ''}${event.experiment_id ? ` [${event.experiment_id}]` : ''} ${event.summary}`
+          const logLines = events.map((event: { created_at: string; type: string; summary: string; experiment_id?: string }) =>
+            `[${new Date(event.created_at).toLocaleString()}] [${event.type}]${event.experiment_id ? ` [${event.experiment_id}]` : ''} ${event.summary}`
           )
           setLogs(logLines || [])
         }
@@ -37,7 +37,7 @@ export default function LogViewer({ apiUrl }: LogViewerProps) {
     eventSource.onmessage = (msg) => {
       try {
         const event = JSON.parse(msg.data)
-        const line = `[${new Date(event.created_at).toLocaleString()}] [${event.type}]${event.agent_id ? ` [${event.agent_id}]` : ''}${event.experiment_id ? ` [${event.experiment_id}]` : ''} ${event.summary}`
+        const line = `[${new Date(event.created_at).toLocaleString()}] [${event.type}]${event.experiment_id ? ` [${event.experiment_id}]` : ''} ${event.summary}`
         setLogs(prev => [...prev, line])
       } catch {
         // ignore unparseable messages

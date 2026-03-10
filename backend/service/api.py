@@ -38,6 +38,9 @@ proposals = ProposalsStore(db)
 
 MODAL_CREATE_JOB_URL = os.environ.get("MODAL_CREATE_JOB_URL", "")
 
+# Worker registry: worker_id -> opencode base URL
+_worker_registry: dict[str, str] = {}
+
 PROJECT_ROOT = Path(__file__).parent.parent
 
 app = FastAPI(
@@ -76,8 +79,8 @@ class CreateProposalRequest(BaseModel):
 
 class CreateExperimentRequest(BaseModel):
     proposal_id: str
-    agent_id: str = ""
     cost_estimate: Optional[float] = None
+    worker_id: Optional[str] = None
 
 
 class StoreCodeRequest(BaseModel):
@@ -98,9 +101,9 @@ class EmitEventRequest(BaseModel):
     event_type: str
     summary: str
     experiment_id: Optional[str] = None
-    agent: str = ""
     details: Optional[dict] = None
     parent_id: Optional[int] = None
+    worker_id: Optional[str] = None
 
 
 class DispatchTaskRequest(BaseModel):
@@ -115,21 +118,19 @@ class DirectiveUpdateRequest(BaseModel):
     directive: str
 
 
-class ClaimRequest(BaseModel):
-    agent_id: str
-    proposal_id: str
+class SendMessageRequest(BaseModel):
+    content: str
+    sender: str = "human"
 
 
-class HeartbeatRequest(BaseModel):
-    agent_id: str
-    proposal_id: str
-    details: Optional[str] = None
+class WorkerRegisterRequest(BaseModel):
+    worker_id: str
+    opencode_url: str
 
 
-class ReleaseRequest(BaseModel):
-    agent_id: str
-    proposal_id: str
-    status: str = "completed"
+class WorkerPromptRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
 
 
 # ── GET /experiments ─────────────────────────────────────────────────────────
@@ -503,55 +504,6 @@ def get_stats():
     }
 
 
-# ── Claims ───────────────────────────────────────────────────────────────────
-
-
-@app.get("/claims")
-def get_claims(status: Optional[str] = Query("active")):
-    return proposals.list_claims(status=status)
-
-
-@app.post("/claims")
-def claim(req: ClaimRequest):
-    success = proposals.claim(req.proposal_id, req.agent_id)
-    if not success:
-        return {"claimed": False, "proposal_id": req.proposal_id, "reason": "already claimed"}
-
-    event_bus.emit(
-        "claim.acquired",
-        f"Proposal {req.proposal_id} claimed by {req.agent_id}",
-        agent=req.agent_id,
-        details={"proposal_id": req.proposal_id},
-    )
-    return {"claimed": True, "proposal_id": req.proposal_id, "agent_id": req.agent_id}
-
-
-@app.post("/claims/heartbeat")
-def claim_heartbeat(req: HeartbeatRequest):
-    success = proposals.heartbeat_claim(req.proposal_id, req.agent_id, req.details)
-    if not success:
-        raise HTTPException(status_code=404, detail="Claim not found or wrong agent")
-    return {"ok": True}
-
-
-@app.post("/claims/release")
-def release(req: ReleaseRequest):
-    success = proposals.release_claim(req.proposal_id, req.agent_id, req.status)
-
-    event_bus.emit(
-        "claim.released",
-        f"Proposal {req.proposal_id} released by {req.agent_id} ({req.status})",
-        agent=req.agent_id,
-        details={"proposal_id": req.proposal_id, "status": req.status},
-    )
-    return {"released": success}
-
-
-@app.get("/claims/{proposal_id}")
-def check_claim(proposal_id: str):
-    return {"proposal_id": proposal_id, "claimed": proposals.is_claimed(proposal_id)}
-
-
 # ── POST /experiments ────────────────────────────────────────────────────────
 
 
@@ -573,15 +525,15 @@ def create_experiment(req: CreateExperimentRequest):
     exp = experiments.create(
         experiment_id=experiment_id,
         proposal_id=req.proposal_id,
-        agent_id=req.agent_id,
         cost_estimate=req.cost_estimate,
+        worker_id=req.worker_id,
     )
 
     created_event = event_bus.emit(
         "experiment.created",
         f"Experiment {experiment_id} created from proposal {req.proposal_id}",
         experiment_id=experiment_id,
-        agent=req.agent_id,
+        worker_id=req.worker_id,
     )
     root_event_id = created_event.get("id")
 
@@ -606,7 +558,6 @@ def create_experiment(req: CreateExperimentRequest):
                 "experiment.submitted",
                 f"Modal job submitted: {modal_result.get('job_id', experiment_id)}",
                 experiment_id=experiment_id,
-                agent=req.agent_id,
                 details=modal_result,
                 parent_id=root_event_id,
             )
@@ -615,7 +566,6 @@ def create_experiment(req: CreateExperimentRequest):
                 "experiment.submit_error",
                 f"Failed to submit to Modal: {e}",
                 experiment_id=experiment_id,
-                agent=req.agent_id,
                 parent_id=root_event_id,
             )
 
@@ -695,6 +645,96 @@ def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
     return updated
 
 
+# ── Worker proxy ─────────────────────────────────────────────────────────────
+
+
+def _get_worker_url(worker_id: str) -> str:
+    url = _worker_registry.get(worker_id)
+    if not url:
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not registered")
+    return url
+
+
+@app.get("/workers")
+def list_workers():
+    """List all registered workers."""
+    return {wid: {"opencode_url": url} for wid, url in _worker_registry.items()}
+
+
+@app.post("/workers/register")
+def register_worker(req: WorkerRegisterRequest):
+    """Register a worker's opencode URL."""
+    _worker_registry[req.worker_id] = req.opencode_url.rstrip("/")
+    return {"worker_id": req.worker_id, "opencode_url": _worker_registry[req.worker_id]}
+
+
+@app.delete("/workers/{worker_id}")
+def unregister_worker(worker_id: str):
+    """Unregister a worker."""
+    removed = _worker_registry.pop(worker_id, None)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not registered")
+    return {"worker_id": worker_id, "status": "removed"}
+
+
+@app.get("/workers/{worker_id}/sessions")
+async def list_worker_sessions(worker_id: str):
+    """List sessions on a worker's opencode server."""
+    url = _get_worker_url(worker_id)
+    async with _httpx.AsyncClient(base_url=url, timeout=10.0) as http:
+        resp = await http.get("/session")
+        resp.raise_for_status()
+        return resp.json()
+
+
+@app.post("/workers/{worker_id}/sessions")
+async def create_worker_session(worker_id: str):
+    """Create a new session on a worker's opencode server."""
+    url = _get_worker_url(worker_id)
+    async with _httpx.AsyncClient(base_url=url, timeout=10.0) as http:
+        resp = await http.post("/session", json={})
+        resp.raise_for_status()
+        return resp.json()
+
+
+@app.post("/workers/{worker_id}/prompt")
+async def worker_prompt(worker_id: str, req: WorkerPromptRequest):
+    """Send a message to a worker (fire-and-forget). Auto-creates session if needed."""
+    url = _get_worker_url(worker_id)
+    async with _httpx.AsyncClient(base_url=url, timeout=30.0) as http:
+        session_id = req.session_id
+        if not session_id:
+            resp = await http.post("/session", json={})
+            resp.raise_for_status()
+            session_id = resp.json()["id"]
+
+        resp = await http.post(
+            f"/session/{session_id}/prompt_async",
+            json={"parts": [{"type": "text", "text": req.message}]},
+        )
+        resp.raise_for_status()
+        return {"session_id": session_id, "status": "sent"}
+
+
+@app.post("/workers/{worker_id}/prompt/sync")
+async def worker_prompt_sync(worker_id: str, req: WorkerPromptRequest):
+    """Send a message and wait for the full response."""
+    url = _get_worker_url(worker_id)
+    async with _httpx.AsyncClient(base_url=url, timeout=None) as http:
+        session_id = req.session_id
+        if not session_id:
+            resp = await http.post("/session", json={})
+            resp.raise_for_status()
+            session_id = resp.json()["id"]
+
+        resp = await http.post(
+            f"/session/{session_id}/message",
+            json={"parts": [{"type": "text", "text": req.message}]},
+        )
+        resp.raise_for_status()
+        return {"session_id": session_id, "response": resp.json()}
+
+
 @app.post("/experiments/{experiment_id}/cancel")
 def cancel_experiment(experiment_id: str):
     """Cancel a running experiment and terminate its Modal job."""
@@ -747,9 +787,9 @@ def post_event(req: EmitEventRequest):
         event_type=req.event_type,
         summary=req.summary,
         experiment_id=req.experiment_id,
-        agent=req.agent,
         details=req.details,
         parent_id=req.parent_id,
+        worker_id=req.worker_id,
     )
 
 
@@ -849,7 +889,6 @@ def update_directive(req: DirectiveUpdateRequest):
         event_bus.emit(
             "directive.updated",
             f"Micro directive for {req.agent_name}: {req.directive[:100]}",
-            agent=req.agent_name,
         )
         return {"target": req.agent_name, "file": str(directive_file)}
 

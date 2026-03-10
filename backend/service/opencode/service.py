@@ -41,16 +41,17 @@ class OpencodeService:
         self,
         port: int,
         client: ExperimentClient,
-        agent_id: str,
+        worker_id: Optional[str] = None,
     ):
         self.url = f"http://127.0.0.1:{port}"
         self.client = client
-        self.agent_id = agent_id
+        self.worker_id = worker_id
         self.metadata: dict = {}  # e.g. {"experiment_id": ..., "parent_id": ...}
         self.is_started: bool = False
         self._proc: Optional[subprocess.Popen] = None
         self._stop = asyncio.Event()
         self._forwarder: Optional[asyncio.Task] = None
+        self._session_id: Optional[str] = None
 
     # ── lifecycle ────────────────────────────────────────────────────────
 
@@ -130,6 +131,7 @@ class OpencodeService:
             resp = await http.post("/session", json={})
             resp.raise_for_status()
             session_id: str = resp.json()["id"]
+            self._session_id = session_id
 
             # 2. Build the message body
             body: dict = {
@@ -202,11 +204,25 @@ class OpencodeService:
                         raise RuntimeError(f"OpenCode session error: {props}")
 
             finally:
+                self._session_id = None
                 sse_task.cancel()
                 try:
                     await sse_task
                 except asyncio.CancelledError:
                     pass
+
+    async def send_message(self, text: str) -> None:
+        """Inject a message into the active OpenCode session."""
+        session_id = self._session_id  # capture before any await
+        if not session_id:
+            raise RuntimeError("No active OpenCode session")
+        async with httpx.AsyncClient(base_url=self.url, timeout=30.0) as http:
+            resp = await http.post(
+                f"/session/{session_id}/prompt_async",
+                json={"parts": [{"type": "text", "text": text}]},
+            )
+            resp.raise_for_status()
+        _log(f"Injected message into session {session_id} (len={len(text)})")
 
     @staticmethod
     async def _sse_reader(http: httpx.AsyncClient, queue: asyncio.Queue) -> None:
@@ -270,6 +286,7 @@ class OpencodeService:
                                 continue
 
                             summary = self._summarize(event)
+                            _log(f"  {event.type}: {summary[:200]}")
 
                             # Pull experiment_id from metadata (falls back to event props)
                             props = raw.get("properties", {})
@@ -283,9 +300,9 @@ class OpencodeService:
                                     event.type,
                                     summary[:500],
                                     experiment_id=experiment_id,
-                                    agent=self.agent_id,
                                     details=props,
                                     parent_id=parent_id,
+                                    worker_id=self.worker_id,
                                 )
                             except Exception:
                                 pass
@@ -306,10 +323,10 @@ class OpencodeService:
             self.client.emit_event(
                 "worker.grace_period",
                 f"Experiment done, opencode staying up for {seconds}s grace period",
-                agent=self.agent_id,
                 experiment_id=self.metadata.get("experiment_id"),
                 parent_id=self.metadata.get("parent_id"),
                 details=details,
+                worker_id=self.worker_id,
             )
             _log(f"Grace period {seconds}s — forwarder still active")
         await asyncio.sleep(seconds)

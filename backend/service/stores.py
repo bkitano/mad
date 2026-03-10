@@ -1,5 +1,5 @@
 """
-Domain stores for experiments, events, proposals, and claims.
+Domain stores for experiments, events, and proposals.
 
 Each store takes a DatabaseManager instance and encapsulates
 all CRUD operations for its domain.
@@ -8,15 +8,12 @@ all CRUD operations for its domain.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import psycopg2
 import psycopg2.extras
 
 from service.db import DatabaseManager
-
-CLAIM_STALE_MINUTES = 30
 
 
 class ExperimentsStore:
@@ -27,14 +24,14 @@ class ExperimentsStore:
         self,
         experiment_id: str,
         proposal_id: str,
-        agent_id: str = "",
         cost_estimate: Optional[float] = None,
+        worker_id: Optional[str] = None,
     ) -> dict:
         self.db._execute(
             """INSERT INTO experiments
-               (id, proposal_id, status, agent_id, cost_estimate)
+               (id, proposal_id, status, cost_estimate, worker_id)
                VALUES (%s, %s, 'created', %s, %s)""",
-            (experiment_id, proposal_id, agent_id, cost_estimate),
+            (experiment_id, proposal_id, cost_estimate, worker_id),
         )
         return self.get(experiment_id)
 
@@ -80,24 +77,24 @@ class EventsStore:
         event_type: str,
         summary: str,
         experiment_id: Optional[str] = None,
-        agent: str = "",
         details: Optional[dict] = None,
         parent_id: Optional[int] = None,
+        worker_id: Optional[str] = None,
     ) -> dict:
         with self.db.get_connection() as conn, conn.cursor(
             cursor_factory=psycopg2.extras.RealDictCursor
         ) as cur:
             cur.execute(
-                """INSERT INTO events (type, experiment_id, agent_id, summary, details, parent_id)
+                """INSERT INTO events (type, experiment_id, summary, details, parent_id, worker_id)
                    VALUES (%s, %s, %s, %s, %s, %s)
                    RETURNING *""",
                 (
                     event_type,
                     experiment_id,
-                    agent,
                     summary,
                     json.dumps(details) if details else None,
                     parent_id,
+                    worker_id,
                 ),
             )
             return dict(cur.fetchone())
@@ -187,69 +184,3 @@ class ProposalsStore:
             (fname, f"{proposal_id}%"),
         )
 
-    # ── Claims ───────────────────────────────────────────────────────────────
-
-    def _clean_stale_claims(self, conn) -> int:
-        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=CLAIM_STALE_MINUTES)).isoformat()
-        with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM claims WHERE status = 'active' AND heartbeat_at < %s",
-                (cutoff,),
-            )
-            return cur.rowcount
-
-    def claim(self, proposal_id: str, agent_id: str) -> bool:
-        with self.db.get_connection() as conn:
-            self._clean_stale_claims(conn)
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                try:
-                    cur.execute(
-                        """INSERT INTO claims (proposal_id, agent_id, status)
-                           VALUES (%s, %s, 'active')""",
-                        (proposal_id, agent_id),
-                    )
-                    return True
-                except psycopg2.IntegrityError:
-                    conn.rollback()
-                    cur.execute(
-                        "SELECT agent_id, status FROM claims WHERE proposal_id = %s",
-                        (proposal_id,),
-                    )
-                    row = cur.fetchone()
-                    if row and row["agent_id"] == agent_id and row["status"] == "active":
-                        return True
-                    return False
-
-    def heartbeat_claim(self, proposal_id: str, agent_id: str, details: Optional[str] = None) -> bool:
-        return self.db._execute(
-            "UPDATE claims SET heartbeat_at = now(), details = COALESCE(%s, details) "
-            "WHERE proposal_id = %s AND agent_id = %s AND status = 'active'",
-            (details, proposal_id, agent_id),
-        ) > 0
-
-    def release_claim(self, proposal_id: str, agent_id: str, status: str = "completed") -> bool:
-        return self.db._execute(
-            "DELETE FROM claims WHERE proposal_id = %s AND agent_id = %s",
-            (proposal_id, agent_id),
-        ) > 0
-
-    def list_claims(self, status: Optional[str] = "active") -> list[dict]:
-        with self.db.get_connection() as conn:
-            self._clean_stale_claims(conn)
-
-        if status:
-            return self.db._fetch(
-                "SELECT * FROM claims WHERE status = %s ORDER BY claimed_at DESC",
-                (status,),
-            )
-        return self.db._fetch("SELECT * FROM claims ORDER BY claimed_at DESC")
-
-    def is_claimed(self, proposal_id: str) -> bool:
-        with self.db.get_connection() as conn:
-            self._clean_stale_claims(conn)
-
-        row = self.db._fetch_one(
-            "SELECT 1 FROM claims WHERE proposal_id = %s AND status = 'active'",
-            (proposal_id,),
-        )
-        return row is not None

@@ -31,18 +31,18 @@ def emit(
     event_type: str,
     summary: str,
     experiment_id: Optional[str] = None,
-    agent: str = "",
     details: Optional[dict] = None,
     parent_id: Optional[int] = None,
+    worker_id: Optional[str] = None,
 ) -> dict:
     """Emit an event: persist to Postgres, optionally webhook."""
     event = _events.emit(
         event_type=event_type,
         summary=summary,
         experiment_id=experiment_id,
-        agent=agent,
         details=details,
         parent_id=parent_id,
+        worker_id=worker_id,
     )
 
     if WEBHOOK_URL and event_type in WEBHOOK_EVENTS:

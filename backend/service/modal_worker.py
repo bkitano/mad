@@ -145,9 +145,10 @@ def run_job(
     _clone_template(workspace, use_template=use_template)
 
     # Set env vars the worker expects
+    worker_id = f"modal-{job_id[:8]}"
     os.environ["MAD_SERVICE_URL"] = service_url
-    os.environ["MAD_AGENT_ID"] = f"modal-{job_id[:8]}"
     os.environ["MAD_WORKSPACE"] = workspace
+    os.environ["MAD_WORKER_ID"] = worker_id
     os.environ["OPENCODE_BASE_URL"] = "http://127.0.0.1:4096"
 
     # Start opencode as a subprocess — bind 0.0.0.0 so the tunnel proxy can reach it
@@ -171,22 +172,21 @@ def run_job(
             from service.worker import run_experiment_cycle
 
             client = ExperimentClient(base_url=service_url)
-            agent_id = f"modal-{job_id[:8]}"
 
             # Emit event with the public opencode URL so frontends can connect
             client.emit_event(
                 "worker.opencode_url",
                 f"OpenCode server available at {tunnel.url}",
-                agent=agent_id,
                 details={
                     "opencode_url": tunnel.url,
                     "job_id": job_id,
                     "proposal_id": proposal_id,
                 },
+                worker_id=worker_id,
             )
 
             async def _run():
-                opencode = OpencodeService(port=4096, client=client, agent_id=agent_id)
+                opencode = OpencodeService(port=4096, client=client, worker_id=worker_id)
                 # Server already running — just start the forwarder
                 opencode._proc = opencode_proc
                 opencode.start_forwarder_only()
@@ -251,6 +251,7 @@ def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
 
     service_url = service_url or os.environ.get("MAD_SERVICE_URL", "http://mad.briankitano.com")
     job_id = str(uuid.uuid4())
+    worker_id = f"modal-{job_id[:8]}"
 
     workspace = "/workspace"
     os.makedirs(f"{workspace}/proposals", exist_ok=True)
@@ -261,8 +262,8 @@ def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
     _clone_template(workspace, use_template=use_template)
 
     os.environ["MAD_SERVICE_URL"] = service_url
-    os.environ["MAD_AGENT_ID"] = f"modal-{job_id[:8]}"
     os.environ["MAD_WORKSPACE"] = workspace
+    os.environ["MAD_WORKER_ID"] = worker_id
     os.environ["OPENCODE_BASE_URL"] = "http://127.0.0.1:4096"
 
     # Bind 0.0.0.0 so the tunnel proxy can reach it
@@ -285,21 +286,20 @@ def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
             from service.worker import run_experiment_cycle
 
             client = ExperimentClient(base_url=service_url)
-            agent_id = f"modal-{job_id[:8]}"
 
             # Emit event with the public opencode URL so frontends can connect
             client.emit_event(
                 "worker.opencode_url",
                 f"OpenCode server available at {tunnel.url}",
-                agent=agent_id,
                 details={
                     "opencode_url": tunnel.url,
                     "job_id": job_id,
                 },
+                worker_id=worker_id,
             )
 
             async def _run():
-                opencode = OpencodeService(port=4096, client=client, agent_id=agent_id)
+                opencode = OpencodeService(port=4096, client=client, worker_id=worker_id)
                 opencode._proc = opencode_proc
                 opencode._forwarder = asyncio.create_task(opencode._event_forwarder())
 

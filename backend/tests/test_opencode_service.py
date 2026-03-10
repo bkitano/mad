@@ -23,7 +23,7 @@ def mock_client():
 
 @pytest.fixture
 def service(mock_client):
-    return OpencodeService(port=4096, client=mock_client, agent_id="test-agent")
+    return OpencodeService(port=4096, client=mock_client)
 
 
 # ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -233,7 +233,6 @@ class TestForwarder:
             event.type,
             summary[:500],
             experiment_id=experiment_id,
-            agent=service.agent_id,
             details=props,
             parent_id=parent_id,
         )
@@ -241,7 +240,6 @@ class TestForwarder:
         call_kwargs = mock_client.emit_event.call_args[1]
         assert call_kwargs["experiment_id"] == "exp-42"
         assert call_kwargs["parent_id"] == 7
-        assert call_kwargs["agent"] == "test-agent"
 
 
 # ── Grace period ─────────────────────────────────────────────────────────────

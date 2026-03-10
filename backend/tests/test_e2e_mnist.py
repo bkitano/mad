@@ -196,7 +196,6 @@ Train a 2-layer conv-net on MNIST for 2 epochs with batch size 256.
     # ── 2. Create experiment from the proposal ────────────────────────────────
     resp = api.post("/experiments", json={
         "proposal_id": proposal_id,
-        "agent_id": "e2e-mnist-test",
     })
     assert resp.status_code == 200, f"Failed to create experiment: {resp.text}"
     experiment = resp.json()

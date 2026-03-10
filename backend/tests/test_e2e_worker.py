@@ -64,7 +64,7 @@ def opencode_reachable():
 @pytest.fixture
 def opencode_service(client):
     """Create an OpencodeService that connects to the already-running opencode server."""
-    svc = OpencodeService(port=OPENCODE_PORT, client=client, agent_id=f"e2e-test-{uuid.uuid4().hex[:6]}")
+    svc = OpencodeService(port=OPENCODE_PORT, client=client)
     return svc
 
 
@@ -111,10 +111,8 @@ class TestWorkerExperimentCreation:
             pytest.skip("No proposals available")
 
         proposal_id = proposals[0]["id"]
-        agent_id = f"e2e-test-{uuid.uuid4().hex[:6]}"
-
         # Create experiment
-        exp = client.create_experiment(proposal_id=proposal_id, agent_id=agent_id)
+        exp = client.create_experiment(proposal_id=proposal_id)
         experiment_id = exp["id"]
         print(f"  Created experiment: {experiment_id}")
 
@@ -132,7 +130,6 @@ class TestWorkerExperimentCreation:
             "test.child",
             "Test child event",
             experiment_id=experiment_id,
-            agent=agent_id,
             parent_id=root_event_id,
         )
         assert child["parent_id"] == root_event_id

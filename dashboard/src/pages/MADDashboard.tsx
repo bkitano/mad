@@ -6,16 +6,15 @@ import ProposalsView from '../components/mad/ProposalsView'
 import TricksView from '../components/mad/TricksView'
 import ResearchLog from '../components/mad/ResearchLog'
 import CodeViewer from '../components/mad/CodeViewer'
+import WorkersView from '../components/mad/WorkersView'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 
 interface ActiveExperiment {
-  agent_id: string
   proposal_id: string
   started_at: string
-  last_heartbeat: string
   status: string
 }
 
@@ -34,7 +33,6 @@ interface Experiment {
   id: string
   proposal_id: string
   status: string
-  agent_id: string
   wandb_url?: string
   results?: Record<string, unknown>
   error?: string
@@ -46,7 +44,7 @@ interface Experiment {
   submitted_at?: string
 }
 
-type TabType = 'experiments' | 'proposals' | 'tricks' | 'log'
+type TabType = 'experiments' | 'proposals' | 'tricks' | 'log' | 'workers'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://mad.briankitano.com'
 
@@ -60,6 +58,7 @@ export default function MADDashboard() {
     if (path.includes('/proposals')) return 'proposals'
     if (path.includes('/tricks')) return 'tricks'
     if (path.includes('/log')) return 'log'
+    if (path.includes('/workers')) return 'workers'
     return 'experiments'
   }
   const activeTab = getActiveTab()
@@ -108,26 +107,21 @@ export default function MADDashboard() {
     const fetchInitialState = async () => {
       try {
         console.log('Fetching initial state...')
-        // Fetch both claims (active work) and stats
-        const [claimsRes, statsRes] = await Promise.all([
-          fetch(`${API_URL}/claims?status=active`),
+        const [runningRes, statsRes] = await Promise.all([
+          fetch(`${API_URL}/experiments?status=running`),
           fetch(`${API_URL}/stats`)
         ])
 
-        if (claimsRes.ok && statsRes.ok) {
-          const claims = await claimsRes.json()
-          // Stats response available for future use
+        if (runningRes.ok && statsRes.ok) {
+          const runningExps = await runningRes.json()
           await statsRes.json()
 
-          // Transform claims into active_work format
           const activeWork: Record<string, ActiveExperiment> = {}
-          for (const claim of claims) {
-            activeWork[claim.proposal_id] = {
-              agent_id: claim.agent_id,
-              proposal_id: claim.proposal_id,
-              started_at: claim.claimed_at,
-              last_heartbeat: claim.last_heartbeat,
-              status: claim.status
+          for (const exp of runningExps) {
+            activeWork[exp.proposal_id] = {
+              proposal_id: exp.proposal_id,
+              started_at: exp.created_at,
+              status: exp.status
             }
           }
 
@@ -138,7 +132,6 @@ export default function MADDashboard() {
         }
       } catch (err) {
         console.error('Error fetching initial state:', err)
-        // Don't set error - SSE will handle it
       }
     }
 
@@ -165,31 +158,23 @@ export default function MADDashboard() {
           const event = JSON.parse(e.data)
           console.log('Received event:', event.type)
 
-          // Handle claim-related events to update active work
-          if (event.type === 'claim.acquired' || event.type === 'claim.released') {
-            // Refetch claims on claim changes
-            fetch(`${API_URL}/claims?status=active`)
+          // Handle experiment events — refetch running experiments
+          if (event.type?.startsWith('experiment.')) {
+            fetch(`${API_URL}/experiments?status=running`)
               .then(res => res.json())
-              .then(claims => {
+              .then(runningExps => {
                 const activeWork: Record<string, ActiveExperiment> = {}
-                for (const claim of claims) {
-                  activeWork[claim.proposal_id] = {
-                    agent_id: claim.agent_id,
-                    proposal_id: claim.proposal_id,
-                    started_at: claim.claimed_at,
-                    last_heartbeat: claim.last_heartbeat,
-                    status: claim.status
+                for (const exp of runningExps) {
+                  activeWork[exp.proposal_id] = {
+                    proposal_id: exp.proposal_id,
+                    started_at: exp.created_at,
+                    status: exp.status
                   }
                 }
                 setData(prev => ({ ...prev, active_work: activeWork } as DashboardData))
                 setLastUpdate(new Date())
               })
-              .catch(err => console.error('Error refetching claims:', err))
-          }
-
-          // Handle experiment events
-          if (event.type?.startsWith('experiment.')) {
-            setLastUpdate(new Date())
+              .catch(err => console.error('Error refetching experiments:', err))
           }
         } catch (err) {
           console.error('Error parsing event data:', err)
@@ -223,8 +208,8 @@ export default function MADDashboard() {
       if (res.ok) {
         const events = await res.json()
         // Format events as markdown log
-        const logContent = events.map((event: { created_at: string; type: string; summary: string; agent_id?: string; experiment_id?: string }) =>
-          `**${new Date(event.created_at).toLocaleString()}** - [${event.type}]${event.agent_id ? ` [${event.agent_id}]` : ''} ${event.summary}`
+        const logContent = events.map((event: { created_at: string; type: string; summary: string; experiment_id?: string }) =>
+          `**${new Date(event.created_at).toLocaleString()}** - [${event.type}] ${event.summary}`
         ).join('\n\n')
         setSelectedLog({ id: proposalId, content: logContent || '# No Events\n\nNo events recorded for this experiment yet.' })
       } else {
@@ -335,6 +320,16 @@ export default function MADDashboard() {
             }`}
           >
             Research Log
+          </button>
+          <button
+            onClick={() => navigate('/workers')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'workers'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Workers
           </button>
         </nav>
       </div>
@@ -486,7 +481,6 @@ export default function MADDashboard() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Proposal</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agent</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
@@ -511,11 +505,6 @@ export default function MADDashboard() {
                             }`}>
                               {exp.status}
                             </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            {exp.agent_id && (
-                              <span className="font-mono text-xs bg-gray-200 px-2 py-0.5 rounded">{exp.agent_id}</span>
-                            )}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-500">
                             {new Date(exp.created_at).toLocaleString()}
@@ -588,6 +577,7 @@ export default function MADDashboard() {
       {activeTab === 'proposals' && <ProposalsView apiUrl={API_URL} />}
       {activeTab === 'tricks' && <TricksView apiUrl={API_URL} />}
       {activeTab === 'log' && <ResearchLog apiUrl={API_URL} />}
+      {activeTab === 'workers' && <WorkersView apiUrl={API_URL} />}
 
       {/* Results Modal */}
       {selectedResult && (
