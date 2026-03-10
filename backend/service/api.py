@@ -24,7 +24,14 @@ from supabase import acreate_client
 
 import httpx as _httpx
 
-from service import db, event_bus, experiment_store
+from service.db import DatabaseManager
+from service.stores import ExperimentsStore, EventsStore, ProposalsStore
+from service import event_bus, experiment_store
+
+db = DatabaseManager()
+experiments = ExperimentsStore(db)
+events = EventsStore(db)
+proposals = ProposalsStore(db)
 
 MODAL_CREATE_JOB_URL = os.environ.get("MODAL_CREATE_JOB_URL", "")
 
@@ -47,7 +54,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup():
-    db.init_db()
+    pass
 
 
 # ── Pydantic models ─────────────────────────────────────────────────────────
@@ -131,12 +138,12 @@ def list_experiments(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
-    return db.list_experiments(status=status, limit=limit, offset=offset)
+    return experiments.list(status=status, limit=limit, offset=offset)
 
 
 @app.get("/experiments/{experiment_id}")
 def get_experiment(experiment_id: str):
-    exp = db.get_experiment(experiment_id)
+    exp = experiments.get(experiment_id)
     if exp is None:
         raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
     return exp
@@ -240,7 +247,7 @@ def get_experiment_events(
     experiment_id: str,
     limit: int = Query(100, ge=1, le=1000),
 ):
-    exp = db.get_experiment(experiment_id)
+    exp = experiments.get(experiment_id)
     if exp is None:
         raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
     return event_bus.query(experiment_id=experiment_id, limit=limit)
@@ -268,7 +275,7 @@ def _verify_wandb(wandb_url: str | None, wandb_run_id: str | None) -> dict:
 
 @app.get("/experiments/{experiment_id}/verify")
 def verify_experiment(experiment_id: str):
-    exp = db.get_experiment(experiment_id)
+    exp = experiments.get(experiment_id)
     if exp is None:
         raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
 
@@ -372,10 +379,10 @@ async def stream_events():
 
 @app.get("/events/{event_id}")
 def get_event(event_id: int):
-    rows = db._fetch("SELECT * FROM events WHERE id = %s", (event_id,))
-    if not rows:
+    event = events.get(event_id)
+    if event is None:
         raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
-    return rows[0]
+    return event
 
 
 @app.get("/events/{event_id}/children")
@@ -394,18 +401,7 @@ def get_event_children(
 def list_proposals(
     status: Optional[str] = Query(None, description="Filter by status"),
 ):
-    if status:
-        rows = db._fetch(
-            "SELECT filename, experiment_number, title, status, priority, created, based_on, results_file, content"
-            " FROM proposals WHERE lower(status) = lower(%s)"
-            " ORDER BY experiment_number NULLS LAST, filename",
-            (status,),
-        )
-    else:
-        rows = db._fetch(
-            "SELECT filename, experiment_number, title, status, priority, created, based_on, results_file, content"
-            " FROM proposals ORDER BY experiment_number NULLS LAST, filename"
-        )
+    rows = proposals.list(status=status)
 
     return [
         {
@@ -426,12 +422,7 @@ def list_proposals(
 
 @app.get("/proposals/{proposal_id}")
 def get_proposal(proposal_id: str):
-    fname = proposal_id if proposal_id.endswith(".md") else f"{proposal_id}.md"
-    row = db._fetch_one(
-        "SELECT * FROM proposals WHERE filename = %s OR filename LIKE %s"
-        " ORDER BY filename LIMIT 1",
-        (fname, f"{proposal_id}%"),
-    )
+    row = proposals.get(proposal_id)
     if row is None:
         raise HTTPException(status_code=404, detail=f"Proposal {proposal_id} not found")
 
@@ -457,7 +448,7 @@ def get_proposal(proposal_id: str):
 @app.post("/proposals")
 def create_proposal(req: CreateProposalRequest):
     """Create or upsert a proposal in the database."""
-    row = db.create_proposal(
+    row = proposals.create(
         filename=req.filename,
         title=req.title,
         content=req.content,
@@ -484,7 +475,7 @@ def create_proposal(req: CreateProposalRequest):
 
 @app.get("/stats")
 def get_stats():
-    all_exps = db.list_experiments(limit=10000)
+    all_exps = experiments.list(limit=10000)
     status_counts = {}
     for exp in all_exps:
         s = exp.get("status", "unknown")
@@ -509,12 +500,12 @@ def get_stats():
 
 @app.get("/claims")
 def get_claims(status: Optional[str] = Query("active")):
-    return db.list_claims(status=status)
+    return proposals.list_claims(status=status)
 
 
 @app.post("/claims")
 def claim(req: ClaimRequest):
-    success = db.claim_proposal(req.proposal_id, req.agent_id)
+    success = proposals.claim(req.proposal_id, req.agent_id)
     if not success:
         return {"claimed": False, "proposal_id": req.proposal_id, "reason": "already claimed"}
 
@@ -529,7 +520,7 @@ def claim(req: ClaimRequest):
 
 @app.post("/claims/heartbeat")
 def claim_heartbeat(req: HeartbeatRequest):
-    success = db.heartbeat_claim(req.proposal_id, req.agent_id, req.details)
+    success = proposals.heartbeat_claim(req.proposal_id, req.agent_id, req.details)
     if not success:
         raise HTTPException(status_code=404, detail="Claim not found or wrong agent")
     return {"ok": True}
@@ -537,7 +528,7 @@ def claim_heartbeat(req: HeartbeatRequest):
 
 @app.post("/claims/release")
 def release(req: ReleaseRequest):
-    success = db.release_claim(req.proposal_id, req.agent_id, req.status)
+    success = proposals.release_claim(req.proposal_id, req.agent_id, req.status)
 
     event_bus.emit(
         "claim.released",
@@ -550,7 +541,7 @@ def release(req: ReleaseRequest):
 
 @app.get("/claims/{proposal_id}")
 def check_claim(proposal_id: str):
-    return {"proposal_id": proposal_id, "claimed": db.is_proposal_claimed(proposal_id)}
+    return {"proposal_id": proposal_id, "claimed": proposals.is_claimed(proposal_id)}
 
 
 # ── POST /experiments ────────────────────────────────────────────────────────
@@ -565,13 +556,13 @@ def create_experiment(req: CreateExperimentRequest):
     experiment_id = match.group(1).zfill(3)
 
     # Auto-suffix for reruns
-    if db.get_experiment(experiment_id):
+    if experiments.get(experiment_id):
         run_num = 2
-        while db.get_experiment(f"{experiment_id}-r{run_num}"):
+        while experiments.get(f"{experiment_id}-r{run_num}"):
             run_num += 1
         experiment_id = f"{experiment_id}-r{run_num}"
 
-    exp = db.create_experiment(
+    exp = experiments.create(
         experiment_id=experiment_id,
         proposal_id=req.proposal_id,
         agent_id=req.agent_id,
@@ -602,7 +593,7 @@ def create_experiment(req: CreateExperimentRequest):
             modal_result = modal_resp.json()
             fc_id = modal_result.get("function_call_id")
             if fc_id:
-                db.update_experiment(experiment_id, modal_job_id=fc_id, status="submitted")
+                experiments.update(experiment_id, modal_job_id=fc_id, status="submitted")
             event_bus.emit(
                 "experiment.submitted",
                 f"Modal job submitted: {modal_result.get('job_id', experiment_id)}",
@@ -626,12 +617,12 @@ def create_experiment(req: CreateExperimentRequest):
 
 @app.post("/experiments/{experiment_id}/code")
 def store_experiment_code(experiment_id: str, req: StoreCodeRequest):
-    exp = db.get_experiment(experiment_id)
+    exp = experiments.get(experiment_id)
     if exp is None:
         raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
 
     store_result = experiment_store.store_code_from_dict(experiment_id, req.files)
-    db.update_experiment(
+    experiments.update(
         experiment_id,
         code_dir=store_result["code_dir"],
         code_hash=store_result["code_hash"],
@@ -648,7 +639,7 @@ def store_experiment_code(experiment_id: str, req: StoreCodeRequest):
 
 @app.post("/experiments/{experiment_id}/store-from-disk")
 def store_code_from_disk(experiment_id: str, source_dir: str = Query(...)):
-    exp = db.get_experiment(experiment_id)
+    exp = experiments.get(experiment_id)
     if exp is None:
         raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
 
@@ -657,7 +648,7 @@ def store_code_from_disk(experiment_id: str, source_dir: str = Query(...)):
         raise HTTPException(status_code=400, detail=f"Source directory does not exist: {source_dir}")
 
     store_result = experiment_store.store_code(experiment_id, source)
-    db.update_experiment(
+    experiments.update(
         experiment_id,
         code_dir=store_result["code_dir"],
         code_hash=store_result["code_hash"],
@@ -674,7 +665,7 @@ def store_code_from_disk(experiment_id: str, source_dir: str = Query(...)):
 
 @app.patch("/experiments/{experiment_id}")
 def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
-    exp = db.get_experiment(experiment_id)
+    exp = experiments.get(experiment_id)
     if exp is None:
         raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
 
@@ -682,7 +673,7 @@ def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    updated = db.update_experiment(experiment_id, **updates)
+    updated = experiments.update(experiment_id, **updates)
 
     if req.status:
         event_bus.emit(
@@ -699,7 +690,7 @@ def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
 @app.post("/experiments/{experiment_id}/cancel")
 def cancel_experiment(experiment_id: str):
     """Cancel a running experiment and terminate its Modal job."""
-    exp = db.get_experiment(experiment_id)
+    exp = experiments.get(experiment_id)
     if exp is None:
         raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
 
@@ -724,7 +715,7 @@ def cancel_experiment(experiment_id: str):
                 parent_id=event_bus.get_root_event(experiment_id),
             )
 
-    db.update_experiment(experiment_id, status="cancelled")
+    experiments.update(experiment_id, status="cancelled")
     event_bus.emit(
         "experiment.cancelled",
         f"Experiment {experiment_id} cancelled" + (" (Modal job terminated)" if modal_cancelled else ""),

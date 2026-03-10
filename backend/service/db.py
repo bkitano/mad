@@ -1,347 +1,98 @@
 """
-Postgres database layer for experiments, events, and claims.
+Postgres connection pool manager.
 
-Requires POSTGRES_URL env var (Supabase connection string).
+Requires PG* env vars (Supabase connection string).
 """
 
-import json
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from collections.abc import Generator
+from contextlib import contextmanager
+from threading import Lock
+from typing import Optional, Union
+
 import psycopg2
 import psycopg2.extras
-import psycopg2.pool
-
-_pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
+from psycopg2.pool import ThreadedConnectionPool
 
 
-def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
-    global _pool
-    if _pool is None or _pool.closed:
-        _pool = psycopg2.pool.ThreadedConnectionPool(
-            1, 10,
-            user=os.environ["PGUSER"],
-            password=os.environ["PGPASSWORD"],
-            host=os.environ["PGHOST"],
-            port=os.environ.get("PGPORT", "6543"),
-            dbname=os.environ.get("PGDATABASE", "postgres"),
-        )
-    return _pool
+class DatabaseManager:
+    """Manages database connections and operations via a thread-safe pool."""
 
+    DEFAULT_POOL_MIN_SIZE = 1
+    DEFAULT_POOL_MAX_SIZE = 10
 
-def _get_conn():
-    return _get_pool().getconn()
+    def __init__(
+        self,
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+        host: Optional[str] = None,
+        port: Optional[str] = None,
+        dbname: Optional[str] = None,
+        pool_min_size: Optional[int] = None,
+        pool_max_size: Optional[int] = None,
+    ) -> None:
+        self.connection_params = {
+            "user": user or os.environ["PGUSER"],
+            "password": password or os.environ["PGPASSWORD"],
+            "host": host or os.environ["PGHOST"],
+            "port": port or os.environ.get("PGPORT", "6543"),
+            "dbname": dbname or os.environ.get("PGDATABASE", "postgres"),
+        }
+        self._pool: Optional[ThreadedConnectionPool] = None
+        self._pool_lock = Lock()
+        self._pool_min_size = pool_min_size or self.DEFAULT_POOL_MIN_SIZE
+        self._pool_max_size = pool_max_size or self.DEFAULT_POOL_MAX_SIZE
 
+    def _ensure_pool(self) -> ThreadedConnectionPool:
+        if self._pool is None or self._pool.closed:
+            with self._pool_lock:
+                if self._pool is None or self._pool.closed:
+                    self._pool = ThreadedConnectionPool(
+                        self._pool_min_size,
+                        self._pool_max_size,
+                        **self.connection_params,
+                    )
+        return self._pool
 
-def _put_conn(conn):
-    try:
-        _get_pool().putconn(conn)
-    except Exception:
-        pass
+    @contextmanager
+    def get_connection(self) -> Generator[psycopg2.extensions.connection, None, None]:
+        """Yield a pooled database connection with automatic commit/rollback."""
+        pool = self._ensure_pool()
+        conn = pool.getconn()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            pool.putconn(conn)
 
+    def execute_query(
+        self, query: str, params: Optional[tuple] = None, fetch: bool = True
+    ) -> Union[list[dict], int, None]:
+        """Execute a query and return results.
 
+        For SELECT (fetch=True): returns list of dicts.
+        For INSERT/UPDATE/DELETE (fetch=False): returns rowcount.
+        """
+        with self.get_connection() as conn, conn.cursor(
+            cursor_factory=psycopg2.extras.RealDictCursor
+        ) as cursor:
+            cursor.execute(query, params)
+            if fetch and cursor.description:
+                return [dict(row) for row in cursor.fetchall()]
+            elif not fetch:
+                return cursor.rowcount
+            return None
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    def _fetch(self, sql: str, params: tuple = ()) -> list[dict]:
+        return self.execute_query(sql, params, fetch=True) or []
 
+    def _fetch_one(self, sql: str, params: tuple = ()) -> Optional[dict]:
+        rows = self._fetch(sql, params)
+        return rows[0] if rows else None
 
-def _fetch(sql: str, params: tuple = ()) -> list[dict]:
-    conn = _get_conn()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, params)
-            return [dict(row) for row in cur.fetchall()]
-    finally:
-        _put_conn(conn)
-
-
-def _fetch_one(sql: str, params: tuple = ()) -> Optional[dict]:
-    rows = _fetch(sql, params)
-    return rows[0] if rows else None
-
-
-def _execute(sql: str, params: tuple = ()) -> int:
-    """Execute a write query, return rowcount."""
-    conn = _get_conn()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            rowcount = cur.rowcount
-        conn.commit()
-        return rowcount
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _put_conn(conn)
-
-
-def init_db() -> None:
-    """No-op — tables created via migrations/001_experiments_and_events.sql."""
-    pass
-
-
-# ── Proposals ────────────────────────────────────────────────────────────────
-
-
-def create_proposal(
-    filename: str,
-    title: str,
-    content: str,
-    experiment_number: Optional[int] = None,
-    status: str = "draft",
-    priority: Optional[str] = None,
-    hypothesis: Optional[str] = None,
-    based_on: Optional[str] = None,
-) -> dict:
-    conn = _get_conn()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            # Delete existing proposal with same filename if any (upsert)
-            cur.execute("DELETE FROM proposals WHERE filename = %s", (filename,))
-            cur.execute(
-                """INSERT INTO proposals
-                   (filename, experiment_number, title, status, priority, hypothesis, based_on, content)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                   RETURNING *""",
-                (filename, experiment_number, title, status, priority, hypothesis, based_on, content),
-            )
-            row = dict(cur.fetchone())
-        conn.commit()
-        return row
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _put_conn(conn)
-
-
-# ── Experiments ──────────────────────────────────────────────────────────────
-
-
-def create_experiment(
-    experiment_id: str,
-    proposal_id: str,
-    agent_id: str = "",
-    cost_estimate: Optional[float] = None,
-) -> dict:
-    conn = _get_conn()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """INSERT INTO experiments
-                   (id, proposal_id, status, agent_id, cost_estimate)
-                   VALUES (%s, %s, 'created', %s, %s)""",
-                (
-                    experiment_id,
-                    proposal_id,
-                    agent_id,
-                    cost_estimate,
-                ),
-            )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _put_conn(conn)
-    return get_experiment(experiment_id)
-
-
-def get_experiment(experiment_id: str) -> Optional[dict]:
-    return _fetch_one("SELECT * FROM experiments WHERE id = %s", (experiment_id,))
-
-
-def list_experiments(
-    status: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0,
-) -> list[dict]:
-    if status:
-        return _fetch(
-            "SELECT * FROM experiments WHERE status = %s ORDER BY created_at DESC LIMIT %s OFFSET %s",
-            (status, limit, offset),
-        )
-    return _fetch(
-        "SELECT * FROM experiments ORDER BY created_at DESC LIMIT %s OFFSET %s",
-        (limit, offset),
-    )
-
-
-def update_experiment(experiment_id: str, **fields) -> Optional[dict]:
-    if not fields:
-        return get_experiment(experiment_id)
-
-    # Serialize dict fields to JSON
-    for json_field in ("config", "results"):
-        if json_field in fields and isinstance(fields[json_field], dict):
-            fields[json_field] = json.dumps(fields[json_field])
-
-    set_clause = ", ".join(f"{k} = %s" for k in fields)
-    values = list(fields.values()) + [experiment_id]
-
-    _execute(f"UPDATE experiments SET {set_clause} WHERE id = %s", tuple(values))
-    return get_experiment(experiment_id)
-
-
-# ── Events ───────────────────────────────────────────────────────────────────
-
-
-def emit_event(
-    event_type: str,
-    summary: str,
-    experiment_id: Optional[str] = None,
-    agent: str = "",
-    details: Optional[dict] = None,
-    parent_id: Optional[int] = None,
-) -> dict:
-    conn = _get_conn()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """INSERT INTO events (type, experiment_id, agent_id, summary, details, parent_id)
-                   VALUES (%s, %s, %s, %s, %s, %s)
-                   RETURNING *""",
-                (
-                    event_type,
-                    experiment_id,
-                    agent,
-                    summary,
-                    json.dumps(details) if details else None,
-                    parent_id,
-                ),
-            )
-            row = dict(cur.fetchone())
-        conn.commit()
-        return row
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _put_conn(conn)
-
-
-def list_events(
-    experiment_id: Optional[str] = None,
-    event_type: Optional[str] = None,
-    since: Optional[str] = None,
-    parent_id: Optional[int] = None,
-    limit: int = 100,
-    offset: int = 0,
-) -> list[dict]:
-    conditions: list[str] = []
-    params: list[Any] = []
-
-    if experiment_id:
-        conditions.append("experiment_id = %s")
-        params.append(experiment_id)
-    if event_type:
-        conditions.append("type = %s")
-        params.append(event_type)
-    if since:
-        conditions.append("created_at >= %s")
-        params.append(since)
-    if parent_id is not None:
-        conditions.append("parent_id = %s")
-        params.append(parent_id)
-
-    where = "WHERE " + " AND ".join(conditions) if conditions else ""
-    params.extend([limit, offset])
-
-    return _fetch(
-        f"SELECT * FROM events {where} ORDER BY created_at DESC LIMIT %s OFFSET %s",
-        tuple(params),
-    )
-
-
-# ── Claims ───────────────────────────────────────────────────────────────────
-
-CLAIM_STALE_MINUTES = 30
-
-
-def _clean_stale_claims(conn) -> int:
-    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=CLAIM_STALE_MINUTES)).isoformat()
-    with conn.cursor() as cur:
-        cur.execute(
-            "DELETE FROM claims WHERE status = 'active' AND heartbeat_at < %s",
-            (cutoff,),
-        )
-        return cur.rowcount
-
-
-def claim_proposal(proposal_id: str, agent_id: str) -> bool:
-    conn = _get_conn()
-    try:
-        _clean_stale_claims(conn)
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            try:
-                cur.execute(
-                    """INSERT INTO claims (proposal_id, agent_id, status)
-                       VALUES (%s, %s, 'active')""",
-                    (proposal_id, agent_id),
-                )
-                conn.commit()
-                return True
-            except psycopg2.IntegrityError:
-                conn.rollback()
-                # Check if same agent already holds it (idempotent re-claim)
-                cur.execute(
-                    "SELECT agent_id, status FROM claims WHERE proposal_id = %s",
-                    (proposal_id,),
-                )
-                row = cur.fetchone()
-                if row and row["agent_id"] == agent_id and row["status"] == "active":
-                    return True
-                return False
-    finally:
-        _put_conn(conn)
-
-
-def heartbeat_claim(proposal_id: str, agent_id: str, details: Optional[str] = None) -> bool:
-    return _execute(
-        "UPDATE claims SET heartbeat_at = now(), details = COALESCE(%s, details) "
-        "WHERE proposal_id = %s AND agent_id = %s AND status = 'active'",
-        (details, proposal_id, agent_id),
-    ) > 0
-
-
-def release_claim(proposal_id: str, agent_id: str, status: str = "completed") -> bool:
-    return _execute(
-        "DELETE FROM claims WHERE proposal_id = %s AND agent_id = %s",
-        (proposal_id, agent_id),
-    ) > 0
-
-
-def list_claims(status: Optional[str] = "active") -> list[dict]:
-    conn = _get_conn()
-    try:
-        _clean_stale_claims(conn)
-        conn.commit()
-    except Exception:
-        conn.rollback()
-    finally:
-        _put_conn(conn)
-
-    if status:
-        return _fetch(
-            "SELECT * FROM claims WHERE status = %s ORDER BY claimed_at DESC",
-            (status,),
-        )
-    return _fetch("SELECT * FROM claims ORDER BY claimed_at DESC")
-
-
-def is_proposal_claimed(proposal_id: str) -> bool:
-    conn = _get_conn()
-    try:
-        _clean_stale_claims(conn)
-        conn.commit()
-    except Exception:
-        conn.rollback()
-    finally:
-        _put_conn(conn)
-
-    row = _fetch_one(
-        "SELECT 1 FROM claims WHERE proposal_id = %s AND status = 'active'",
-        (proposal_id,),
-    )
-    return row is not None
+    def _execute(self, sql: str, params: tuple = ()) -> int:
+        result = self.execute_query(sql, params, fetch=False)
+        return result if isinstance(result, int) else 0

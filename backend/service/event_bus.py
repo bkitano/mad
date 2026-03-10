@@ -12,7 +12,11 @@ from typing import Optional
 
 import httpx
 
-from service.db import emit_event as _db_emit, list_events as _db_list
+from service.db import DatabaseManager
+from service.stores import EventsStore
+
+_db = DatabaseManager()
+_events = EventsStore(_db)
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +36,7 @@ def emit(
     parent_id: Optional[int] = None,
 ) -> dict:
     """Emit an event: persist to Postgres, optionally webhook."""
-    event = _db_emit(
+    event = _events.emit(
         event_type=event_type,
         summary=summary,
         experiment_id=experiment_id,
@@ -71,7 +75,7 @@ def _fire_webhook(event: dict) -> None:
 
 def get_root_event(experiment_id: str) -> Optional[int]:
     """Return the id of the experiment.created event for the given experiment, or None."""
-    rows = _db_list(
+    rows = _events.list(
         experiment_id=experiment_id,
         event_type="experiment.created",
         limit=1,
@@ -89,7 +93,7 @@ def query(
     limit: int = 100,
     offset: int = 0,
 ) -> list[dict]:
-    return _db_list(
+    return _events.list(
         experiment_id=experiment_id,
         event_type=event_type,
         since=since,
