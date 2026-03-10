@@ -174,6 +174,9 @@ class ExperimentClient:
     def get_event_children(self, event_id: int, limit: int = 100) -> list:
         return self._get(f"/events/{event_id}/children", params={"limit": limit})
 
+    def send_message_to_experiment(self, experiment_id: str, content: str, sender: str = "human") -> dict:
+        return self._post(f"/experiments/{experiment_id}/message", json={"content": content, "sender": sender})
+
     # ── Proposals ────────────────────────────────────────────────────────────
 
     def list_proposals(self, status: Optional[str] = None) -> list:

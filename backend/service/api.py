@@ -127,6 +127,11 @@ class ReleaseRequest(BaseModel):
     status: str = "completed"
 
 
+class SendMessageRequest(BaseModel):
+    content: str
+    sender: str = "human"
+
+
 # ── GET /experiments ─────────────────────────────────────────────────────────
 
 
@@ -645,6 +650,24 @@ def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
         )
 
     return updated
+
+
+@app.post("/experiments/{experiment_id}/message", status_code=201)
+def send_message_to_experiment(experiment_id: str, req: SendMessageRequest):
+    exp = db.get_experiment(experiment_id)
+    if exp is None:
+        raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
+    if exp.get("status") not in ("running", "submitted"):
+        raise HTTPException(status_code=409, detail=f"Experiment is not running (status={exp.get('status')})")
+    event = event_bus.emit(
+        "message.to_agent",
+        req.content[:500],
+        experiment_id=experiment_id,
+        agent=req.sender,
+        details={"content": req.content, "sender": req.sender},
+        parent_id=event_bus.get_root_event(experiment_id),
+    )
+    return event
 
 
 @app.post("/experiments/{experiment_id}/cancel")

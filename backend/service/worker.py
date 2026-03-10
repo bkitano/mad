@@ -120,6 +120,10 @@ If the experiment fails at any point:
 - Write full error details to the log
 - Create experiments/{exp_id}_results.md documenting the failure
 - Never leave a silent failure
+
+## Human Messages
+
+Human operators may inject additional prompts into this session at any time. Treat these as high-priority guidance that overrides or augments your current plan.
 """
 
 
@@ -148,6 +152,41 @@ def select_proposal(client: ExperimentClient) -> Optional[dict]:
     priority_order = {"high": 3, "medium": 2, "low": 1}
     candidates.sort(key=lambda p: -priority_order.get(p.get("priority", "low").lower(), 0))
     return candidates[0]
+
+
+async def _message_relay_loop(
+    client: ExperimentClient,
+    opencode: OpencodeService,
+    experiment_id: str,
+    stop: asyncio.Event,
+    poll_interval: float = 5.0,
+) -> None:
+    """Poll for message.to_agent events and inject them into the active OpenCode session."""
+    since: Optional[str] = None
+
+    while not stop.is_set():
+        await asyncio.sleep(poll_interval)
+        if stop.is_set():
+            break
+        try:
+            messages = client.get_events(
+                experiment_id=experiment_id,
+                event_type="message.to_agent",
+                since=since,
+            )
+            for msg in reversed(messages):  # oldest first (API returns newest first)
+                content = (msg.get("details") or {}).get("content") or msg.get("summary", "")
+                if content:
+                    try:
+                        await opencode.send_message(content)
+                        log(f"  Relayed message to agent: <REDACTED> (len={len(content)})")
+                        ts = msg.get("created_at")
+                        if ts and (since is None or ts > since):
+                            since = ts
+                    except Exception as e:
+                        log(f"  Failed to relay message: {e}")
+        except Exception as e:
+            log(f"  Message relay error: {e}")
 
 
 async def _heartbeat_loop(client: ExperimentClient, proposal_id: str, experiment_id: str, detail: str, stop: asyncio.Event, root_event_id: Optional[int] = None):
@@ -322,10 +361,14 @@ async def run_experiment_cycle(
         )
         client.update_experiment(experiment_id, status="running")
 
-        # 5. Run agent with background heartbeat
+        # 5. Run agent with background heartbeat and message relay
         stop_heartbeat = asyncio.Event()
         heartbeat_task = asyncio.create_task(
             _heartbeat_loop(client, proposal_id, experiment_id, "running agent", stop_heartbeat, root_event_id=root_event_id)
+        )
+        stop_relay = asyncio.Event()
+        relay_task = asyncio.create_task(
+            _message_relay_loop(client, opencode, experiment_id, stop_relay)
         )
 
         try:
@@ -335,6 +378,8 @@ async def run_experiment_cycle(
         finally:
             stop_heartbeat.set()
             heartbeat_task.cancel()
+            stop_relay.set()
+            relay_task.cancel()
 
         # 6. Report outcome
         log(f"Agent finished. Status: {result['status']}")
