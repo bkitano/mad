@@ -14,17 +14,16 @@ import re
 from pathlib import Path
 from typing import Optional
 
+import httpx as _httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from supabase import acreate_client
 
-import httpx as _httpx
-
-from service.db import DatabaseManager
-from service.stores import ExperimentsStore, EventsStore, ProposalsStore
 from service import event_bus, experiment_store
+from service.db import DatabaseManager
+from service.stores import EventsStore, ExperimentsStore, ProposalsStore
 
 db = DatabaseManager()
 experiments = ExperimentsStore(db)
@@ -497,10 +496,9 @@ def create_experiment(req: CreateExperimentRequest):
     experiment_id = match.group(1).zfill(3)
 
     # Auto-suffix for reruns
+    run_num = 1
     if experiments.get(experiment_id):
-        run_num = 2
-        while experiments.get(f"{experiment_id}-r{run_num}"):
-            run_num += 1
+        run_num = experiments.get_next_run_number(experiment_id)
         experiment_id = f"{experiment_id}-r{run_num}"
 
     exp = experiments.create(
@@ -508,6 +506,7 @@ def create_experiment(req: CreateExperimentRequest):
         proposal_id=req.proposal_id,
         cost_estimate=req.cost_estimate,
         worker_id=req.worker_id,
+        run_number=run_num,
     )
 
     created_event = event_bus.emit(
