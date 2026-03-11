@@ -33,6 +33,7 @@ interface Experiment {
   id: string
   proposal_id: string
   status: string
+  worker_id?: string
   wandb_url?: string
   results?: Record<string, unknown>
   error?: string
@@ -504,6 +505,7 @@ export default function MADDashboard() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Proposal</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Worker</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
@@ -528,6 +530,9 @@ export default function MADDashboard() {
                             }`}>
                               {exp.status}
                             </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm font-mono text-gray-500">
+                            {exp.worker_id || '—'}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-500">
                             {new Date(exp.created_at).toLocaleString()}

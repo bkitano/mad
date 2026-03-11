@@ -5,8 +5,9 @@ interface ExperimentCardProps {
   experiment: {
     proposal_id: string
     started_at: string
-    last_heartbeat: string
+    last_heartbeat?: string
     status: string
+    worker_id?: string
   }
   apiUrl: string
   onViewProposal?: (proposalId: string) => void
@@ -18,12 +19,12 @@ export default function ExperimentCard({ proposalId, experiment, onViewProposal,
   const [expanded, setExpanded] = useState(false)
 
   const startedAt = new Date(experiment.started_at)
-  const lastHeartbeat = new Date(experiment.last_heartbeat)
+  const lastHeartbeat = experiment.last_heartbeat ? new Date(experiment.last_heartbeat) : null
   const now = new Date()
 
   // Calculate time since last heartbeat
-  const timeSinceHeartbeat = Math.floor((now.getTime() - lastHeartbeat.getTime()) / 1000)
-  const isHealthy = timeSinceHeartbeat < 600 // 10 minutes
+  const timeSinceHeartbeat = lastHeartbeat ? Math.floor((now.getTime() - lastHeartbeat.getTime()) / 1000) : null
+  const isHealthy = timeSinceHeartbeat === null || timeSinceHeartbeat < 600 // 10 minutes
 
   // Calculate runtime
   const runtimeSeconds = Math.floor((now.getTime() - startedAt.getTime()) / 1000)
@@ -38,6 +39,7 @@ export default function ExperimentCard({ proposalId, experiment, onViewProposal,
   }
 
   const formatHeartbeat = () => {
+    if (timeSinceHeartbeat === null) return 'n/a'
     if (timeSinceHeartbeat < 60) return `${timeSinceHeartbeat}s ago`
     if (timeSinceHeartbeat < 3600) return `${Math.floor(timeSinceHeartbeat / 60)}m ago`
     return `${Math.floor(timeSinceHeartbeat / 3600)}h ago`
@@ -59,6 +61,12 @@ export default function ExperimentCard({ proposalId, experiment, onViewProposal,
               <span>Runtime: {formatRuntime()}</span>
               <span>•</span>
               <span>Last heartbeat: {formatHeartbeat()}</span>
+              {experiment.worker_id && (
+                <>
+                  <span>•</span>
+                  <span className="font-mono text-xs">{experiment.worker_id}</span>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -83,7 +91,7 @@ export default function ExperimentCard({ proposalId, experiment, onViewProposal,
             <div>
               <span className="text-gray-500">Last Heartbeat:</span>
               <div className="font-mono text-xs text-gray-900">
-                {lastHeartbeat.toLocaleString()}
+                {lastHeartbeat?.toLocaleString() ?? 'n/a'}
               </div>
             </div>
           </div>
