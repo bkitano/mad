@@ -51,6 +51,7 @@ export default defineConfig({
       'mini.tail-scale.ts.net',
       '.tail-scale.ts.net',
       '.trycloudflare.com',
+      'madder.briankitano.com',
     ],
     fs: {
       // Allow serving files from the memory-and-attention project

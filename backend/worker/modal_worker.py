@@ -29,7 +29,7 @@ import httpx
 import modal
 
 APP_NAME = "mad-worker"
-DEFAULT_SERVICE_URL = "http://mad.briankitano.com"
+DEFAULT_SERVICE_URL = "https://mad.briankitano.com"
 
 app = modal.App(APP_NAME)
 
