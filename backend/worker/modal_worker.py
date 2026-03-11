@@ -1,14 +1,11 @@
 """
-Modal-based experiment worker — one function invocation per job.
-
-Starts opencode as a subprocess, runs the experiment worker logic,
-and reports results back to the API server.
+Modal-based experiment worker -- pulls worker image from GHCR.
 
 Deploy:
-    uv run python -m modal deploy service/modal_worker.py
+    uv run python -m modal deploy worker.modal_worker
 
 Run a single job (for testing):
-    uv run python -m modal run service/modal_worker.py::run_job --job-id test-001 --proposal-id 042-monarch-gated
+    uv run python -m modal run worker.modal_worker::run_job --job-id test-001 --proposal-id 042-monarch-gated
 
 Trigger from API (fire-and-forget):
     curl -X POST https://<your-app>.modal.run/create_job \
@@ -29,18 +26,9 @@ TEMPLATE_REPO = "https://github.com/bkitano/mad-experiments-template.git"
 
 app = modal.App(APP_NAME)
 
-# Image: opencode + uv-managed deps + control plane code only
-image = (
-    modal.Image.debian_slim(python_version="3.12")
-    .apt_install("curl", "ca-certificates", "git")
-    .run_commands(
-        "curl -fsSL https://opencode.ai/install | bash",
-        "ln -s /root/.opencode/bin/opencode /usr/local/bin/opencode",
-    )
-    .uv_sync()  # installs deps from pyproject.toml / uv.lock
-    .add_local_python_source("service")
-    .add_local_file("opencode.jsonc", remote_path="/workspace/opencode.jsonc")
-)
+# Image: pull from GHCR (built by CI) instead of building inline
+WORKER_IMAGE = os.environ.get("MAD_WORKER_IMAGE", "ghcr.io/bkitano/mad-worker:latest")
+image = modal.Image.from_registry(WORKER_IMAGE, add_python="3.12")
 
 # Secrets: API keys for opencode, wandb, postgres, etc.
 # Create these in Modal dashboard: `modal secret create mad-worker-secrets ...`
@@ -151,7 +139,7 @@ def run_job(
     os.environ["MAD_WORKER_ID"] = worker_id
     os.environ["OPENCODE_BASE_URL"] = "http://127.0.0.1:4096"
 
-    # Start opencode as a subprocess — bind 0.0.0.0 so the tunnel proxy can reach it
+    # Start opencode as a subprocess -- bind 0.0.0.0 so the tunnel proxy can reach it
     opencode_proc = subprocess.Popen(
         ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"],
         stdout=subprocess.PIPE,
@@ -167,9 +155,9 @@ def run_job(
             print(f"[modal-worker] opencode ready, running proposal {proposal_id}")
             print(f"[modal-worker] opencode public URL: {tunnel.url}")
 
-            from service.client import ExperimentClient
-            from service.opencode import OpencodeService
-            from service.worker import run_experiment_cycle
+            from worker.client import ExperimentClient
+            from worker.opencode import OpencodeService
+            from worker.worker import run_experiment_cycle
 
             client = ExperimentClient(base_url=service_url)
 
@@ -187,7 +175,7 @@ def run_job(
 
             async def _run():
                 opencode = OpencodeService(port=4096, client=client, worker_id=worker_id)
-                # Server already running — just start the forwarder
+                # Server already running -- just start the forwarder
                 opencode._proc = opencode_proc
                 opencode.start_forwarder_only()
 
@@ -281,9 +269,9 @@ def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
             _verify_opencode_config("http://127.0.0.1:4096")
             print(f"[modal-worker] opencode public URL: {tunnel.url}")
 
-            from service.client import ExperimentClient
-            from service.opencode import OpencodeService
-            from service.worker import run_experiment_cycle
+            from worker.client import ExperimentClient
+            from worker.opencode import OpencodeService
+            from worker.worker import run_experiment_cycle
 
             client = ExperimentClient(base_url=service_url)
 
@@ -336,8 +324,7 @@ def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
             opencode_proc.kill()
 
 
-# ── Web endpoint: trigger a job via HTTP POST ────────────────────────────────
-
+# -- Web endpoint: trigger a job via HTTP POST ---------------------------------
 @app.function(image=image, secrets=[SECRETS])
 @modal.fastapi_endpoint(method="POST")
 def create_job(payload: dict) -> dict:
@@ -365,20 +352,3 @@ def create_job(payload: dict) -> dict:
             use_template=use_template,
         )
         return {"job_id": job_id, "proposal_id": proposal_id, "status": "queued", "function_call_id": fc.object_id}
-
-
-# ── Cron: run every 10 minutes to pick up new proposals ──────────────────────
-
-# @app.function(
-#     image=image,
-#     secrets=[SECRETS],
-#     schedule=modal.Period(minutes=10),
-#     timeout=60 * 60,
-#     cpu=2,
-#     memory=4096,
-# )
-# def poll_for_work():
-#     """Scheduled function that checks for unclaimed proposals and runs one."""
-#     result = run_next_job.remote()
-#     print(f"[cron] poll result: {result}")
-#     return result

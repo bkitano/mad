@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from service.opencode.types import (
+from worker.opencode.types import (
     EventMessagePartUpdated,
     EventSessionError,
     EventSessionIdle,

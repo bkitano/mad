@@ -13,7 +13,7 @@ from typing import Any, Optional
 import psycopg2
 import psycopg2.extras
 
-from service.db import DatabaseManager
+from api.db import DatabaseManager
 
 
 class ExperimentsStore:
@@ -187,4 +187,3 @@ class ProposalsStore:
             "SELECT * FROM proposals WHERE proposal_id = %s",
             (proposal_id,),
         )
-

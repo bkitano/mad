@@ -14,8 +14,8 @@ from typing import Optional
 
 import httpx
 
-from service.client import ExperimentClient
-from service.opencode.types import (
+from worker.client import ExperimentClient
+from worker.opencode.types import (
     Event,
     EventMessagePartUpdated,
     OpenCodeAgentOptions,
@@ -53,7 +53,7 @@ class OpencodeService:
         self._forwarder: Optional[asyncio.Task] = None
         self._session_id: Optional[str] = None
 
-    # ── lifecycle ────────────────────────────────────────────────────────
+    # -- lifecycle ---------------------------------------------------------
 
     def start(self) -> None:
         """Start the opencode server subprocess and the SSE forwarder task."""
@@ -108,7 +108,7 @@ class OpencodeService:
             time.sleep(0.5)
         raise RuntimeError(f"opencode not ready after {timeout_s}s; last_err={last_err!r}")
 
-    # ── query ────────────────────────────────────────────────────────────
+    # -- query -------------------------------------------------------------
 
     async def query(
         self,
@@ -121,7 +121,7 @@ class OpencodeService:
         session.idle. Requires the service to be started first.
         """
         if not self.is_started:
-            raise RuntimeError("OpencodeService is not started — call start() first")
+            raise RuntimeError("OpencodeService is not started -- call start() first")
 
         if options is None:
             options = OpenCodeAgentOptions()
@@ -239,7 +239,7 @@ class OpencodeService:
         finally:
             await queue.put(("done", None))
 
-    # ── SSE forwarder ────────────────────────────────────────────────────
+    # -- SSE forwarder -----------------------------------------------------
 
     @staticmethod
     def _summarize(event: Event) -> str:
@@ -315,7 +315,7 @@ class OpencodeService:
                 _log(f"SSE connection lost ({e}), reconnecting in 1s...")
                 await asyncio.sleep(1)
 
-    # ── grace period helper ──────────────────────────────────────────────
+    # -- grace period helper -----------------------------------------------
 
     async def grace_period(self, seconds: int, details: dict | None = None) -> None:
         """Keep the forwarder running for a grace period after experiment completion."""
@@ -328,5 +328,5 @@ class OpencodeService:
                 details=details,
                 worker_id=self.worker_id,
             )
-            _log(f"Grace period {seconds}s — forwarder still active")
+            _log(f"Grace period {seconds}s -- forwarder still active")
         await asyncio.sleep(seconds)

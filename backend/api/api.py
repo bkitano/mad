@@ -4,7 +4,7 @@ FastAPI service exposing the experiment execution system.
 All state is in Postgres (Supabase). Events table supports Realtime SSE.
 
 Run:
-    uvicorn service.api:app --host 0.0.0.0 --port 8000
+    uvicorn api.api:app --host 0.0.0.0 --port 8000
 """
 
 import asyncio
@@ -21,9 +21,9 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from supabase import acreate_client
 
-from service import event_bus, experiment_store
-from service.db import DatabaseManager
-from service.stores import EventsStore, ExperimentsStore, ProposalsStore
+from api import event_bus, experiment_store
+from api.db import DatabaseManager
+from api.stores import EventsStore, ExperimentsStore, ProposalsStore
 
 db = DatabaseManager()
 experiments = ExperimentsStore(db)
@@ -57,7 +57,7 @@ def startup():
     pass
 
 
-# ── Pydantic models ─────────────────────────────────────────────────────────
+# -- Pydantic models ----------------------------------------------------------
 
 
 class CreateProposalRequest(BaseModel):
@@ -125,7 +125,7 @@ class WorkerPromptRequest(BaseModel):
     session_id: Optional[str] = None
 
 
-# ── GET /experiments ─────────────────────────────────────────────────────────
+# -- GET /experiments ----------------------------------------------------------
 
 
 @app.get("/experiments")
@@ -303,7 +303,7 @@ def get_experiment_artifacts(experiment_id: str):
     }
 
 
-# ── GET /events ──────────────────────────────────────────────────────────────
+# -- GET /events --------------------------------------------------------------
 
 
 @app.get("/events")
@@ -382,7 +382,7 @@ def get_event_children(
     return event_bus.query(parent_id=event_id, limit=limit, offset=offset)
 
 
-# ── GET /proposals ───────────────────────────────────────────────────────────
+# -- GET /proposals ------------------------------------------------------------
 
 
 @app.get("/proposals")
@@ -420,7 +420,7 @@ def get_proposal(proposal_id: str):
     }
 
 
-# ── POST /proposals ─────────────────────────────────────────────────────────
+# -- POST /proposals -----------------------------------------------------------
 
 
 @app.post("/proposals")
@@ -443,7 +443,7 @@ def create_proposal(req: CreateProposalRequest):
     }
 
 
-# ── GET /stats ───────────────────────────────────────────────────────────────
+# -- GET /stats ----------------------------------------------------------------
 
 
 @app.get("/stats")
@@ -468,7 +468,7 @@ def get_stats():
     }
 
 
-# ── POST /experiments ────────────────────────────────────────────────────────
+# -- POST /experiments ---------------------------------------------------------
 
 
 @app.post("/experiments")
@@ -600,7 +600,7 @@ def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
     if req.status:
         event_bus.emit(
             f"experiment.{req.status}" if req.status in ("completed", "failed", "cancelled") else "experiment.updated",
-            f"Experiment {experiment_id} status → {req.status}",
+            f"Experiment {experiment_id} status \u2192 {req.status}",
             experiment_id=experiment_id,
             details=updates,
             parent_id=event_bus.get_root_event(experiment_id),
@@ -609,7 +609,7 @@ def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
     return updated
 
 
-# ── Worker proxy ─────────────────────────────────────────────────────────────
+# -- Worker proxy --------------------------------------------------------------
 
 
 def _get_worker_url(worker_id: str) -> str:
@@ -742,7 +742,7 @@ def cancel_experiment(experiment_id: str):
     }
 
 
-# ── POST /events ─────────────────────────────────────────────────────────────
+# -- POST /events -------------------------------------------------------------
 
 
 @app.post("/events")
@@ -757,7 +757,7 @@ def post_event(req: EmitEventRequest):
     )
 
 
-# ── POST /dispatch ───────────────────────────────────────────────────────────
+# -- POST /dispatch ------------------------------------------------------------
 
 
 TASK_QUEUE_DIR = Path(__file__).parent.parent / ".data" / "tasks"
@@ -786,7 +786,7 @@ def dispatch_task(req: DispatchTaskRequest):
 
     event_bus.emit(
         "task.dispatched",
-        f"Task dispatched: {req.agent_type} — {req.prompt[:100]}",
+        f"Task dispatched: {req.agent_type} \u2014 {req.prompt[:100]}",
         experiment_id=req.experiment_id,
         details=task,
     )
@@ -825,7 +825,7 @@ def update_task(task_id: str, status: str = Query(...)):
     return task
 
 
-# ── POST /directives ────────────────────────────────────────────────────────
+# -- POST /directives ---------------------------------------------------------
 
 
 DIRECTIVES_DIR = Path(__file__).parent.parent / "agent_directives"

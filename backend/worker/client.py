@@ -5,7 +5,7 @@ Agents should use this instead of importing service modules directly.
 This ensures all interactions go through the API and are properly tracked.
 
 Usage:
-    from service.client import ExperimentClient
+    from worker.client import ExperimentClient
 
     client = ExperimentClient()  # defaults to http://localhost:8000
 
