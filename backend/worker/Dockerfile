@@ -17,4 +17,5 @@ COPY opencode.jsonc /workspace/opencode.jsonc
 RUN mkdir -p /workspace/proposals /workspace/code /workspace/experiments
 ENV MAD_WORKSPACE=/workspace
 ENV OPENCODE_CONFIG=/workspace/opencode.jsonc
-ENTRYPOINT ["python", "-m", "worker.worker"]
+# Default entrypoint for standalone use; Modal overrides this with its own entrypoint
+CMD ["python", "-m", "worker.worker"]

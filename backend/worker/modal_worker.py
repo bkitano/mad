@@ -35,7 +35,17 @@ app = modal.App(APP_NAME)
 
 # Image: pull from GHCR (built by CI) instead of building inline
 WORKER_IMAGE = os.environ.get("MAD_WORKER_IMAGE", "ghcr.io/bkitano/mad-worker:latest")
-image = modal.Image.from_registry(WORKER_IMAGE, add_python="3.12")
+image = (
+    modal.Image.from_registry(WORKER_IMAGE)
+    .dockerfile_commands("ENTRYPOINT []")  # clear Dockerfile ENTRYPOINT so Modal can use its own
+    .run_commands(
+        # Install fastapi into both system python (for Modal's deploy check)
+        # and the venv (for runtime). The venv has no pip, so we use uv.
+        "/usr/local/bin/python -m pip install 'fastapi[standard]'",
+        "curl -LsSf https://astral.sh/uv/install.sh | sh"
+        ' && /root/.local/bin/uv pip install --python /app/.venv/bin/python "fastapi[standard]"',
+    )
+)
 
 # Secrets: API keys for opencode, wandb, postgres, etc.
 SECRETS = modal.Secret.from_name("mad-worker-secrets")
