@@ -276,6 +276,35 @@ def verify_experiment(experiment_id: str):
     return {"experiment_id": experiment_id, "checks": checks, "experiment": exp}
 
 
+@app.get("/experiments/{experiment_id}/artifacts")
+def get_experiment_artifacts(experiment_id: str):
+    exp = experiments.get(experiment_id)
+    if exp is None:
+        raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
+
+    # Fetch artifacts_url from event bus
+    artifacts_url = None
+    artifacts_events = event_bus.query(
+        experiment_id=experiment_id,
+        event_type="experiment.artifacts_ready",
+        limit=1,
+    )
+    if artifacts_events:
+        artifacts_url = artifacts_events[0].get("details", {}).get("artifacts_url")
+
+    code_files = experiment_store.list_files(experiment_id) if exp.get("code_hash") else []
+
+    return {
+        "experiment_id": experiment_id,
+        "proposal_id": exp.get("proposal_id"),
+        "status": exp.get("status"),
+        "artifacts_url": artifacts_url,
+        "code_files": code_files,
+        "wandb_url": exp.get("wandb_url"),
+        "results": exp.get("results"),
+    }
+
+
 # ── GET /events ──────────────────────────────────────────────────────────────
 
 
