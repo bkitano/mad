@@ -4,7 +4,7 @@ import ExperimentCard from '../components/mad/ExperimentCard'
 import LogViewer from '../components/mad/LogViewer'
 import ProposalsView from '../components/mad/ProposalsView'
 import TricksView from '../components/mad/TricksView'
-import ResearchLog from '../components/mad/ResearchLog'
+
 import CodeViewer from '../components/mad/CodeViewer'
 import WorkersView from '../components/mad/WorkersView'
 import ReactMarkdown from 'react-markdown'
@@ -46,7 +46,7 @@ interface Experiment {
   artifacts_url?: string
 }
 
-type TabType = 'experiments' | 'proposals' | 'tricks' | 'log' | 'workers'
+type TabType = 'experiments' | 'proposals' | 'tricks' | 'workers'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://mad.briankitano.com'
 
@@ -59,7 +59,7 @@ export default function MADDashboard() {
     const path = location.pathname
     if (path.includes('/proposals')) return 'proposals'
     if (path.includes('/tricks')) return 'tricks'
-    if (path.includes('/log')) return 'log'
+
     if (path.includes('/workers')) return 'workers'
     return 'experiments'
   }
@@ -336,16 +336,6 @@ export default function MADDashboard() {
             Tricks
           </button>
           <button
-            onClick={() => navigate('/log')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'log'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Research Log
-          </button>
-          <button
             onClick={() => navigate('/workers')}
             className={`py-2 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'workers'
@@ -610,7 +600,6 @@ export default function MADDashboard() {
 
       {activeTab === 'proposals' && <ProposalsView apiUrl={API_URL} />}
       {activeTab === 'tricks' && <TricksView apiUrl={API_URL} />}
-      {activeTab === 'log' && <ResearchLog apiUrl={API_URL} />}
       {activeTab === 'workers' && <WorkersView apiUrl={API_URL} />}
 
       {/* Results Modal */}

@@ -61,11 +61,9 @@ def startup():
 
 
 class CreateProposalRequest(BaseModel):
-    filename: str
+    proposal_id: str
     title: str
     content: str
-    experiment_number: Optional[int] = None
-    status: str = "draft"
     priority: Optional[str] = None
     hypothesis: Optional[str] = None
     based_on: Optional[str] = None
@@ -388,22 +386,16 @@ def get_event_children(
 
 
 @app.get("/proposals")
-def list_proposals(
-    status: Optional[str] = Query(None, description="Filter by status"),
-):
-    rows = proposals.list(status=status)
+def list_proposals():
+    rows = proposals.list()
 
     return [
         {
-            "id": row["filename"].removesuffix(".md"),
-            "filename": row["filename"],
-            "experiment_number": row["experiment_number"],
+            "id": row["proposal_id"],
             "title": row["title"],
-            "status": row["status"],
             "priority": row["priority"],
-            "created": str(row["created"]) if row["created"] else None,
+            "created": str(row["created"]) if row.get("created") else None,
             "based_on": row["based_on"],
-            "results_file": row["results_file"],
             "has_mve": "## Minimum Viable Experiment" in (row["content"] or ""),
         }
         for row in rows
@@ -417,16 +409,12 @@ def get_proposal(proposal_id: str):
         raise HTTPException(status_code=404, detail=f"Proposal {proposal_id} not found")
 
     return {
-        "id": row["filename"].removesuffix(".md"),
-        "filename": row["filename"],
-        "experiment_number": row["experiment_number"],
+        "id": row["proposal_id"],
         "title": row["title"],
-        "status": row["status"],
         "priority": row["priority"],
-        "created": str(row["created"]) if row["created"] else None,
+        "created": str(row["created"]) if row.get("created") else None,
         "based_on": row["based_on"],
-        "results_file": row["results_file"],
-        "hypothesis": row["hypothesis"],
+        "hypothesis": row.get("hypothesis"),
         "has_mve": "## Minimum Viable Experiment" in (row["content"] or ""),
         "content": row["content"],
     }
@@ -439,21 +427,16 @@ def get_proposal(proposal_id: str):
 def create_proposal(req: CreateProposalRequest):
     """Create or upsert a proposal in the database."""
     row = proposals.create(
-        filename=req.filename,
+        proposal_id=req.proposal_id,
         title=req.title,
         content=req.content,
-        experiment_number=req.experiment_number,
-        status=req.status,
         priority=req.priority,
         hypothesis=req.hypothesis,
         based_on=req.based_on,
     )
     return {
-        "id": row["filename"].removesuffix(".md"),
-        "filename": row["filename"],
-        "experiment_number": row["experiment_number"],
+        "id": row["proposal_id"],
         "title": row["title"],
-        "status": row["status"],
         "priority": row["priority"],
         "hypothesis": row.get("hypothesis"),
         "content": row["content"],

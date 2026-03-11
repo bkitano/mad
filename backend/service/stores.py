@@ -157,11 +157,9 @@ class ProposalsStore:
 
     def create(
         self,
-        filename: str,
+        proposal_id: str,
         title: str,
         content: str,
-        experiment_number: Optional[int] = None,
-        status: str = "draft",
         priority: Optional[str] = None,
         hypothesis: Optional[str] = None,
         based_on: Optional[str] = None,
@@ -169,33 +167,24 @@ class ProposalsStore:
         with self.db.get_connection() as conn, conn.cursor(
             cursor_factory=psycopg2.extras.RealDictCursor
         ) as cur:
-            cur.execute("DELETE FROM proposals WHERE filename = %s", (filename,))
+            cur.execute("DELETE FROM proposals WHERE proposal_id = %s", (proposal_id,))
             cur.execute(
                 """INSERT INTO proposals
-                   (filename, experiment_number, title, status, priority, hypothesis, based_on, content)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                   (proposal_id, title, priority, hypothesis, based_on, content)
+                   VALUES (%s, %s, %s, %s, %s, %s)
                    RETURNING *""",
-                (filename, experiment_number, title, status, priority, hypothesis, based_on, content),
+                (proposal_id, title, priority, hypothesis, based_on, content),
             )
             return dict(cur.fetchone())
 
-    def list(self, status: Optional[str] = None) -> list[dict]:
-        cols = "filename, experiment_number, title, status, priority, created, based_on, results_file, content"
-        if status:
-            return self.db._fetch(
-                f"SELECT {cols} FROM proposals WHERE lower(status) = lower(%s)"
-                " ORDER BY experiment_number NULLS LAST, filename",
-                (status,),
-            )
+    def list(self) -> list[dict]:
         return self.db._fetch(
-            f"SELECT {cols} FROM proposals ORDER BY experiment_number NULLS LAST, filename"
+            "SELECT * FROM proposals ORDER BY proposal_id"
         )
 
     def get(self, proposal_id: str) -> Optional[dict]:
-        fname = proposal_id if proposal_id.endswith(".md") else f"{proposal_id}.md"
         return self.db._fetch_one(
-            "SELECT * FROM proposals WHERE filename = %s OR filename LIKE %s"
-            " ORDER BY filename LIMIT 1",
-            (fname, f"{proposal_id}%"),
+            "SELECT * FROM proposals WHERE proposal_id = %s",
+            (proposal_id,),
         )
 

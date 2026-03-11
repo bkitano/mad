@@ -8,17 +8,11 @@ import CodeViewer from './CodeViewer'
 
 interface Proposal {
   id: string
-  filename: string
   title?: string
-  status?: string
   priority?: string
   created?: string
   based_on?: string
-  modified: number
-  experiment_number?: string
-  experiment_log?: boolean
-  results_file?: boolean
-  code_available?: boolean
+  has_mve?: boolean
 }
 
 interface ProposalsViewProps {
@@ -30,55 +24,7 @@ function ProposalsList({ apiUrl }: ProposalsViewProps) {
   const navigate = useNavigate()
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<{ status?: string; priority?: string }>({})
-  const [activeExperiments, setActiveExperiments] = useState<Set<string>>(new Set())
-  const [dispatching, setDispatching] = useState<string | null>(null)
-  const [dispatchResult, setDispatchResult] = useState<{ id: string; success: boolean; message: string } | null>(null)
-
-  const dispatchExperiment = async (e: React.MouseEvent, proposalId: string) => {
-    e.stopPropagation()
-    setDispatching(proposalId)
-    setDispatchResult(null)
-    try {
-      // Create experiment from proposal using new API
-      const res = await fetch(`${apiUrl}/experiments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposal_id: proposalId })
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setDispatchResult({ id: proposalId, success: true, message: `Experiment ${data.experiment_id} created` })
-      } else {
-        const err = await res.json()
-        setDispatchResult({ id: proposalId, success: false, message: err.detail || 'Failed to dispatch' })
-      }
-    } catch (err) {
-      setDispatchResult({ id: proposalId, success: false, message: `Network error: ${err}` })
-    } finally {
-      setDispatching(null)
-    }
-  }
-
-  // Fetch active experiments (running status)
-  useEffect(() => {
-    const fetchActiveWork = async () => {
-      try {
-        const res = await fetch(`${apiUrl}/experiments?status=running`)
-        if (res.ok) {
-          const exps = await res.json()
-          const activeIds = new Set<string>(exps.map((e: { proposal_id: string }) => e.proposal_id))
-          setActiveExperiments(activeIds)
-        }
-      } catch (err) {
-        console.error('Error fetching active work:', err)
-      }
-    }
-
-    fetchActiveWork()
-    const interval = setInterval(fetchActiveWork, 30000)
-    return () => clearInterval(interval)
-  }, [apiUrl])
+  const [filter, setFilter] = useState<{ priority?: string }>({})
 
   // Fetch proposals list
   useEffect(() => {
@@ -101,13 +47,11 @@ function ProposalsList({ apiUrl }: ProposalsViewProps) {
 
   // Filter proposals
   const filteredProposals = proposals.filter(p => {
-    if (filter.status && p.status !== filter.status) return false
     if (filter.priority && p.priority !== filter.priority) return false
     return true
   })
 
   // Get unique values for filters
-  const statuses = [...new Set(proposals.map(p => p.status).filter(Boolean))]
   const priorities = [...new Set(proposals.map(p => p.priority).filter(Boolean))]
 
   if (loading) {
@@ -139,20 +83,6 @@ function ProposalsList({ apiUrl }: ProposalsViewProps) {
       {/* Filters */}
       <div className="flex gap-4 items-center text-sm">
         <div>
-          <label className="text-gray-600 mr-2">Status:</label>
-          <select
-            value={filter.status || ''}
-            onChange={(e) => setFilter({ ...filter, status: e.target.value || undefined })}
-            className="border border-gray-300 rounded px-2 py-1"
-          >
-            <option value="">All</option>
-            {statuses.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
           <label className="text-gray-600 mr-2">Priority:</label>
           <select
             value={filter.priority || ''}
@@ -171,111 +101,39 @@ function ProposalsList({ apiUrl }: ProposalsViewProps) {
         </div>
       </div>
 
-      {/* Dispatch result toast */}
-      {dispatchResult && (
-        <div className={`p-3 rounded-lg text-sm flex items-center justify-between ${
-          dispatchResult.success
-            ? 'bg-green-50 border border-green-200 text-green-800'
-            : 'bg-red-50 border border-red-200 text-red-800'
-        }`}>
-          <span>{dispatchResult.message}</span>
-          <button
-            onClick={() => setDispatchResult(null)}
-            className="ml-4 text-gray-500 hover:text-gray-700"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
       {/* Proposals Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredProposals.map(proposal => (
           <div
             key={proposal.id}
-            className="text-left p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
+            className="text-left p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow cursor-pointer"
+            onClick={() => navigate(`/proposals/${proposal.id}`)}
           >
-            <button
-              onClick={() => navigate(`/proposals/${proposal.id}`)}
-              className="text-left w-full"
-            >
-              <div className="space-y-2">
-                <div className="font-mono text-xs text-gray-500">{proposal.id}</div>
+            <div className="space-y-2">
+              <div className="font-mono text-xs text-gray-500">{proposal.id}</div>
 
-                <h3 className="font-medium text-gray-900 line-clamp-2">
-                  {proposal.title || proposal.id}
-                </h3>
+              <h3 className="font-medium text-gray-900 line-clamp-2">
+                {proposal.title || proposal.id}
+              </h3>
 
-                <div className="flex gap-2 flex-wrap">
-                  {proposal.status && (
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                      proposal.status === 'proposed' ? 'bg-blue-100 text-blue-800' :
-                      proposal.status === 'implemented' ? 'bg-green-100 text-green-800' :
-                      proposal.status === 'in-progress' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {proposal.status}
-                    </span>
-                  )}
-
-                  {proposal.priority && (
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                      proposal.priority === 'high' ? 'bg-red-100 text-red-800' :
-                      proposal.priority === 'medium' ? 'bg-orange-100 text-orange-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {proposal.priority}
-                    </span>
-                  )}
-                </div>
-
-                {proposal.created && (
-                  <div className="text-xs text-gray-500">
-                    Created: {proposal.created}
-                  </div>
-                )}
-
-                {/* Experiment artifacts indicators */}
-                {(proposal.code_available || proposal.experiment_log || proposal.results_file) && (
-                  <div className="flex gap-1.5 text-xs mt-2 flex-wrap">
-                    {proposal.code_available && (
-                      <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded border border-green-200">
-                        💻 Code
-                      </span>
-                    )}
-                    {proposal.experiment_log && (
-                      <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200">
-                        📝 Log
-                      </span>
-                    )}
-                    {proposal.results_file && (
-                      <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-200">
-                        📊 Results
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* Active indicator */}
-                {activeExperiments.has(proposal.id) && (
-                  <div className="flex items-center gap-1.5 text-xs mt-2 text-yellow-700">
-                    <div className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse" />
-                    <span className="font-medium">Running</span>
-                  </div>
+              <div className="flex gap-2 flex-wrap">
+                {proposal.priority && (
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                    proposal.priority === 'high' ? 'bg-red-100 text-red-800' :
+                    proposal.priority === 'medium' ? 'bg-orange-100 text-orange-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {proposal.priority}
+                  </span>
                 )}
               </div>
-            </button>
 
-            {/* Dispatch button for proposals with status "proposed" */}
-            {proposal.status === 'proposed' && !activeExperiments.has(proposal.id) && (
-              <button
-                onClick={(e) => dispatchExperiment(e, proposal.id)}
-                disabled={dispatching === proposal.id}
-                className="mt-3 w-full px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 rounded transition-colors"
-              >
-                {dispatching === proposal.id ? 'Dispatching...' : 'Run Experiment'}
-              </button>
-            )}
+              {proposal.created && (
+                <div className="text-xs text-gray-500">
+                  Created: {proposal.created}
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>

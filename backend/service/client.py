@@ -184,21 +184,17 @@ class ExperimentClient:
 
     def create_proposal(
         self,
-        filename: str,
+        proposal_id: str,
         title: str,
         content: str,
-        experiment_number: Optional[int] = None,
-        status: str = "draft",
         priority: Optional[str] = None,
         hypothesis: Optional[str] = None,
         based_on: Optional[str] = None,
     ) -> dict:
         return self._post("/proposals", json={
-            "filename": filename,
+            "proposal_id": proposal_id,
             "title": title,
             "content": content,
-            "experiment_number": experiment_number,
-            "status": status,
             "priority": priority,
             "hypothesis": hypothesis,
             "based_on": based_on,
