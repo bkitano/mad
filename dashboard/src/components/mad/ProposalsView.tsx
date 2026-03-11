@@ -647,7 +647,7 @@ export default function ProposalsView({ apiUrl }: ProposalsViewProps) {
 
   // Check if we're viewing a specific proposal (e.g., /proposals/029-something)
   const pathParts = location.pathname.split('/').filter(Boolean)
-  const proposalId = pathParts.length > 2 && pathParts[1] === 'proposals' ? pathParts[2] : null
+  const proposalId = pathParts.length > 1 && pathParts[0] === 'proposals' ? pathParts[1] : null
 
   if (proposalId) {
     return <ProposalDetail apiUrl={apiUrl} proposalId={proposalId} />
