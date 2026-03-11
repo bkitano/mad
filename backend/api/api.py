@@ -32,8 +32,8 @@ proposals = ProposalsStore(db)
 
 MODAL_CREATE_JOB_URL = os.environ.get("MODAL_CREATE_JOB_URL", "")
 
-# Worker registry: worker_id -> opencode base URL
-_worker_registry: dict[str, str] = {}
+# Worker registry: worker_id -> {opencode_url, function_call_id}
+_worker_registry: dict[str, dict] = {}
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -118,6 +118,7 @@ class SendMessageRequest(BaseModel):
 class WorkerRegisterRequest(BaseModel):
     worker_id: str
     opencode_url: str
+    function_call_id: Optional[str] = None
 
 
 class WorkerPromptRequest(BaseModel):
@@ -612,33 +613,63 @@ def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
 # -- Worker proxy --------------------------------------------------------------
 
 
-def _get_worker_url(worker_id: str) -> str:
-    url = _worker_registry.get(worker_id)
-    if not url:
+def _get_worker(worker_id: str) -> dict:
+    entry = _worker_registry.get(worker_id)
+    if not entry:
         raise HTTPException(status_code=404, detail=f"Worker {worker_id} not registered")
-    return url
+    return entry
+
+
+def _get_worker_url(worker_id: str) -> str:
+    return _get_worker(worker_id)["opencode_url"]
 
 
 @app.get("/workers")
 def list_workers():
     """List all registered workers."""
-    return {wid: {"opencode_url": url} for wid, url in _worker_registry.items()}
+    return _worker_registry
 
 
 @app.post("/workers/register")
 def register_worker(req: WorkerRegisterRequest):
-    """Register a worker's opencode URL."""
-    _worker_registry[req.worker_id] = req.opencode_url.rstrip("/")
-    return {"worker_id": req.worker_id, "opencode_url": _worker_registry[req.worker_id]}
+    """Register a worker's opencode URL (and optional Modal function_call_id)."""
+    _worker_registry[req.worker_id] = {
+        "opencode_url": req.opencode_url.rstrip("/"),
+        "function_call_id": req.function_call_id,
+    }
+    return {"worker_id": req.worker_id, **_worker_registry[req.worker_id]}
 
 
 @app.delete("/workers/{worker_id}")
-def unregister_worker(worker_id: str):
-    """Unregister a worker."""
-    removed = _worker_registry.pop(worker_id, None)
-    if not removed:
+def kill_worker(worker_id: str):
+    """Unregister a worker and terminate its Modal container if possible."""
+    entry = _worker_registry.pop(worker_id, None)
+    if not entry:
         raise HTTPException(status_code=404, detail=f"Worker {worker_id} not registered")
-    return {"worker_id": worker_id, "status": "removed"}
+
+    modal_killed = False
+    fc_id = entry.get("function_call_id")
+    if fc_id:
+        try:
+            from modal.functions import FunctionCall
+
+            fc = FunctionCall.from_id(fc_id)
+            fc.cancel(terminate_containers=True)
+            modal_killed = True
+        except Exception as e:
+            event_bus.emit(
+                "worker.kill_error",
+                f"Failed to kill Modal container for {worker_id}: {e}",
+                details={"worker_id": worker_id, "function_call_id": fc_id},
+            )
+
+    event_bus.emit(
+        "worker.killed",
+        f"Worker {worker_id} removed" + (" (Modal container terminated)" if modal_killed else ""),
+        details={"worker_id": worker_id, "modal_killed": modal_killed},
+    )
+
+    return {"worker_id": worker_id, "status": "killed", "modal_killed": modal_killed}
 
 
 @app.get("/workers/{worker_id}/sessions")

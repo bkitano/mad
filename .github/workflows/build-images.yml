@@ -47,3 +47,17 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/mad-worker:latest
             ghcr.io/${{ github.repository_owner }}/mad-worker:${{ github.sha }}
+
+  deploy-modal:
+    needs: [build-worker]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen --no-dev
+        working-directory: backend
+      - run: uv run python -m modal deploy worker.modal_worker
+        working-directory: backend
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}

@@ -1,28 +1,35 @@
 """
-Modal-based experiment worker -- pulls worker image from GHCR.
+Modal-based long-running worker -- starts opencode, registers with API, waits for work.
+
+The worker does NOT pick proposals itself. Instead:
+1. create_worker endpoint spawns ModalWorker.run
+2. Worker starts opencode, opens a Modal tunnel, registers with the API
+3. The API (or dashboard) sends proposals via POST /workers/{worker_id}/prompt
+4. Worker stays alive until timeout or SIGTERM
 
 Deploy:
     uv run python -m modal deploy worker.modal_worker
 
-Run a single job (for testing):
-    uv run python -m modal run worker.modal_worker::run_job --job-id test-001 --proposal-id 042-monarch-gated
+Spawn a worker:
+    curl -X POST https://<your-app>.modal.run/create_worker
 
-Trigger from API (fire-and-forget):
-    curl -X POST https://<your-app>.modal.run/create_job \
+Send it work (via the API):
+    curl -X POST http://your-api:8000/workers/<worker_id>/prompt \
         -H "Content-Type: application/json" \
-        -d '{"proposal_id": "042-monarch-gated"}'
+        -d '{"message": "Implement proposal 042-monarch-gated..."}'
 """
 
-import asyncio
 import os
 import subprocess
 import time
 import uuid
+from typing import Optional
 
+import httpx
 import modal
 
 APP_NAME = "mad-worker"
-TEMPLATE_REPO = "https://github.com/bkitano/mad-experiments-template.git"
+DEFAULT_SERVICE_URL = "http://mad.briankitano.com"
 
 app = modal.App(APP_NAME)
 
@@ -31,324 +38,200 @@ WORKER_IMAGE = os.environ.get("MAD_WORKER_IMAGE", "ghcr.io/bkitano/mad-worker:la
 image = modal.Image.from_registry(WORKER_IMAGE, add_python="3.12")
 
 # Secrets: API keys for opencode, wandb, postgres, etc.
-# Create these in Modal dashboard: `modal secret create mad-worker-secrets ...`
 SECRETS = modal.Secret.from_name("mad-worker-secrets")
 
 
-def _clone_template(workspace: str, use_template: bool = False) -> None:
-    """Clone the experiment template repo into the workspace, or skip if use_template is False."""
-    if not use_template:
-        print("[modal-worker] Skipping template clone (use_template=False)")
-        return
-    template_dir = f"{workspace}/template"
-    if os.path.exists(template_dir):
-        return
-    print(f"[modal-worker] Cloning template from {TEMPLATE_REPO}")
-    subprocess.run(
-        ["git", "clone", "--depth", "1", TEMPLATE_REPO, template_dir],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    print(f"[modal-worker] Template cloned to {template_dir}")
+class ModalWorker:
+    """Manages the lifecycle of a long-running opencode worker on Modal."""
 
+    def __init__(self, worker_id: str, service_url: str, function_call_id: Optional[str] = None):
+        self.worker_id = worker_id
+        self.service_url = service_url
+        self.function_call_id = function_call_id
+        self.opencode_url: Optional[str] = None
+        self._proc: Optional[subprocess.Popen] = None
 
-def _wait_for_opencode(url: str, timeout_s: float = 30.0) -> None:
-    """Block until opencode HTTP server is ready (used before OpencodeService.start)."""
-    import httpx
+    def _log(self, msg: str) -> None:
+        print(f"[modal-worker] [{self.worker_id}] {msg}", flush=True)
 
-    deadline = time.time() + timeout_s
-    last_err = None
-    while time.time() < deadline:
+    # -- API helpers -----------------------------------------------------------
+
+    def emit_event(self, event_type: str, summary: str, details: Optional[dict] = None) -> None:
+        """Emit an event to the API server (best-effort)."""
         try:
-            r = httpx.get(f"{url}/session", timeout=2.0)
-            if r.status_code < 500:
-                return
+            httpx.post(
+                f"{self.service_url}/events",
+                json={
+                    "event_type": event_type,
+                    "summary": summary,
+                    "details": details or {},
+                    "worker_id": self.worker_id,
+                },
+                timeout=5.0,
+            )
         except Exception as e:
-            last_err = e
-        time.sleep(0.5)
-    raise RuntimeError(f"opencode not ready after {timeout_s}s; last_err={last_err!r}")
+            self._log(f"Failed to emit event: {e}")
 
+    def register(self) -> None:
+        """Register this worker's opencode URL (and function_call_id) with the API server."""
+        resp = httpx.post(
+            f"{self.service_url}/workers/register",
+            json={
+                "worker_id": self.worker_id,
+                "opencode_url": self.opencode_url,
+                "function_call_id": self.function_call_id,
+            },
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        self._log(f"Registered -> {self.opencode_url}")
 
-def _verify_opencode_config(url: str) -> None:
-    """Verify the opencode server has the expected provider config."""
-    import httpx
+    # -- opencode lifecycle ----------------------------------------------------
 
-    r = httpx.get(f"{url}/config", timeout=5.0)
-    r.raise_for_status()
-    config = r.json()
-
-    providers = config.get("provider", {})
-    if "opencode-go" not in providers:
-        raise RuntimeError(
-            f"opencode config missing 'opencode-go' provider. "
-            f"Got providers: {list(providers.keys())}. "
-            f"Full config: {config}"
+    def start_opencode(self, workspace: str) -> None:
+        """Start the opencode subprocess bound to 0.0.0.0:4096."""
+        self._proc = subprocess.Popen(
+            ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=workspace,
         )
 
-    oc_provider = providers["opencode-go"]
-    api_key = oc_provider.get("options", {}).get("apiKey", "")
-    if not api_key or api_key.startswith("{env:"):
-        raise RuntimeError(
-            f"opencode-go provider apiKey not resolved (got '{api_key}'). "
-            f"Ensure OPENCODE_GO_API_KEY is set in mad-worker-secrets."
-        )
+    def stop_opencode(self) -> None:
+        """Terminate the opencode subprocess."""
+        if self._proc is None:
+            return
+        self._proc.terminate()
+        try:
+            self._proc.wait(timeout=5)
+        except Exception:
+            self._proc.kill()
 
-    print(f"[modal-worker] opencode config verified: providers={list(providers.keys())}")
+    def wait_for_opencode(self, timeout_s: float = 30.0) -> None:
+        """Block until opencode HTTP server is ready."""
+        deadline = time.time() + timeout_s
+        last_err = None
+        while time.time() < deadline:
+            try:
+                r = httpx.get("http://127.0.0.1:4096/session", timeout=2.0)
+                if r.status_code < 500:
+                    return
+            except Exception as e:
+                last_err = e
+            time.sleep(0.5)
+        raise RuntimeError(f"opencode not ready after {timeout_s}s; last_err={last_err!r}")
+
+    def verify_opencode_config(self) -> None:
+        """Verify the opencode server has the expected provider config."""
+        r = httpx.get("http://127.0.0.1:4096/config", timeout=5.0)
+        r.raise_for_status()
+        config = r.json()
+
+        providers = config.get("provider", {})
+        if "opencode-go" not in providers:
+            raise RuntimeError(
+                f"opencode config missing 'opencode-go' provider. "
+                f"Got providers: {list(providers.keys())}."
+            )
+
+        api_key = providers["opencode-go"].get("options", {}).get("apiKey", "")
+        if not api_key or api_key.startswith("{env:"):
+            raise RuntimeError(
+                f"opencode-go provider apiKey not resolved (got '{api_key}'). "
+                f"Ensure OPENCODE_GO_API_KEY is set in mad-worker-secrets."
+            )
+
+        self._log(f"opencode config verified: providers={list(providers.keys())}")
+
+    # -- main loop -------------------------------------------------------------
+
+    def run(self) -> dict:
+        """Start opencode, register, then block forever waiting for prompts."""
+        workspace = "/workspace"
+        os.makedirs(f"{workspace}/proposals", exist_ok=True)
+        os.makedirs(f"{workspace}/code", exist_ok=True)
+        os.makedirs(f"{workspace}/experiments", exist_ok=True)
+
+        os.environ["MAD_SERVICE_URL"] = self.service_url
+        os.environ["MAD_WORKSPACE"] = workspace
+        os.environ["MAD_WORKER_ID"] = self.worker_id
+
+        self.start_opencode(workspace)
+
+        try:
+            with modal.forward(4096) as tunnel:
+                self.opencode_url = tunnel.url
+                self.wait_for_opencode()
+                self.verify_opencode_config()
+                self._log(f"opencode ready at {self.opencode_url}")
+
+                self.register()
+                self.emit_event("worker.started", f"Worker {self.worker_id} ready", {
+                    "opencode_url": self.opencode_url,
+                })
+
+                # Block forever -- work arrives via the API proxying to our opencode URL
+                self._log("Idle, waiting for prompts...")
+                while True:
+                    time.sleep(60)
+                    self.emit_event("worker.heartbeat", f"Worker {self.worker_id} alive", {
+                        "opencode_url": self.opencode_url,
+                    })
+
+        except Exception as e:
+            self._log(f"ERROR: {e}")
+            self.emit_event("worker.error", f"Worker {self.worker_id} error: {e}")
+            return {"worker_id": self.worker_id, "status": "failed", "error": str(e)}
+
+        finally:
+            self.emit_event("worker.stopped", f"Worker {self.worker_id} shutting down")
+            self.stop_opencode()
+
+        return {"worker_id": self.worker_id, "status": "stopped"}
+
+
+# -- Modal functions -----------------------------------------------------------
 
 
 @app.function(
     image=image,
     secrets=[SECRETS],
-    timeout=60 * 60,       # 1 hour max per job
+    timeout=8 * 60 * 60,  # 8 hours max
     cpu=2,
     memory=4096,
-    # gpu="T4",            # uncomment if experiments need GPU
+    # gpu="T4",
 )
-def run_job(
-    proposal_id: str,
-    job_id: str = "",
+def run_worker(
+    worker_id: str = "",
     service_url: str = "",
-    use_template: bool = False,
 ) -> dict:
-    """
-    One invocation = one experiment job.
-
-    Clones the template repo (unless use_template=False), starts opencode,
-    then runs the worker's experiment cycle.
-    """
-    import sys
-    sys.path.insert(0, "/app")
-
-    job_id = job_id or str(uuid.uuid4())
-    service_url = service_url or os.environ.get("MAD_SERVICE_URL", "http://mad.briankitano.com")
-
-    # Set up workspace
-    workspace = "/workspace"
-    os.makedirs(f"{workspace}/proposals", exist_ok=True)
-    os.makedirs(f"{workspace}/code", exist_ok=True)
-    os.makedirs(f"{workspace}/experiments", exist_ok=True)
-
-    # Clone experiment template (tasks/, models/, etc.)
-    _clone_template(workspace, use_template=use_template)
-
-    # Set env vars the worker expects
-    worker_id = f"modal-{job_id[:8]}"
-    os.environ["MAD_SERVICE_URL"] = service_url
-    os.environ["MAD_WORKSPACE"] = workspace
-    os.environ["MAD_WORKER_ID"] = worker_id
-    os.environ["OPENCODE_BASE_URL"] = "http://127.0.0.1:4096"
-
-    # Start opencode as a subprocess -- bind 0.0.0.0 so the tunnel proxy can reach it
-    opencode_proc = subprocess.Popen(
-        ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        cwd=workspace,
-    )
-
-    try:
-        with modal.forward(4096) as tunnel:
-            _wait_for_opencode("http://127.0.0.1:4096")
-            _verify_opencode_config("http://127.0.0.1:4096")
-            print(f"[modal-worker] opencode ready, running proposal {proposal_id}")
-            print(f"[modal-worker] opencode public URL: {tunnel.url}")
-
-            from worker.client import ExperimentClient
-            from worker.opencode import OpencodeService
-            from worker.worker import run_experiment_cycle
-
-            client = ExperimentClient(base_url=service_url)
-
-            # Emit event with the public opencode URL so frontends can connect
-            client.emit_event(
-                "worker.opencode_url",
-                f"OpenCode server available at {tunnel.url}",
-                details={
-                    "opencode_url": tunnel.url,
-                    "job_id": job_id,
-                    "proposal_id": proposal_id,
-                },
-                worker_id=worker_id,
-            )
-
-            async def _run():
-                opencode = OpencodeService(port=4096, client=client, worker_id=worker_id)
-                # Server already running -- just start the forwarder
-                opencode._proc = opencode_proc
-                opencode.start_forwarder_only()
-
-                try:
-                    did_work = await run_experiment_cycle(
-                        client, opencode, specific_proposal=proposal_id,
-                    )
-                    await opencode.grace_period(
-                        120,
-                        details={
-                            "opencode_url": tunnel.url,
-                            "job_id": job_id,
-                            "proposal_id": proposal_id,
-                            "grace_seconds": 120,
-                        },
-                    )
-                    return did_work
-                finally:
-                    await opencode.stop()
-
-            did_work = asyncio.run(_run())
-
-            return {
-                "job_id": job_id,
-                "proposal_id": proposal_id,
-                "opencode_url": tunnel.url,
-                "status": "completed" if did_work else "no_work",
-            }
-
-    except Exception as e:
-        print(f"[modal-worker] ERROR: {e}")
-        return {
-            "job_id": job_id,
-            "proposal_id": proposal_id,
-            "status": "failed",
-            "error": str(e),
-        }
-
-    finally:
-        opencode_proc.terminate()
-        try:
-            opencode_proc.wait(timeout=5)
-        except Exception:
-            opencode_proc.kill()
+    """Modal entrypoint -- creates a ModalWorker and runs it."""
+    wid = worker_id or f"modal-{uuid.uuid4().hex[:8]}"
+    url = service_url or os.environ.get("MAD_SERVICE_URL", DEFAULT_SERVICE_URL)
+    fc_id = modal.current_function_call_id()
+    return ModalWorker(wid, url, function_call_id=fc_id).run()
 
 
-@app.function(
-    image=image,
-    secrets=[SECRETS],
-    timeout=60 * 60,
-    cpu=2,
-    memory=4096,
-)
-def run_next_job(service_url: str = "", use_template: bool = False) -> dict:
-    """
-    Pick the next unclaimed proposal and run it.
-    Use this for continuous polling or cron-triggered runs.
-    """
-    import sys
-    sys.path.insert(0, "/app")
-
-    service_url = service_url or os.environ.get("MAD_SERVICE_URL", "http://mad.briankitano.com")
-    job_id = str(uuid.uuid4())
-    worker_id = f"modal-{job_id[:8]}"
-
-    workspace = "/workspace"
-    os.makedirs(f"{workspace}/proposals", exist_ok=True)
-    os.makedirs(f"{workspace}/code", exist_ok=True)
-    os.makedirs(f"{workspace}/experiments", exist_ok=True)
-
-    # Clone experiment template
-    _clone_template(workspace, use_template=use_template)
-
-    os.environ["MAD_SERVICE_URL"] = service_url
-    os.environ["MAD_WORKSPACE"] = workspace
-    os.environ["MAD_WORKER_ID"] = worker_id
-    os.environ["OPENCODE_BASE_URL"] = "http://127.0.0.1:4096"
-
-    # Bind 0.0.0.0 so the tunnel proxy can reach it
-    opencode_proc = subprocess.Popen(
-        ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        cwd=workspace,
-    )
-
-    try:
-        with modal.forward(4096) as tunnel:
-            _wait_for_opencode("http://127.0.0.1:4096")
-            _verify_opencode_config("http://127.0.0.1:4096")
-            print(f"[modal-worker] opencode public URL: {tunnel.url}")
-
-            from worker.client import ExperimentClient
-            from worker.opencode import OpencodeService
-            from worker.worker import run_experiment_cycle
-
-            client = ExperimentClient(base_url=service_url)
-
-            # Emit event with the public opencode URL so frontends can connect
-            client.emit_event(
-                "worker.opencode_url",
-                f"OpenCode server available at {tunnel.url}",
-                details={
-                    "opencode_url": tunnel.url,
-                    "job_id": job_id,
-                },
-                worker_id=worker_id,
-            )
-
-            async def _run():
-                opencode = OpencodeService(port=4096, client=client, worker_id=worker_id)
-                opencode._proc = opencode_proc
-                opencode._forwarder = asyncio.create_task(opencode._event_forwarder())
-
-                try:
-                    did_work = await run_experiment_cycle(client, opencode)
-                    await opencode.grace_period(
-                        120,
-                        details={
-                            "opencode_url": tunnel.url,
-                            "job_id": job_id,
-                            "grace_seconds": 120,
-                        },
-                    )
-                    return did_work
-                finally:
-                    await opencode.stop()
-
-            did_work = asyncio.run(_run())
-
-            return {
-                "job_id": job_id,
-                "opencode_url": tunnel.url,
-                "status": "completed" if did_work else "no_work",
-            }
-
-    except Exception as e:
-        return {"job_id": job_id, "status": "failed", "error": str(e)}
-
-    finally:
-        opencode_proc.terminate()
-        try:
-            opencode_proc.wait(timeout=5)
-        except Exception:
-            opencode_proc.kill()
-
-
-# -- Web endpoint: trigger a job via HTTP POST ---------------------------------
 @app.function(image=image, secrets=[SECRETS])
 @modal.fastapi_endpoint(method="POST")
-def create_job(payload: dict) -> dict:
+def create_worker(payload: dict = {}) -> dict:
     """
-    HTTP trigger to start a job.
+    Spawn a new long-running idle worker.
 
-    POST body:
-        {"proposal_id": "042-monarch-gated"}
-        or
-        {"proposal_id": "auto"}  # pick next unclaimed
+    POST body (all optional):
+        {"worker_id": "my-worker", "service_url": "http://..."}
+
+    Returns immediately with the worker_id and function_call_id.
+    The worker registers itself with the API once it's ready.
     """
-    proposal_id = payload.get("proposal_id", "")
-    service_url = payload.get("service_url", "")
-    job_id = payload.get("job_id") or str(uuid.uuid4())
-    use_template = payload.get("use_template", False)
+    wid = payload.get("worker_id") or f"modal-{uuid.uuid4().hex[:8]}"
+    url = payload.get("service_url", "")
 
-    if proposal_id == "auto" or not proposal_id:
-        fc = run_next_job.spawn(service_url=service_url, use_template=use_template)
-        return {"job_id": job_id, "status": "queued", "mode": "auto", "function_call_id": fc.object_id}
-    else:
-        fc = run_job.spawn(
-            proposal_id=proposal_id,
-            job_id=job_id,
-            service_url=service_url,
-            use_template=use_template,
-        )
-        return {"job_id": job_id, "proposal_id": proposal_id, "status": "queued", "function_call_id": fc.object_id}
+    fc = run_worker.spawn(worker_id=wid, service_url=url)
+
+    return {
+        "worker_id": wid,
+        "status": "spawning",
+        "function_call_id": fc.object_id,
+    }
