@@ -23,17 +23,15 @@ from supabase import acreate_client
 
 from api import event_bus, experiment_store
 from api.db import DatabaseManager
-from api.stores import EventsStore, ExperimentsStore, ProposalsStore
+from api.stores import EventsStore, ExperimentsStore, ProposalsStore, WorkersStore
 
 db = DatabaseManager()
 experiments = ExperimentsStore(db)
 events = EventsStore(db)
 proposals = ProposalsStore(db)
+workers_store = WorkersStore(db)
 
 MODAL_CREATE_JOB_URL = os.environ.get("MODAL_CREATE_JOB_URL", "")
-
-# Worker registry: worker_id -> {opencode_url, function_call_id}
-_worker_registry: dict[str, dict] = {}
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -614,8 +612,8 @@ def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
 
 
 def _get_worker(worker_id: str) -> dict:
-    entry = _worker_registry.get(worker_id)
-    if not entry:
+    entry = workers_store.get(worker_id)
+    if not entry or entry["status"] == "stopped":
         raise HTTPException(status_code=404, detail=f"Worker {worker_id} not registered")
     return entry
 
@@ -625,25 +623,35 @@ def _get_worker_url(worker_id: str) -> str:
 
 
 @app.get("/workers")
-def list_workers():
-    """List all registered workers."""
-    return _worker_registry
+def list_workers(include_stopped: bool = False):
+    """List all registered workers. Stale workers are auto-detected via heartbeat TTL."""
+    return workers_store.list(include_stopped=include_stopped)
 
 
 @app.post("/workers/register")
 def register_worker(req: WorkerRegisterRequest):
     """Register a worker's opencode URL (and optional Modal function_call_id)."""
-    _worker_registry[req.worker_id] = {
-        "opencode_url": req.opencode_url.rstrip("/"),
-        "function_call_id": req.function_call_id,
-    }
-    return {"worker_id": req.worker_id, **_worker_registry[req.worker_id]}
+    row = workers_store.register(
+        worker_id=req.worker_id,
+        opencode_url=req.opencode_url.rstrip("/"),
+        function_call_id=req.function_call_id,
+    )
+    return row
+
+
+@app.post("/workers/{worker_id}/heartbeat")
+def worker_heartbeat(worker_id: str):
+    """Update a worker's heartbeat timestamp."""
+    row = workers_store.heartbeat(worker_id)
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
+    return row
 
 
 @app.delete("/workers/{worker_id}")
 def kill_worker(worker_id: str):
-    """Unregister a worker and terminate its Modal container if possible."""
-    entry = _worker_registry.pop(worker_id, None)
+    """Stop a worker and terminate its Modal container if possible."""
+    entry = workers_store.get(worker_id)
     if not entry:
         raise HTTPException(status_code=404, detail=f"Worker {worker_id} not registered")
 
@@ -663,13 +671,15 @@ def kill_worker(worker_id: str):
                 details={"worker_id": worker_id, "function_call_id": fc_id},
             )
 
+    workers_store.remove(worker_id)
+
     event_bus.emit(
         "worker.killed",
-        f"Worker {worker_id} removed" + (" (Modal container terminated)" if modal_killed else ""),
+        f"Worker {worker_id} stopped" + (" (Modal container terminated)" if modal_killed else ""),
         details={"worker_id": worker_id, "modal_killed": modal_killed},
     )
 
-    return {"worker_id": worker_id, "status": "killed", "modal_killed": modal_killed}
+    return {"worker_id": worker_id, "status": "stopped", "modal_killed": modal_killed}
 
 
 @app.get("/workers/{worker_id}/sessions")

@@ -187,3 +187,63 @@ class ProposalsStore:
             "SELECT * FROM proposals WHERE proposal_id = %s",
             (proposal_id,),
         )
+
+
+HEARTBEAT_TTL_MINUTES = 3  # Mark stale if no heartbeat for this long
+
+
+class WorkersStore:
+    def __init__(self, db: DatabaseManager) -> None:
+        self.db = db
+
+    def register(
+        self,
+        worker_id: str,
+        opencode_url: str,
+        function_call_id: Optional[str] = None,
+        timeout_hours: float = 8,
+    ) -> dict:
+        self.db._execute(
+            """INSERT INTO workers (worker_id, opencode_url, function_call_id, status, timeout_hours)
+               VALUES (%s, %s, %s, 'ready', %s)
+               ON CONFLICT (worker_id) DO UPDATE SET
+                   opencode_url = EXCLUDED.opencode_url,
+                   function_call_id = EXCLUDED.function_call_id,
+                   status = 'ready',
+                   timeout_hours = EXCLUDED.timeout_hours,
+                   last_heartbeat = now()""",
+            (worker_id, opencode_url, function_call_id, timeout_hours),
+        )
+        return self.get(worker_id)
+
+    def heartbeat(self, worker_id: str) -> Optional[dict]:
+        self.db._execute(
+            "UPDATE workers SET last_heartbeat = now(), status = 'ready' WHERE worker_id = %s",
+            (worker_id,),
+        )
+        return self.get(worker_id)
+
+    def get(self, worker_id: str) -> Optional[dict]:
+        return self.db._fetch_one("SELECT * FROM workers WHERE worker_id = %s", (worker_id,))
+
+    def list(self, include_stopped: bool = False) -> list[dict]:
+        # Mark workers as stale if heartbeat is too old
+        self.db._execute(
+            f"""UPDATE workers SET status = 'stale'
+                WHERE status = 'ready'
+                AND last_heartbeat < now() - interval '{HEARTBEAT_TTL_MINUTES} minutes'""",
+        )
+        if include_stopped:
+            return self.db._fetch("SELECT * FROM workers ORDER BY registered_at DESC")
+        return self.db._fetch(
+            "SELECT * FROM workers WHERE status != 'stopped' ORDER BY registered_at DESC"
+        )
+
+    def remove(self, worker_id: str) -> Optional[dict]:
+        row = self.get(worker_id)
+        if row:
+            self.db._execute(
+                "UPDATE workers SET status = 'stopped' WHERE worker_id = %s",
+                (worker_id,),
+            )
+        return row

@@ -66,6 +66,16 @@ class ModalWorker:
 
     # -- API helpers -----------------------------------------------------------
 
+    def heartbeat(self) -> None:
+        """Send a heartbeat to the API server (best-effort)."""
+        try:
+            httpx.post(
+                f"{self.service_url}/workers/{self.worker_id}/heartbeat",
+                timeout=5.0,
+            )
+        except Exception as e:
+            self._log(f"Failed to send heartbeat: {e}")
+
     def emit_event(self, event_type: str, summary: str, details: Optional[dict] = None) -> None:
         """Emit an event to the API server (best-effort)."""
         try:
@@ -185,6 +195,7 @@ class ModalWorker:
                 self._log("Idle, waiting for prompts...")
                 while True:
                     time.sleep(60)
+                    self.heartbeat()
                     self.emit_event("worker.heartbeat", f"Worker {self.worker_id} alive", {
                         "opencode_url": self.opencode_url,
                     })
