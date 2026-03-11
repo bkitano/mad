@@ -297,8 +297,10 @@ def verify_experiment(experiment_id: str):
             if k not in actual_metrics:
                 continue
             cv, av = claimed_metrics[k], actual_metrics[k]
-            if isinstance(cv, bool) or isinstance(av, bool) or not isinstance(cv, (int, float)) or not isinstance(av, (int, float)):
-                discrepancies[k] = {"claimed": cv, "actual": av}
+            if (isinstance(cv, bool) or isinstance(av, bool)
+                    or not isinstance(cv, (int, float))
+                    or not isinstance(av, (int, float))):
+                continue  # skip non-numeric — don't add to discrepancies
             elif abs(cv - av) > 0.01:
                 discrepancies[k] = {"claimed": cv, "actual": av}
         metrics_match = {"match": len(discrepancies) == 0, "discrepancies": discrepancies}
@@ -314,11 +316,21 @@ def verify_experiment(experiment_id: str):
     }
     if metrics_match is not None:
         checks["metrics_match"] = metrics_match
+        # Tighten wandb_details["verified"] to require metric validation too
+        wandb_details["verified"] = (
+            wandb_details.get("verified", False)
+            and bool(actual_metrics)
+            and metrics_match["match"]
+        )
 
     checks["fully_verified"] = all([
-        checks["code_stored"], checks["code_integrity"],
-        checks["modal_submitted"], wandb_details.get("verified"),
-        checks["has_results"], checks["status"] == "completed",
+        checks["code_stored"],
+        checks["code_integrity"],
+        checks["modal_submitted"],
+        wandb_details.get("verified"),
+        checks["has_results"],
+        checks["status"] == "completed",
+        metrics_match is not None and metrics_match["match"],
     ])
 
     return {"experiment_id": experiment_id, "checks": checks, "experiment": exp}
