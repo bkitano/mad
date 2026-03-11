@@ -26,17 +26,26 @@ class ExperimentsStore:
         proposal_id: str,
         cost_estimate: Optional[float] = None,
         worker_id: Optional[str] = None,
+        run_number: int = 1,
     ) -> dict:
         self.db._execute(
             """INSERT INTO experiments
-               (id, proposal_id, status, cost_estimate, worker_id)
-               VALUES (%s, %s, 'created', %s, %s)""",
-            (experiment_id, proposal_id, cost_estimate, worker_id),
+               (id, proposal_id, status, cost_estimate, worker_id, run_number)
+               VALUES (%s, %s, 'created', %s, %s, %s)""",
+            (experiment_id, proposal_id, cost_estimate, worker_id, run_number),
         )
         return self.get(experiment_id)
 
     def get(self, experiment_id: str) -> Optional[dict]:
         return self.db._fetch_one("SELECT * FROM experiments WHERE id = %s", (experiment_id,))
+
+    def get_next_run_number(self, base_id: str) -> int:
+        """Return MAX(run_number) + 1 across all reruns of base_id."""
+        row = self.db._fetch_one(
+            "SELECT COALESCE(MAX(run_number), 0) + 1 AS next FROM experiments WHERE id = %s OR id LIKE %s",
+            (base_id, f"{base_id}-r%"),
+        )
+        return row["next"] if row else 2
 
     def list(
         self,
