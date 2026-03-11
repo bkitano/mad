@@ -338,7 +338,34 @@ async def run_experiment_cycle(
             stop_heartbeat.set()
             heartbeat_task.cancel()
 
-        # 6. Report outcome
+        # 6. Store code from disk and upload artifacts
+        code_src = CODE_DIR / experiment_id
+        if code_src.exists():
+            try:
+                client.store_code_from_disk(experiment_id, str(code_src))
+                log(f"Code stored for {experiment_id}")
+            except Exception as e:
+                log(f"Warning: code storage failed: {e}")
+
+        # Upload experiment artifacts to Supabase Storage
+        artifacts_url = None
+        if os.environ.get("SUPABASE_URL"):
+            try:
+                from service.artifact_upload import upload_artifacts
+                artifacts_url = upload_artifacts(experiment_id, EXPERIMENTS_DIR)
+                client.emit_event(
+                    "experiment.artifacts_ready",
+                    "Artifacts uploaded to Supabase Storage",
+                    experiment_id=experiment_id,
+                    details={"artifacts_url": artifacts_url},
+                    parent_id=root_event_id,
+                    worker_id=WORKER_ID,
+                )
+                log(f"Artifacts uploaded: {artifacts_url[:80]}...")
+            except Exception as e:
+                log(f"Warning: artifact upload failed: {e}")
+
+        # 7. Report outcome
         log(f"Agent finished. Status: {result['status']}")
         client.update_experiment(
             experiment_id,

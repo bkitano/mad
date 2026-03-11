@@ -42,6 +42,7 @@ interface Experiment {
   created_at: string
   completed_at?: string
   submitted_at?: string
+  artifacts_url?: string
 }
 
 type TabType = 'experiments' | 'proposals' | 'tricks' | 'log' | 'workers'
@@ -70,6 +71,14 @@ export default function MADDashboard() {
   const [selectedResult, setSelectedResult] = useState<{ id: string; content: string } | null>(null)
   const [selectedLog, setSelectedLog] = useState<{ id: string; content: string } | null>(null)
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
+  const [selectedArtifacts, setSelectedArtifacts] = useState<{
+    id: string
+    proposal_id: string
+    artifacts_url?: string
+    code_files: string[]
+    wandb_url?: string
+    results?: Record<string, unknown>
+  } | null>(null)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
 
   // All experiments list
@@ -254,6 +263,20 @@ export default function MADDashboard() {
     } catch (err) {
       console.error('Error fetching result:', err)
       setSelectedResult({ id: proposalId, content: `# Error\n\nFailed to load results: ${err}` })
+    }
+  }
+
+  // Fetch experiment artifacts
+  const fetchArtifacts = async (exp: Experiment) => {
+    try {
+      const res = await fetch(`${API_URL}/experiments/${exp.id}/artifacts`)
+      if (res.ok) {
+        setSelectedArtifacts(await res.json())
+      } else {
+        console.error('Failed to fetch artifacts')
+      }
+    } catch (err) {
+      console.error('Error fetching artifacts:', err)
     }
   }
 
@@ -529,6 +552,12 @@ export default function MADDashboard() {
                               >
                                 Log
                               </button>
+                              <button
+                                onClick={() => fetchArtifacts(exp)}
+                                className="text-blue-600 hover:text-blue-800 text-xs underline"
+                              >
+                                Artifacts
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -644,6 +673,104 @@ export default function MADDashboard() {
           apiUrl={API_URL}
           onClose={() => setSelectedCode(null)}
         />
+      )}
+
+      {/* Artifacts Modal */}
+      {selectedArtifacts && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedArtifacts(null)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Artifacts: {selectedArtifacts.id}
+              </h3>
+              <button
+                onClick={() => setSelectedArtifacts(null)}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+              <div className="space-y-6">
+                {/* Proposal */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Proposal</h4>
+                  <button
+                    onClick={() => navigate(`/proposals/${selectedArtifacts.proposal_id}`)}
+                    className="text-blue-600 hover:text-blue-800 underline text-sm"
+                  >
+                    View {selectedArtifacts.proposal_id}
+                  </button>
+                </div>
+
+                {/* Results */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Results</h4>
+                  {selectedArtifacts.results ? (
+                    <div className="bg-gray-50 p-3 rounded text-xs">
+                      <pre className="overflow-auto max-h-40">
+                        {JSON.stringify(selectedArtifacts.results, null, 2)}
+                      </pre>
+                      {selectedArtifacts.wandb_url && (
+                        <div className="mt-2">
+                          <a href={selectedArtifacts.wandb_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
+                            View on W&B →
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No results available</p>
+                  )}
+                </div>
+
+                {/* Code */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Code</h4>
+                  {selectedArtifacts.code_files.length > 0 ? (
+                    <button
+                      onClick={() => {
+                        setSelectedArtifacts(null)
+                        setSelectedCode(selectedArtifacts.id)
+                      }}
+                      className="text-blue-600 hover:text-blue-800 underline text-sm"
+                    >
+                      Browse Code ({selectedArtifacts.code_files.length} files)
+                    </button>
+                  ) : (
+                    <p className="text-sm text-gray-500">No code available</p>
+                  )}
+                </div>
+
+                {/* Logs */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Logs</h4>
+                  <button
+                    onClick={() => {
+                      setSelectedArtifacts(null)
+                      fetchLog(selectedArtifacts.proposal_id)
+                    }}
+                    className="text-blue-600 hover:text-blue-800 underline text-sm"
+                  >
+                    View Logs
+                  </button>
+                </div>
+
+                {/* Artifacts Download */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Artifacts (S3)</h4>
+                  {selectedArtifacts.artifacts_url ? (
+                    <a href={selectedArtifacts.artifacts_url} download className="text-blue-600 hover:text-blue-800 underline text-sm">
+                      Download artifacts.tar.gz
+                    </a>
+                  ) : (
+                    <p className="text-sm text-gray-500">Not yet available (waiting for experiment to complete)</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>
