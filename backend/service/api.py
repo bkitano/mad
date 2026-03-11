@@ -133,10 +133,11 @@ class WorkerPromptRequest(BaseModel):
 @app.get("/experiments")
 def list_experiments(
     status: Optional[str] = Query(None, description="Filter by status"),
+    proposal_id: Optional[str] = Query(None, description="Filter by proposal_id"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
-    return experiments.list(status=status, limit=limit, offset=offset)
+    return experiments.list(status=status, proposal_id=proposal_id, limit=limit, offset=offset)
 
 
 @app.get("/experiments/{experiment_id}")

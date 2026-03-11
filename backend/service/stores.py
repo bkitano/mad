@@ -50,17 +50,23 @@ class ExperimentsStore:
     def list(
         self,
         status: Optional[str] = None,
+        proposal_id: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict]:
+        conditions: list[str] = []
+        params: list[Any] = []
         if status:
-            return self.db._fetch(
-                "SELECT * FROM experiments WHERE status = %s ORDER BY created_at DESC LIMIT %s OFFSET %s",
-                (status, limit, offset),
-            )
+            conditions.append("status = %s")
+            params.append(status)
+        if proposal_id:
+            conditions.append("proposal_id = %s")
+            params.append(proposal_id)
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        params.extend([limit, offset])
         return self.db._fetch(
-            "SELECT * FROM experiments ORDER BY created_at DESC LIMIT %s OFFSET %s",
-            (limit, offset),
+            f"SELECT * FROM experiments{where} ORDER BY created_at DESC LIMIT %s OFFSET %s",
+            tuple(params),
         )
 
     def update(self, experiment_id: str, **fields) -> Optional[dict]:
