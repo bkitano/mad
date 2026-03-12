@@ -4,7 +4,7 @@ FastAPI service exposing the experiment execution system.
 All state is in Postgres (Supabase). Events table supports Realtime SSE.
 
 Run:
-    uvicorn service.api:app --host 0.0.0.0 --port 8000
+    uvicorn api.api:app --host 0.0.0.0 --port 8000
 """
 
 import asyncio
@@ -15,19 +15,21 @@ import re
 from pathlib import Path
 from typing import Optional
 
+<<<<<<< HEAD:backend/service/api.py
 import wandb
 
+=======
+import httpx as _httpx
+>>>>>>> main:backend/api/api.py
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from supabase import acreate_client
 
-import httpx as _httpx
-
-from service.db import DatabaseManager
-from service.stores import ExperimentsStore, EventsStore, ProposalsStore
-from service import event_bus, experiment_store
+from api import event_bus, experiment_store
+from api.db import DatabaseManager
+from api.stores import EventsStore, ExperimentsStore, ProposalsStore, WorkersStore
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +37,9 @@ db = DatabaseManager()
 experiments = ExperimentsStore(db)
 events = EventsStore(db)
 proposals = ProposalsStore(db)
+workers_store = WorkersStore(db)
 
 MODAL_CREATE_JOB_URL = os.environ.get("MODAL_CREATE_JOB_URL", "")
-
-# Worker registry: worker_id -> opencode base URL
-_worker_registry: dict[str, str] = {}
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -52,7 +52,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -63,15 +63,13 @@ def startup():
     pass
 
 
-# ── Pydantic models ─────────────────────────────────────────────────────────
+# -- Pydantic models ----------------------------------------------------------
 
 
 class CreateProposalRequest(BaseModel):
-    filename: str
+    proposal_id: str
     title: str
     content: str
-    experiment_number: Optional[int] = None
-    status: str = "draft"
     priority: Optional[str] = None
     hypothesis: Optional[str] = None
     based_on: Optional[str] = None
@@ -126,6 +124,7 @@ class SendMessageRequest(BaseModel):
 class WorkerRegisterRequest(BaseModel):
     worker_id: str
     opencode_url: str
+    function_call_id: Optional[str] = None
 
 
 class WorkerPromptRequest(BaseModel):
@@ -133,16 +132,17 @@ class WorkerPromptRequest(BaseModel):
     session_id: Optional[str] = None
 
 
-# ── GET /experiments ─────────────────────────────────────────────────────────
+# -- GET /experiments ----------------------------------------------------------
 
 
 @app.get("/experiments")
 def list_experiments(
     status: Optional[str] = Query(None, description="Filter by status"),
+    proposal_id: Optional[str] = Query(None, description="Filter by proposal_id"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
-    return experiments.list(status=status, limit=limit, offset=offset)
+    return experiments.list(status=status, proposal_id=proposal_id, limit=limit, offset=offset)
 
 
 @app.get("/experiments/{experiment_id}")
@@ -336,7 +336,36 @@ def verify_experiment(experiment_id: str):
     return {"experiment_id": experiment_id, "checks": checks, "experiment": exp}
 
 
-# ── GET /events ──────────────────────────────────────────────────────────────
+@app.get("/experiments/{experiment_id}/artifacts")
+def get_experiment_artifacts(experiment_id: str):
+    exp = experiments.get(experiment_id)
+    if exp is None:
+        raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
+
+    # Fetch artifacts_url from event bus
+    artifacts_url = None
+    artifacts_events = event_bus.query(
+        experiment_id=experiment_id,
+        event_type="experiment.artifacts_ready",
+        limit=1,
+    )
+    if artifacts_events:
+        artifacts_url = artifacts_events[0].get("details", {}).get("artifacts_url")
+
+    code_files = experiment_store.list_files(experiment_id) if exp.get("code_hash") else []
+
+    return {
+        "experiment_id": experiment_id,
+        "proposal_id": exp.get("proposal_id"),
+        "status": exp.get("status"),
+        "artifacts_url": artifacts_url,
+        "code_files": code_files,
+        "wandb_url": exp.get("wandb_url"),
+        "results": exp.get("results"),
+    }
+
+
+# -- GET /events --------------------------------------------------------------
 
 
 @app.get("/events")
@@ -415,26 +444,23 @@ def get_event_children(
     return event_bus.query(parent_id=event_id, limit=limit, offset=offset)
 
 
-# ── GET /proposals ───────────────────────────────────────────────────────────
+# -- GET /proposals ------------------------------------------------------------
 
 
 @app.get("/proposals")
 def list_proposals(
-    status: Optional[str] = Query(None, description="Filter by status"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ):
-    rows = proposals.list(status=status)
+    rows = proposals.list(limit=limit, offset=offset)
 
     return [
         {
-            "id": row["filename"].removesuffix(".md"),
-            "filename": row["filename"],
-            "experiment_number": row["experiment_number"],
+            "id": row["proposal_id"],
             "title": row["title"],
-            "status": row["status"],
             "priority": row["priority"],
-            "created": str(row["created"]) if row["created"] else None,
+            "created": str(row["created"]) if row.get("created") else None,
             "based_on": row["based_on"],
-            "results_file": row["results_file"],
             "has_mve": "## Minimum Viable Experiment" in (row["content"] or ""),
         }
         for row in rows
@@ -448,50 +474,41 @@ def get_proposal(proposal_id: str):
         raise HTTPException(status_code=404, detail=f"Proposal {proposal_id} not found")
 
     return {
-        "id": row["filename"].removesuffix(".md"),
-        "filename": row["filename"],
-        "experiment_number": row["experiment_number"],
+        "id": row["proposal_id"],
         "title": row["title"],
-        "status": row["status"],
         "priority": row["priority"],
-        "created": str(row["created"]) if row["created"] else None,
+        "created": str(row["created"]) if row.get("created") else None,
         "based_on": row["based_on"],
-        "results_file": row["results_file"],
-        "hypothesis": row["hypothesis"],
+        "hypothesis": row.get("hypothesis"),
         "has_mve": "## Minimum Viable Experiment" in (row["content"] or ""),
         "content": row["content"],
     }
 
 
-# ── POST /proposals ─────────────────────────────────────────────────────────
+# -- POST /proposals -----------------------------------------------------------
 
 
 @app.post("/proposals")
 def create_proposal(req: CreateProposalRequest):
     """Create or upsert a proposal in the database."""
     row = proposals.create(
-        filename=req.filename,
+        proposal_id=req.proposal_id,
         title=req.title,
         content=req.content,
-        experiment_number=req.experiment_number,
-        status=req.status,
         priority=req.priority,
         hypothesis=req.hypothesis,
         based_on=req.based_on,
     )
     return {
-        "id": row["filename"].removesuffix(".md"),
-        "filename": row["filename"],
-        "experiment_number": row["experiment_number"],
+        "id": row["proposal_id"],
         "title": row["title"],
-        "status": row["status"],
         "priority": row["priority"],
         "hypothesis": row.get("hypothesis"),
         "content": row["content"],
     }
 
 
-# ── GET /stats ───────────────────────────────────────────────────────────────
+# -- GET /stats ----------------------------------------------------------------
 
 
 @app.get("/stats")
@@ -516,7 +533,7 @@ def get_stats():
     }
 
 
-# ── POST /experiments ────────────────────────────────────────────────────────
+# -- POST /experiments ---------------------------------------------------------
 
 
 @app.post("/experiments")
@@ -528,60 +545,67 @@ def create_experiment(req: CreateExperimentRequest):
     experiment_id = match.group(1).zfill(3)
 
     # Auto-suffix for reruns
+    run_num = 1
     if experiments.get(experiment_id):
-        run_num = 2
-        while experiments.get(f"{experiment_id}-r{run_num}"):
-            run_num += 1
+        run_num = experiments.get_next_run_number(experiment_id)
         experiment_id = f"{experiment_id}-r{run_num}"
 
-    exp = experiments.create(
-        experiment_id=experiment_id,
-        proposal_id=req.proposal_id,
-        cost_estimate=req.cost_estimate,
-        worker_id=req.worker_id,
-    )
-
-    created_event = event_bus.emit(
-        "experiment.created",
-        f"Experiment {experiment_id} created from proposal {req.proposal_id}",
-        experiment_id=experiment_id,
-        worker_id=req.worker_id,
-    )
-    root_event_id = created_event.get("id")
-
-    # Submit to Modal if endpoint is configured
-    if MODAL_CREATE_JOB_URL:
+    # Spawn a Modal worker for this experiment if endpoint is configured
+    worker_id = req.worker_id
+    if not worker_id and MODAL_CREATE_JOB_URL:
         try:
             modal_resp = _httpx.post(
                 MODAL_CREATE_JOB_URL,
                 json={
-                    "proposal_id": req.proposal_id,
-                    "job_id": experiment_id,
+                    "worker_id": f"exp-{experiment_id}",
                     "service_url": os.environ.get("MAD_SERVICE_URL", "http://mad.briankitano.com"),
                 },
                 timeout=15.0,
             )
             modal_resp.raise_for_status()
             modal_result = modal_resp.json()
+            worker_id = modal_result.get("worker_id")
             fc_id = modal_result.get("function_call_id")
-            if fc_id:
-                experiments.update(experiment_id, modal_job_id=fc_id, status="submitted")
+        except Exception:
+            modal_result = None
+            fc_id = None
+
+    exp = experiments.create(
+        experiment_id=experiment_id,
+        proposal_id=req.proposal_id,
+        cost_estimate=req.cost_estimate,
+        worker_id=worker_id,
+        run_number=run_num,
+    )
+
+    created_event = event_bus.emit(
+        "experiment.created",
+        f"Experiment {experiment_id} created from proposal {req.proposal_id}",
+        experiment_id=experiment_id,
+        worker_id=worker_id,
+    )
+    root_event_id = created_event.get("id")
+
+    if not req.worker_id and MODAL_CREATE_JOB_URL:
+        if worker_id and fc_id:
+            experiments.update(experiment_id, modal_job_id=fc_id, status="submitted")
             event_bus.emit(
                 "experiment.submitted",
-                f"Modal job submitted: {modal_result.get('job_id', experiment_id)}",
+                f"Modal worker {worker_id} spawned for experiment {experiment_id}",
                 experiment_id=experiment_id,
                 details=modal_result,
                 parent_id=root_event_id,
             )
-        except Exception as e:
+        elif not worker_id:
             event_bus.emit(
                 "experiment.submit_error",
-                f"Failed to submit to Modal: {e}",
+                f"Failed to spawn Modal worker for experiment {experiment_id}",
                 experiment_id=experiment_id,
                 parent_id=root_event_id,
             )
 
     exp["root_event_id"] = root_event_id
+
     return exp
 
 
@@ -648,7 +672,7 @@ def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
     if req.status:
         event_bus.emit(
             f"experiment.{req.status}" if req.status in ("completed", "failed", "cancelled") else "experiment.updated",
-            f"Experiment {experiment_id} status → {req.status}",
+            f"Experiment {experiment_id} status \u2192 {req.status}",
             experiment_id=experiment_id,
             details=updates,
             parent_id=event_bus.get_root_event(experiment_id),
@@ -657,36 +681,162 @@ def update_experiment(experiment_id: str, req: UpdateExperimentRequest):
     return updated
 
 
-# ── Worker proxy ─────────────────────────────────────────────────────────────
+# -- Worker proxy --------------------------------------------------------------
+
+
+def _get_worker(worker_id: str) -> dict:
+    entry = workers_store.get(worker_id)
+    if not entry or entry["status"] == "stopped":
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not registered")
+    return entry
 
 
 def _get_worker_url(worker_id: str) -> str:
-    url = _worker_registry.get(worker_id)
-    if not url:
-        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not registered")
-    return url
+    return _get_worker(worker_id)["opencode_url"]
 
 
 @app.get("/workers")
-def list_workers():
-    """List all registered workers."""
-    return {wid: {"opencode_url": url} for wid, url in _worker_registry.items()}
+def list_workers(
+    include_stopped: bool = False,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    """List all registered workers. Stale workers are auto-detected via heartbeat TTL."""
+    return workers_store.list(include_stopped=include_stopped, limit=limit, offset=offset)
 
 
 @app.post("/workers/register")
-def register_worker(req: WorkerRegisterRequest):
-    """Register a worker's opencode URL."""
-    _worker_registry[req.worker_id] = req.opencode_url.rstrip("/")
-    return {"worker_id": req.worker_id, "opencode_url": _worker_registry[req.worker_id]}
+async def register_worker(req: WorkerRegisterRequest):
+    """Register a worker's opencode URL (and optional Modal function_call_id)."""
+    opencode_url = req.opencode_url.rstrip("/")
+    row = workers_store.register(
+        worker_id=req.worker_id,
+        opencode_url=opencode_url,
+        function_call_id=req.function_call_id,
+    )
+
+    # Emit event for new worker registration
+    event_bus.emit(
+        "worker.registered",
+        f"Worker {req.worker_id} registered with opencode URL {opencode_url}",
+        worker_id=req.worker_id,
+    )
+
+    asyncio.get_event_loop().create_task(check_worker_ready(req.worker_id))
+    asyncio.get_event_loop().create_task(assign_submitted_proposals_to_worker(req.worker_id))
+
+    return row
+
+@app.post("/workers/{worker_id}/readyz")
+async def check_worker_ready(worker_id: str):
+
+    worker = workers_store.get(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
+
+    # check the opencode_url is responsive
+    try:
+        async with _httpx.AsyncClient(timeout=5.0) as http:
+            resp = await http.get(f"{worker['opencode_url']}/doc")
+            resp.raise_for_status()
+    except Exception as e:
+        event_bus.emit(
+            "worker.readyz_failed",
+            f"Worker {worker_id} registration succeeded but opencode URL is not responsive: {e}",
+            worker_id=worker_id,
+        )
+
+@app.post("/workers/{worker_id}/assign_submitted_proposals")
+async def assign_submitted_proposals_to_worker(worker_id: str):
+    # send it the proposal if we have an experiment waiting for that worker
+    experiments_waiting = experiments.list(status="submitted", worker_id=worker_id)
+
+    worker = workers_store.get(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
+    
+    for exp in experiments_waiting:
+        event_bus.emit(
+            "worker.proposal_sent",
+            f"Sending proposal {exp['proposal_id']} to worker {worker_id}",
+            experiment_id=exp["id"],
+            worker_id=worker_id,
+        )
+        proposal = proposals.get(exp.proposal_id)
+        session_ids = {}
+        if not proposal:
+            continue
+        try:
+            async with _httpx.AsyncClient(base_url=worker['opencode_url'], timeout=30.0) as http:
+                sess_resp = await http.post("/session", json={})
+                sess_resp.raise_for_status()
+                session_id = sess_resp.json()["id"]
+
+                session_ids[exp.proposal_id] = session_id
+
+                await http.post(
+                    f"/session/{session_id}/prompt_async",
+                    json={"parts": [{"type": "text", "text": proposal["content"]}]},
+                )
+
+            experiments.update(exp.id, status="running")
+            event_bus.emit(
+                "worker.proposal_accepted",
+                f"Worker {worker_id} accepted proposal {exp.proposal_id} with session_id {session_id}",
+                experiment_id=exp.id,
+                worker_id=worker_id,
+            )
+        except Exception as e:
+            event_bus.emit(
+                "worker.proposal_error",
+                f"Failed to send proposal {exp['proposal_id']} to worker {worker_id}: {e}",
+                experiment_id=exp["id"],
+                worker_id=worker_id,
+            )
+    
+    return {"worker_id": worker_id, "session_ids": session_ids}
+
+@app.post("/workers/{worker_id}/heartbeat")
+def worker_heartbeat(worker_id: str):
+    """Update a worker's heartbeat timestamp."""
+    row = workers_store.heartbeat(worker_id)
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
+    return row
 
 
 @app.delete("/workers/{worker_id}")
-def unregister_worker(worker_id: str):
-    """Unregister a worker."""
-    removed = _worker_registry.pop(worker_id, None)
-    if not removed:
+def kill_worker(worker_id: str):
+    """Stop a worker and terminate its Modal container if possible."""
+    entry = workers_store.get(worker_id)
+    if not entry:
         raise HTTPException(status_code=404, detail=f"Worker {worker_id} not registered")
-    return {"worker_id": worker_id, "status": "removed"}
+
+    modal_killed = False
+    fc_id = entry.get("function_call_id")
+    if fc_id:
+        try:
+            from modal.functions import FunctionCall
+
+            fc = FunctionCall.from_id(fc_id)
+            fc.cancel(terminate_containers=True)
+            modal_killed = True
+        except Exception as e:
+            event_bus.emit(
+                "worker.kill_error",
+                f"Failed to kill Modal container for {worker_id}: {e}",
+                details={"worker_id": worker_id, "function_call_id": fc_id},
+            )
+
+    workers_store.remove(worker_id)
+
+    event_bus.emit(
+        "worker.killed",
+        f"Worker {worker_id} stopped" + (" (Modal container terminated)" if modal_killed else ""),
+        details={"worker_id": worker_id, "modal_killed": modal_killed},
+    )
+
+    return {"worker_id": worker_id, "status": "stopped", "modal_killed": modal_killed}
 
 
 @app.get("/workers/{worker_id}/sessions")
@@ -790,7 +940,7 @@ def cancel_experiment(experiment_id: str):
     }
 
 
-# ── POST /events ─────────────────────────────────────────────────────────────
+# -- POST /events -------------------------------------------------------------
 
 
 @app.post("/events")
@@ -805,7 +955,7 @@ def post_event(req: EmitEventRequest):
     )
 
 
-# ── POST /dispatch ───────────────────────────────────────────────────────────
+# -- POST /dispatch ------------------------------------------------------------
 
 
 TASK_QUEUE_DIR = Path(__file__).parent.parent / ".data" / "tasks"
@@ -834,7 +984,7 @@ def dispatch_task(req: DispatchTaskRequest):
 
     event_bus.emit(
         "task.dispatched",
-        f"Task dispatched: {req.agent_type} — {req.prompt[:100]}",
+        f"Task dispatched: {req.agent_type} \u2014 {req.prompt[:100]}",
         experiment_id=req.experiment_id,
         details=task,
     )
@@ -845,6 +995,8 @@ def dispatch_task(req: DispatchTaskRequest):
 def list_dispatched_tasks(
     status: str = Query("pending", description="Filter by status"),
     agent_type: Optional[str] = None,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ):
     TASK_QUEUE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -858,7 +1010,7 @@ def list_dispatched_tasks(
         tasks.append(task)
 
     tasks.sort(key=lambda t: -t.get("priority", 0))
-    return tasks
+    return tasks[offset:offset + limit]
 
 
 @app.patch("/dispatch/{task_id}")
@@ -873,7 +1025,7 @@ def update_task(task_id: str, status: str = Query(...)):
     return task
 
 
-# ── POST /directives ────────────────────────────────────────────────────────
+# -- POST /directives ---------------------------------------------------------
 
 
 DIRECTIVES_DIR = Path(__file__).parent.parent / "agent_directives"

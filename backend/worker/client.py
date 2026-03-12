@@ -5,7 +5,7 @@ Agents should use this instead of importing service modules directly.
 This ensures all interactions go through the API and are properly tracked.
 
 Usage:
-    from service.client import ExperimentClient
+    from worker.client import ExperimentClient
 
     client = ExperimentClient()  # defaults to http://localhost:8000
 
@@ -43,24 +43,31 @@ class ExperimentClient:
     def __init__(self, base_url: str = DEFAULT_BASE_URL, timeout: float = 30.0):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self._client: Optional[httpx.Client] = None
+
+    def _http(self) -> httpx.Client:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.Client(base_url=self.base_url, timeout=self.timeout)
+        return self._client
+
+    def close(self) -> None:
+        if self._client and not self._client.is_closed:
+            self._client.close()
 
     def _get(self, path: str, params: Optional[dict] = None) -> dict | list:
-        with httpx.Client(timeout=self.timeout) as client:
-            resp = client.get(f"{self.base_url}{path}", params=params)
-            resp.raise_for_status()
-            return resp.json()
+        resp = self._http().get(path, params=params)
+        resp.raise_for_status()
+        return resp.json()
 
     def _post(self, path: str, json: Optional[dict] = None, params: Optional[dict] = None) -> dict:
-        with httpx.Client(timeout=self.timeout) as client:
-            resp = client.post(f"{self.base_url}{path}", json=json, params=params)
-            resp.raise_for_status()
-            return resp.json()
+        resp = self._http().post(path, json=json, params=params)
+        resp.raise_for_status()
+        return resp.json()
 
     def _patch(self, path: str, json: Optional[dict] = None, params: Optional[dict] = None) -> dict:
-        with httpx.Client(timeout=self.timeout) as client:
-            resp = client.patch(f"{self.base_url}{path}", json=json, params=params)
-            resp.raise_for_status()
-            return resp.json()
+        resp = self._http().patch(path, json=json, params=params)
+        resp.raise_for_status()
+        return resp.json()
 
     # ── Experiments ──────────────────────────────────────────────────────────
 
@@ -184,21 +191,17 @@ class ExperimentClient:
 
     def create_proposal(
         self,
-        filename: str,
+        proposal_id: str,
         title: str,
         content: str,
-        experiment_number: Optional[int] = None,
-        status: str = "draft",
         priority: Optional[str] = None,
         hypothesis: Optional[str] = None,
         based_on: Optional[str] = None,
     ) -> dict:
         return self._post("/proposals", json={
-            "filename": filename,
+            "proposal_id": proposal_id,
             "title": title,
             "content": content,
-            "experiment_number": experiment_number,
-            "status": status,
             "priority": priority,
             "hypothesis": hypothesis,
             "based_on": based_on,

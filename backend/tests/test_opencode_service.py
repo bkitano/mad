@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from service.opencode.service import OpencodeService
-from service.opencode.types import (
+from worker.opencode.service import OpencodeService
+from worker.opencode.types import (
     EventMessagePartUpdated,
     EventSessionIdle,
     parse_event,
@@ -50,9 +50,9 @@ class TestLifecycle:
         service.metadata.clear()
         assert service.metadata == {}
 
-    @patch("service.opencode.service.subprocess.Popen")
-    @patch("service.opencode.service.time.sleep")
-    @patch("service.opencode.service.asyncio.create_task")
+    @patch("worker.opencode.service.subprocess.Popen")
+    @patch("worker.opencode.service.time.sleep")
+    @patch("worker.opencode.service.asyncio.create_task")
     def test_start_sets_is_started(self, mock_create_task, mock_sleep, mock_popen, service):
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None  # process is still running
@@ -64,7 +64,7 @@ class TestLifecycle:
         assert service._proc is mock_proc
         mock_create_task.assert_called_once()
 
-    @patch("service.opencode.service.asyncio.create_task")
+    @patch("worker.opencode.service.asyncio.create_task")
     def test_start_forwarder_only_sets_is_started(self, mock_create_task, service):
         service.start_forwarder_only()
 
@@ -155,7 +155,7 @@ class TestForwarder:
                 return httpx.Response(200, text=sse_body, headers={"content-type": "text/event-stream"})
             return httpx.Response(404)
 
-        with patch("service.opencode.service.httpx.AsyncClient") as mock_ac:
+        with patch("worker.opencode.service.httpx.AsyncClient") as mock_ac:
             # Set up the mock to use our transport
             real_client = httpx.AsyncClient(transport=httpx.MockTransport(mock_transport))
             mock_ac.return_value.__aenter__ = AsyncMock(return_value=real_client)
@@ -198,7 +198,7 @@ class TestForwarder:
                 return httpx.Response(200, text=sse_body, headers={"content-type": "text/event-stream"})
             return httpx.Response(404)
 
-        with patch("service.opencode.service.httpx.AsyncClient") as mock_ac:
+        with patch("worker.opencode.service.httpx.AsyncClient") as mock_ac:
             real_client = httpx.AsyncClient(transport=httpx.MockTransport(mock_transport))
             mock_ac.return_value.__aenter__ = AsyncMock(return_value=real_client)
             mock_ac.return_value.__aexit__ = AsyncMock(return_value=None)
@@ -250,7 +250,7 @@ class TestGracePeriod:
     async def test_grace_period_emits_event(self, service, mock_client):
         service.metadata.update({"experiment_id": "exp-1", "parent_id": 5})
 
-        with patch("service.opencode.service.asyncio.sleep", new_callable=AsyncMock):
+        with patch("worker.opencode.service.asyncio.sleep", new_callable=AsyncMock):
             await service.grace_period(10, details={"opencode_url": "http://localhost:4096"})
 
         mock_client.emit_event.assert_called_once()
@@ -261,7 +261,7 @@ class TestGracePeriod:
 
     @pytest.mark.asyncio
     async def test_grace_period_no_details_no_emit(self, service, mock_client):
-        with patch("service.opencode.service.asyncio.sleep", new_callable=AsyncMock):
+        with patch("worker.opencode.service.asyncio.sleep", new_callable=AsyncMock):
             await service.grace_period(10)
 
         mock_client.emit_event.assert_not_called()

@@ -7,7 +7,13 @@ interface WorkersViewProps {
 }
 
 interface Worker {
+  worker_id: string
   opencode_url: string
+  function_call_id?: string
+  status: string  // starting | ready | stale | stopped
+  timeout_hours: number
+  registered_at: string
+  last_heartbeat: string
 }
 
 interface ChatMessage {
@@ -16,14 +22,35 @@ interface ChatMessage {
   timestamp: Date
 }
 
+function timeRemaining(worker: Worker): string {
+  const start = new Date(worker.registered_at).getTime()
+  const end = start + worker.timeout_hours * 60 * 60 * 1000
+  const remaining = end - Date.now()
+  if (remaining <= 0) return 'expired'
+  const hours = Math.floor(remaining / (60 * 60 * 1000))
+  const mins = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000))
+  return `${hours}h ${mins}m left`
+}
+
+function statusColor(status: string): string {
+  switch (status) {
+    case 'ready': return 'bg-green-500'
+    case 'starting': return 'bg-yellow-400'
+    case 'stale': return 'bg-orange-400'
+    case 'stopped': return 'bg-gray-400'
+    default: return 'bg-gray-400'
+  }
+}
+
 export default function WorkersView({ apiUrl }: WorkersViewProps) {
-  const [workers, setWorkers] = useState<Record<string, Worker>>({})
+  const [workers, setWorkers] = useState<Worker[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedWorker, setSelectedWorker] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [spawning, setSpawning] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Fetch workers
@@ -128,7 +155,49 @@ export default function WorkersView({ apiUrl }: WorkersViewProps) {
     }
   }
 
-  const workerIds = Object.keys(workers)
+  const stopWorker = async (workerId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm(`Stop worker ${workerId}?`)) return
+    try {
+      const res = await fetch(`${apiUrl}/workers/${workerId}`, { method: 'DELETE' })
+      if (res.ok) {
+        if (selectedWorker === workerId) {
+          setSelectedWorker(null)
+          setSessionId(null)
+          setMessages([])
+        }
+        fetchWorkers()
+      } else {
+        const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+        alert(`Failed to stop worker: ${err.detail || res.statusText}`)
+      }
+    } catch (err) {
+      alert(`Failed to stop worker: ${err}`)
+    }
+  }
+
+  const spawnWorker = async () => {
+    setSpawning(true)
+    try {
+      const res = await fetch('https://miravoice--mad-worker-create-worker.modal.run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service_url: apiUrl }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        alert(`Worker ${data.worker_id} spawning. It will appear once it registers.`)
+        setTimeout(fetchWorkers, 5000)
+      } else {
+        const err = await res.text()
+        alert(`Failed to spawn worker: ${err}`)
+      }
+    } catch (err) {
+      alert(`Failed to spawn worker: ${err}`)
+    } finally {
+      setSpawning(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -144,38 +213,56 @@ export default function WorkersView({ apiUrl }: WorkersViewProps) {
       <div className="w-72 shrink-0 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-gray-700 uppercase tracking-wide">
-            Workers ({workerIds.length})
+            Workers ({workers.length})
           </h3>
-          <button
-            onClick={fetchWorkers}
-            className="text-xs text-blue-600 hover:text-blue-800"
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchWorkers}
+              className="text-xs text-blue-600 hover:text-blue-800"
+            >
+              Refresh
+            </button>
+            <button
+              onClick={spawnWorker}
+              disabled={spawning}
+              className="text-xs text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-2 py-0.5 rounded transition-colors"
+            >
+              {spawning ? 'Spawning...' : '+ New'}
+            </button>
+          </div>
         </div>
 
-        {workerIds.length === 0 ? (
+        {workers.length === 0 ? (
           <div className="bg-gray-50 p-6 rounded-lg text-center text-gray-500 text-sm">
             No workers registered
           </div>
         ) : (
           <div className="space-y-2">
-            {workerIds.map(id => (
+            {workers.map(w => (
               <button
-                key={id}
-                onClick={() => selectWorker(id)}
+                key={w.worker_id}
+                onClick={() => selectWorker(w.worker_id)}
                 className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                  selectedWorker === id
+                  selectedWorker === w.worker_id
                     ? 'border-blue-500 bg-blue-50'
                     : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="font-mono text-xs text-gray-900 truncate">{id}</span>
+                  <div className={`w-2 h-2 rounded-full ${statusColor(w.status)}`} />
+                  <span className="font-mono text-xs text-gray-900 truncate flex-1">{w.worker_id}</span>
+                  <button
+                    onClick={(e) => stopWorker(w.worker_id, e)}
+                    className="text-xs text-white bg-red-500 hover:bg-red-600 px-2 py-0.5 rounded transition-colors"
+                  >
+                    Stop
+                  </button>
                 </div>
-                <div className="mt-1 text-xs text-gray-500 truncate">
-                  {workers[id].opencode_url}
+                <div className="mt-1 flex items-center justify-between text-xs">
+                  <span className="text-gray-400 capitalize">{w.status}</span>
+                  <span className={`${timeRemaining(w) === 'expired' ? 'text-red-500' : 'text-gray-400'}`}>
+                    {timeRemaining(w)}
+                  </span>
                 </div>
               </button>
             ))}

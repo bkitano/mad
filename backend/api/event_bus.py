@@ -12,8 +12,8 @@ from typing import Optional
 
 import httpx
 
-from service.db import DatabaseManager
-from service.stores import EventsStore
+from api.db import DatabaseManager
+from api.stores import EventsStore
 
 _db = DatabaseManager()
 _events = EventsStore(_db)
@@ -54,11 +54,11 @@ def emit(
 def _fire_webhook(event: dict) -> None:
     try:
         icon = {
-            "completed": "✅",
-            "failed": "❌",
-            "error": "⚠️",
-            "cancelled": "🚫",
-        }.get(event.get("type", ""), "📋")
+            "completed": "\u2705",
+            "failed": "\u274c",
+            "error": "\u26a0\ufe0f",
+            "cancelled": "\ud83d\udeb3",
+        }.get(event.get("type", ""), "\ud83d\udccb")
 
         title = f"{icon} [{event.get('type', '').upper()}] Experiment {event.get('experiment_id', '?')}"
         body = event.get("summary", "")

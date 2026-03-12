@@ -182,11 +182,9 @@ Train a 2-layer conv-net on MNIST for 2 epochs with batch size 256.
 """
 
     resp = api.post("/proposals", json={
-        "filename": f"{proposal_id}.md",
+        "proposal_id": proposal_id,
         "title": "MNIST Conv-Net E2E Test",
         "content": proposal_content,
-        "experiment_number": 999,
-        "status": "approved",
         "hypothesis": "A small conv-net can achieve >95% test accuracy on MNIST in 2 epochs.",
     })
     assert resp.status_code == 200, f"Failed to create proposal: {resp.text}"

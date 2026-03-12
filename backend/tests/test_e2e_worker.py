@@ -28,8 +28,8 @@ import uuid
 import httpx
 import pytest
 
-from service.client import ExperimentClient
-from service.opencode.service import OpencodeService
+from worker.client import ExperimentClient
+from worker.opencode.service import OpencodeService
 
 SERVICE_URL = os.environ.get("MAD_SERVICE_URL", "http://localhost:8000")
 OPENCODE_PORT = int(os.environ.get("OPENCODE_PORT", "4096"))
@@ -77,7 +77,7 @@ class TestWorkerDryRun:
     @pytest.mark.usefixtures("api_reachable")
     def test_select_proposal(self, client):
         """Verify select_proposal finds a candidate."""
-        from service.worker import select_proposal
+        from worker.worker import select_proposal
 
         proposal = select_proposal(client)
         # May be None if no unclaimed proposals with MVEs exist
@@ -89,7 +89,7 @@ class TestWorkerDryRun:
     @pytest.mark.usefixtures("api_reachable", "opencode_reachable")
     def test_dry_run_cycle(self, client, opencode_service):
         """Run a dry-run cycle: selects proposal, doesn't run agent."""
-        from service.worker import run_experiment_cycle
+        from worker.worker import run_experiment_cycle
 
         opencode_service.is_started = True  # skip actual opencode start for dry run
 

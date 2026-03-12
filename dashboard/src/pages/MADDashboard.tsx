@@ -4,7 +4,7 @@ import ExperimentCard from '../components/mad/ExperimentCard'
 import LogViewer from '../components/mad/LogViewer'
 import ProposalsView from '../components/mad/ProposalsView'
 import TricksView from '../components/mad/TricksView'
-import ResearchLog from '../components/mad/ResearchLog'
+
 import CodeViewer from '../components/mad/CodeViewer'
 import WorkersView from '../components/mad/WorkersView'
 import ReactMarkdown from 'react-markdown'
@@ -33,6 +33,7 @@ interface Experiment {
   id: string
   proposal_id: string
   status: string
+  worker_id?: string
   wandb_url?: string
   results?: Record<string, unknown>
   error?: string
@@ -42,9 +43,10 @@ interface Experiment {
   created_at: string
   completed_at?: string
   submitted_at?: string
+  artifacts_url?: string
 }
 
-type TabType = 'experiments' | 'proposals' | 'tricks' | 'log' | 'workers'
+type TabType = 'experiments' | 'proposals' | 'tricks' | 'workers'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://mad.briankitano.com'
 
@@ -57,7 +59,7 @@ export default function MADDashboard() {
     const path = location.pathname
     if (path.includes('/proposals')) return 'proposals'
     if (path.includes('/tricks')) return 'tricks'
-    if (path.includes('/log')) return 'log'
+
     if (path.includes('/workers')) return 'workers'
     return 'experiments'
   }
@@ -70,6 +72,14 @@ export default function MADDashboard() {
   const [selectedResult, setSelectedResult] = useState<{ id: string; content: string } | null>(null)
   const [selectedLog, setSelectedLog] = useState<{ id: string; content: string } | null>(null)
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
+  const [selectedArtifacts, setSelectedArtifacts] = useState<{
+    id: string
+    proposal_id: string
+    artifacts_url?: string
+    code_files: string[]
+    wandb_url?: string
+    results?: Record<string, unknown>
+  } | null>(null)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
 
   // All experiments list
@@ -257,6 +267,20 @@ export default function MADDashboard() {
     }
   }
 
+  // Fetch experiment artifacts
+  const fetchArtifacts = async (exp: Experiment) => {
+    try {
+      const res = await fetch(`${API_URL}/experiments/${exp.id}/artifacts`)
+      if (res.ok) {
+        setSelectedArtifacts(await res.json())
+      } else {
+        console.error('Failed to fetch artifacts')
+      }
+    } catch (err) {
+      console.error('Error fetching artifacts:', err)
+    }
+  }
+
   // Calculate stats
   const activeExperiments = data ? Object.keys(data.active_work).length : 0
   const totalExperiments = experiments.length
@@ -310,16 +334,6 @@ export default function MADDashboard() {
             }`}
           >
             Tricks
-          </button>
-          <button
-            onClick={() => navigate('/log')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'log'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Research Log
           </button>
           <button
             onClick={() => navigate('/workers')}
@@ -481,6 +495,7 @@ export default function MADDashboard() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Proposal</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Worker</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
@@ -506,6 +521,9 @@ export default function MADDashboard() {
                               {exp.status}
                             </span>
                           </td>
+                          <td className="px-4 py-3 text-sm font-mono text-gray-500">
+                            {exp.worker_id || '—'}
+                          </td>
                           <td className="px-4 py-3 text-sm text-gray-500">
                             {new Date(exp.created_at).toLocaleString()}
                           </td>
@@ -528,6 +546,12 @@ export default function MADDashboard() {
                                 className="text-blue-600 hover:text-blue-800 text-xs underline"
                               >
                                 Log
+                              </button>
+                              <button
+                                onClick={() => fetchArtifacts(exp)}
+                                className="text-blue-600 hover:text-blue-800 text-xs underline"
+                              >
+                                Artifacts
                               </button>
                             </div>
                           </td>
@@ -576,7 +600,6 @@ export default function MADDashboard() {
 
       {activeTab === 'proposals' && <ProposalsView apiUrl={API_URL} />}
       {activeTab === 'tricks' && <TricksView apiUrl={API_URL} />}
-      {activeTab === 'log' && <ResearchLog apiUrl={API_URL} />}
       {activeTab === 'workers' && <WorkersView apiUrl={API_URL} />}
 
       {/* Results Modal */}
@@ -644,6 +667,104 @@ export default function MADDashboard() {
           apiUrl={API_URL}
           onClose={() => setSelectedCode(null)}
         />
+      )}
+
+      {/* Artifacts Modal */}
+      {selectedArtifacts && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedArtifacts(null)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Artifacts: {selectedArtifacts.id}
+              </h3>
+              <button
+                onClick={() => setSelectedArtifacts(null)}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+              <div className="space-y-6">
+                {/* Proposal */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Proposal</h4>
+                  <button
+                    onClick={() => navigate(`/proposals/${selectedArtifacts.proposal_id}`)}
+                    className="text-blue-600 hover:text-blue-800 underline text-sm"
+                  >
+                    View {selectedArtifacts.proposal_id}
+                  </button>
+                </div>
+
+                {/* Results */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Results</h4>
+                  {selectedArtifacts.results ? (
+                    <div className="bg-gray-50 p-3 rounded text-xs">
+                      <pre className="overflow-auto max-h-40">
+                        {JSON.stringify(selectedArtifacts.results, null, 2)}
+                      </pre>
+                      {selectedArtifacts.wandb_url && (
+                        <div className="mt-2">
+                          <a href={selectedArtifacts.wandb_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
+                            View on W&B →
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No results available</p>
+                  )}
+                </div>
+
+                {/* Code */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Code</h4>
+                  {selectedArtifacts.code_files.length > 0 ? (
+                    <button
+                      onClick={() => {
+                        setSelectedArtifacts(null)
+                        setSelectedCode(selectedArtifacts.id)
+                      }}
+                      className="text-blue-600 hover:text-blue-800 underline text-sm"
+                    >
+                      Browse Code ({selectedArtifacts.code_files.length} files)
+                    </button>
+                  ) : (
+                    <p className="text-sm text-gray-500">No code available</p>
+                  )}
+                </div>
+
+                {/* Logs */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Logs</h4>
+                  <button
+                    onClick={() => {
+                      setSelectedArtifacts(null)
+                      fetchLog(selectedArtifacts.proposal_id)
+                    }}
+                    className="text-blue-600 hover:text-blue-800 underline text-sm"
+                  >
+                    View Logs
+                  </button>
+                </div>
+
+                {/* Artifacts Download */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Artifacts (S3)</h4>
+                  {selectedArtifacts.artifacts_url ? (
+                    <a href={selectedArtifacts.artifacts_url} download className="text-blue-600 hover:text-blue-800 underline text-sm">
+                      Download artifacts.tar.gz
+                    </a>
+                  ) : (
+                    <p className="text-sm text-gray-500">Not yet available (waiting for experiment to complete)</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

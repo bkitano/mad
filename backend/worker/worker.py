@@ -1,9 +1,8 @@
 """
-Standalone experiment worker — runs in any container, talks to the API server.
+Standalone experiment worker -- runs in any container, talks to the API server.
 
-Uses the same agent SDK as agents/experiment_agent.py (via agents.opencode_query)
-to give the agent full tool access (Read, Write, Glob, Grep, Bash) for
-implementing and running experiments end-to-end.
+Uses the opencode agent SDK to give the agent full tool access (Read, Write,
+Glob, Grep, Bash) for implementing and running experiments end-to-end.
 
 Requirements:
   - MAD_SERVICE_URL env var (e.g. http://your-server:8000)
@@ -13,16 +12,16 @@ Requirements:
 
 Usage:
     # Run one experiment cycle
-    python -m service.worker --once
+    python -m worker.worker --once
 
     # Run continuously (poll every 5 minutes)
-    python -m service.worker
+    python -m worker.worker
 
     # Run a specific proposal
-    python -m service.worker --proposal 042-monarch-gated
+    python -m worker.worker --proposal 042-monarch-gated
 
     # Dry run (claim + read proposal, don't run agent)
-    python -m service.worker --dry-run
+    python -m worker.worker --dry-run
 """
 
 import argparse
@@ -34,9 +33,9 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from service.client import ExperimentClient
-from service.opencode import OpenCodeAgentOptions, OpencodeService
-from service.opencode.types import EventMessagePartUpdated, TextPart, ToolPart
+from worker.client import ExperimentClient
+from worker.opencode import OpenCodeAgentOptions, OpencodeService
+from worker.opencode.types import EventMessagePartUpdated, TextPart, ToolPart
 
 WORKER_ID = os.environ.get("MAD_WORKER_ID", f"worker-{uuid.uuid4().hex[:8]}")
 POLL_INTERVAL = int(os.environ.get("MAD_POLL_INTERVAL", "300"))  # seconds
@@ -48,7 +47,7 @@ CODE_DIR = WORKSPACE / "code"
 EXPERIMENTS_DIR = WORKSPACE / "experiments"
 
 
-# ── System Prompt ─────────────────────────────────────────────────────────────
+# -- System Prompt -------------------------------------------------------------
 
 EXPERIMENT_AGENT_SYSTEM_PROMPT = """You are the Experiment Agent, an expert in implementing and running
 Minimum Viable Experiments (MVEs) to validate architectural ideas quickly and cheaply.
@@ -57,9 +56,9 @@ Your goal is to implement the given proposal's MVE, run it on Modal, and report 
 
 ## Your Knowledge Base
 
-- **Proposals folder**: {proposals_dir} — Contains experiment proposals with MVE sections
-- **Code folder**: {code_dir} — Where you create experiment implementations
-- **Experiments folder**: {experiments_dir} — Where you log experiment results
+- **Proposals folder**: {proposals_dir} -- Contains experiment proposals with MVE sections
+- **Code folder**: {code_dir} -- Where you create experiment implementations
+- **Experiments folder**: {experiments_dir} -- Where you log experiment results
 
 ## What You Do
 
@@ -70,7 +69,7 @@ Your goal is to implement the given proposal's MVE, run it on Modal, and report 
    - Training script (train.py)
    - Config file (config.yaml)
    - Requirements (pyproject.toml)
-   - Modal deployment config (modal_config.py) — REQUIRED
+   - Modal deployment config (modal_config.py) -- REQUIRED
    - README with setup instructions
 4. **Log everything**: Update experiment-log.md throughout with attempts, bugs, fixes, decisions
 5. **Run experiment**: Submit to Modal with `modal run --detach modal_config.py`
@@ -83,21 +82,21 @@ code/{exp_id}/
 ├── README.md
 ├── pyproject.toml
 ├── config.yaml
-├── modal_config.py        ← REQUIRED
+├── modal_config.py        <- REQUIRED
 ├── models/
 │   ├── __init__.py
 │   └── model_name.py
 ├── train.py
-└── evaluate.py            ← optional
+└── evaluate.py            <- optional
 ```
 
 ## Modal Deployment (REQUIRED)
 
 **ALL experiments MUST run on Modal, NOT locally.**
 
-1. **Always create `modal_config.py`** — configure GPU (T4 default), timeout, image, volumes
+1. **Always create `modal_config.py`** -- configure GPU (T4 default), timeout, image, volumes
 2. **Run with**: `modal run --detach modal_config.py --config config.yaml`
-   - `--detach` is CRITICAL — runs async, returns job ID immediately
+   - `--detach` is CRITICAL -- runs async, returns job ID immediately
 3. **Log the Modal job ID and URL** from the command output
 4. NEVER run `python train.py` directly
 
@@ -139,7 +138,7 @@ Human operators may inject additional prompts into this session at any time. Tre
 """
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 
 
 def log(msg: str):
@@ -182,7 +181,7 @@ async def _heartbeat_loop(client: ExperimentClient, proposal_id: str, experiment
             pass
 
 
-# ── Agent Execution ───────────────────────────────────────────────────────────
+# -- Agent Execution -----------------------------------------------------------
 
 
 async def run_agent_on_proposal(
@@ -254,10 +253,6 @@ Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
                     summary = f"{part.tool} ({part.state.status})"
 
             log(f"  {event.type}: {summary[:200]}")
-            # NOTE: per-event emission to MAD service is handled by the
-            # OpencodeService SSE forwarder. No need to emit here — the
-            # forwarder captures all events from the opencode /event stream
-            # and tags them with experiment_id/parent_id from its metadata.
         except Exception:
             pass
 
@@ -273,7 +268,7 @@ Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
     }
 
 
-# ── Main Cycle ────────────────────────────────────────────────────────────────
+# -- Main Cycle ----------------------------------------------------------------
 
 
 async def run_experiment_cycle(
@@ -303,7 +298,7 @@ async def run_experiment_cycle(
         proposal_content = full_proposal.get("content", "")
 
         if dry_run:
-            log(f"DRY RUN — proposal {proposal_id} has {len(proposal_content)} chars")
+            log(f"DRY RUN -- proposal {proposal_id} has {len(proposal_content)} chars")
             log(f"Has MVE: {full_proposal.get('has_mve')}")
             return True
 
@@ -350,7 +345,34 @@ async def run_experiment_cycle(
             stop_heartbeat.set()
             heartbeat_task.cancel()
 
-        # 6. Report outcome
+        # 6. Store code from disk and upload artifacts
+        code_src = CODE_DIR / experiment_id
+        if code_src.exists():
+            try:
+                client.store_code_from_disk(experiment_id, str(code_src))
+                log(f"Code stored for {experiment_id}")
+            except Exception as e:
+                log(f"Warning: code storage failed: {e}")
+
+        # Upload experiment artifacts to Supabase Storage
+        artifacts_url = None
+        if os.environ.get("SUPABASE_URL"):
+            try:
+                from worker.artifact_upload import upload_artifacts
+                artifacts_url = upload_artifacts(experiment_id, EXPERIMENTS_DIR)
+                client.emit_event(
+                    "experiment.artifacts_ready",
+                    "Artifacts uploaded to Supabase Storage",
+                    experiment_id=experiment_id,
+                    details={"artifacts_url": artifacts_url},
+                    parent_id=root_event_id,
+                    worker_id=WORKER_ID,
+                )
+                log(f"Artifacts uploaded: {artifacts_url[:80]}...")
+            except Exception as e:
+                log(f"Warning: artifact upload failed: {e}")
+
+        # 7. Report outcome
         log(f"Agent finished. Status: {result['status']}")
         client.update_experiment(
             experiment_id,
@@ -385,7 +407,7 @@ async def run_experiment_cycle(
         log(f"Finished working on {proposal_id}")
 
 
-# ── Entry Point ───────────────────────────────────────────────────────────────
+# -- Entry Point ---------------------------------------------------------------
 
 
 def _install_signal_handlers(client: ExperimentClient):
@@ -442,7 +464,7 @@ async def main_async():
             json={"worker_id": WORKER_ID, "opencode_url": opencode.url},
             timeout=5.0,
         )
-        log(f"Registered as worker {WORKER_ID} → {opencode.url}")
+        log(f"Registered as worker {WORKER_ID} -> {opencode.url}")
     except Exception as e:
         log(f"Warning: failed to register with API server: {e}")
 
@@ -450,7 +472,7 @@ async def main_async():
 
     try:
         if args.idle:
-            log("Idle mode — opencode server running, no proposals will be processed")
+            log("Idle mode -- opencode server running, no proposals will be processed")
             log(f"  opencode URL: {opencode.url}")
             while True:
                 await asyncio.sleep(3600)

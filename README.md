@@ -14,7 +14,7 @@ OPENCODE_CONFIG="./opencode.jsonc"
 1. Start the API.
 ```
 cd mad/backend/
-set -a; source ../.env; uv run uvicorn service.api:app --port 8001 --reload
+set -a; source ../.env; uv run uvicorn api.api:app --port 8001 --reload
 ```
 
 2. Start up Opencode in a directory `mad/.e2e/`
