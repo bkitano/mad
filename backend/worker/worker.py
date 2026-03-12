@@ -26,6 +26,7 @@ Usage:
 
 import argparse
 import asyncio
+import json
 import os
 import re
 import signal
@@ -117,13 +118,7 @@ Maintain `experiments/experiment-log-{exp_id}.md`:
 
 After experiments complete, create `experiments/{exp_id}_results.md` with a JSON block:
 
-```json
-{
-  "wandb_run_id": "mad-lab/mad-architecture-search/abc123",
-  "modal_job_id": "fc-xyz789",
-  "final_metrics": {"val_loss": 0.12, "val_acc": 0.95}
-}
-```
+{json_block}
 
 The `wandb_run_id` MUST be in `entity/project/run_id` format — this is used for verification.
 
@@ -222,11 +217,21 @@ Your tasks:
 Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
 """
 
+    json_block = json.dumps(
+        {
+            "wandb_run_id": "mad-lab/mad-architecture-search/abc123",
+            "modal_job_id": "fc-xyz789",
+            "final_metrics": {"val_loss": 0.12, "val_acc": 0.95}
+        },
+        ensure_ascii=False,
+        separators=(',', ':'),
+    )
     system_prompt = EXPERIMENT_AGENT_SYSTEM_PROMPT.format(
         proposals_dir=str(PROPOSALS_DIR),
         code_dir=str(CODE_DIR),
         experiments_dir=str(EXPERIMENTS_DIR),
         exp_id=experiment_id,
+        json_block=json_block,
     )
 
     messages = []

@@ -751,6 +751,7 @@ async def assign_submitted_proposals_to_worker(worker_id: str):
     if not worker:
         raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
     
+    session_ids = {}
     for exp in experiments_waiting:
         event_bus.emit(
             "worker.proposal_sent",
@@ -759,7 +760,6 @@ async def assign_submitted_proposals_to_worker(worker_id: str):
             worker_id=worker_id,
         )
         proposal = proposals.get(exp.proposal_id)
-        session_ids = {}
         if not proposal:
             continue
         try:
