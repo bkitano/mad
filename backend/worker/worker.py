@@ -183,7 +183,7 @@ def _tool_detail(part) -> str:
         if isinstance(cmd, list):
             return " ".join(str(a) for a in cmd)
         if inp:
-            return str(inp)[:300]
+            return str(inp)
         return ""
     if tool in ("read", "write"):
         return inp.get("filePath", inp.get("path", inp.get("filename", "")))
@@ -195,7 +195,7 @@ def _tool_detail(part) -> str:
 def _log_tool(part) -> None:
     """Log a ToolPart with context-appropriate detail. Always logs bash command for debugging."""
     status = part.state.status
-    detail = str(_tool_detail(part))[:300]
+    detail = str(_tool_detail(part))
     tool = part.tool.lower()
 
     if status == "pending" and tool == "bash" and detail:
@@ -207,7 +207,7 @@ def _log_tool(part) -> None:
             log(f"  >> {part.tool}")
     elif status == "completed":
         output = part.state.output or ""
-        snippet = output.strip()[:200].replace("\n", " ")
+        snippet = output.strip().replace("\n", " ")
         if tool == "bash" and detail:
             log(f"  << bash done: {detail}")
         if snippet:
@@ -217,7 +217,7 @@ def _log_tool(part) -> None:
     elif status == "error":
         err = part.state.error or "unknown error"
         prefix = f"{detail} → " if detail and tool == "bash" else ""
-        log(f"  !! {part.tool} ERROR: {prefix}{err[:200]}")
+        log(f"  !! {part.tool} ERROR: {prefix}{err}")
 
 
 async def run_agent_on_proposal(
@@ -283,7 +283,7 @@ Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
                 part = event.part
                 if isinstance(part, TextPart):
                     if part.text.strip():
-                        log(f"  {part.text[:300].replace(chr(10), ' ')}")
+                        log(f"  {part.text.replace(chr(10), ' ')}")
                     messages.append(part.text)
                 elif isinstance(part, ToolPart):
                     _log_tool(part)
