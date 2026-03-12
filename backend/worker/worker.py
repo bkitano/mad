@@ -172,6 +172,54 @@ async def _heartbeat_loop(client: ExperimentClient, proposal_id: str, experiment
 # -- Agent Execution -----------------------------------------------------------
 
 
+def _tool_detail(part) -> str:
+    """Extract the most useful detail from a ToolPart's input."""
+    inp = part.state.input or {}
+    tool = part.tool.lower()
+    if tool == "bash":
+        cmd = inp.get("command") or inp.get("cmd") or inp.get("input")
+        if isinstance(cmd, str):
+            return cmd
+        if isinstance(cmd, list):
+            return " ".join(str(a) for a in cmd)
+        if inp:
+            return str(inp)[:300]
+        return ""
+    if tool in ("read", "write"):
+        return inp.get("filePath", inp.get("path", inp.get("filename", "")))
+    if tool in ("glob", "grep"):
+        return inp.get("pattern", "")
+    return next(iter(inp.values()), "") if inp else ""
+
+
+def _log_tool(part) -> None:
+    """Log a ToolPart with context-appropriate detail. Always logs bash command for debugging."""
+    status = part.state.status
+    detail = str(_tool_detail(part))[:300]
+    tool = part.tool.lower()
+
+    if status == "pending" and tool == "bash" and detail:
+        log(f"  >> bash (pending): {detail}")
+    elif status == "running":
+        if detail:
+            log(f"  >> {part.tool}: {detail}")
+        else:
+            log(f"  >> {part.tool}")
+    elif status == "completed":
+        output = part.state.output or ""
+        snippet = output.strip()[:200].replace("\n", " ")
+        if tool == "bash" and detail:
+            log(f"  << bash done: {detail}")
+        if snippet:
+            log(f"  << {part.tool} output: {snippet}")
+        elif not (tool == "bash" and detail):
+            log(f"  << {part.tool} done")
+    elif status == "error":
+        err = part.state.error or "unknown error"
+        prefix = f"{detail} → " if detail and tool == "bash" else ""
+        log(f"  !! {part.tool} ERROR: {prefix}{err[:200]}")
+
+
 async def run_agent_on_proposal(
     proposal_id: str,
     proposal_content: str,
@@ -231,16 +279,14 @@ Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
         ),
     ):
         try:
-            summary = event.type
             if isinstance(event, EventMessagePartUpdated):
                 part = event.part
                 if isinstance(part, TextPart):
-                    summary = part.text[:200].replace("\n", " ")
+                    if part.text.strip():
+                        log(f"  {part.text[:300].replace(chr(10), ' ')}")
                     messages.append(part.text)
                 elif isinstance(part, ToolPart):
-                    summary = f"{part.tool} ({part.state.status})"
-
-            log(f"  {event.type}: {summary[:200]}")
+                    _log_tool(part)
         except Exception:
             pass
 

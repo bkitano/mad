@@ -312,7 +312,9 @@ class OpencodeService:
                                 continue
 
                             summary = self._summarize(event)
-                            _log(f"  {event.type}: {summary[:200]}")
+
+                            if event.type == "session.error":
+                                _log(f"  SESSION ERROR: {summary[:300]}")
 
                             # Pull experiment_id from metadata (falls back to event props)
                             props = raw.get("properties", {})
