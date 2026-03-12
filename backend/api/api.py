@@ -15,12 +15,8 @@ import re
 from pathlib import Path
 from typing import Optional
 
-<<<<<<< HEAD:backend/service/api.py
-import wandb
-
-=======
 import httpx as _httpx
->>>>>>> main:backend/api/api.py
+import wandb
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
