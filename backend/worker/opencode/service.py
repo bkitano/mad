@@ -42,7 +42,10 @@ class OpencodeService:
         port: int,
         client: ExperimentClient,
         worker_id: Optional[str] = None,
+        hostname: str = "127.0.0.1",
     ):
+        self.hostname = hostname
+        self.port = port
         self.url = f"http://127.0.0.1:{port}"
         self.client = client
         self.worker_id = worker_id
@@ -59,7 +62,7 @@ class OpencodeService:
         """Start the opencode server subprocess and the SSE forwarder task."""
         _log("Starting opencode serve...")
         self._proc = subprocess.Popen(
-            ["opencode", "serve"],
+            ["opencode", "serve", "--hostname", self.hostname, "--port", str(self.port)],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
@@ -93,6 +96,29 @@ class OpencodeService:
             _log("Stopping opencode serve...")
             self._proc.terminate()
             self._proc.wait(timeout=5)
+
+    def verify_opencode_config(self) -> None:
+        """Verify the opencode server has the expected provider config."""
+        r = httpx.get(f"{self.url}/config", timeout=5.0)
+        r.raise_for_status()
+        config = r.json()
+
+        providers = config.get("provider", {})
+        if "opencode-go" not in providers:
+            raise RuntimeError(
+                f"opencode config missing 'opencode-go' provider. "
+                f"Got providers: {list(providers.keys())}."
+            )
+
+        api_key = providers["opencode-go"].get("options", {}).get("apiKey", "")
+        if not api_key or api_key.startswith("{env:"):
+            raise RuntimeError(
+                f"opencode-go provider apiKey not resolved (got '{api_key}'). "
+                f"Ensure OPENCODE_GO_API_KEY is set in mad-worker-secrets."
+            )
+
+        return
+
 
     def wait_until_ready(self, timeout_s: float = 30.0) -> None:
         """Block until opencode HTTP server is ready."""
@@ -296,16 +322,22 @@ class OpencodeService:
                             parent_id = self.metadata.get("parent_id")
 
                             try:
-                                self.client.emit_event(
-                                    event.type,
-                                    summary[:500],
-                                    experiment_id=experiment_id,
-                                    details=props,
-                                    parent_id=parent_id,
-                                    worker_id=self.worker_id,
+                                await asyncio.wait_for(
+                                    asyncio.to_thread(
+                                        self.client.emit_event,
+                                        event.type,
+                                        summary[:500],
+                                        experiment_id=experiment_id,
+                                        details=props,
+                                        parent_id=parent_id,
+                                        worker_id=self.worker_id,
+                                    ),
+                                    timeout=10,
                                 )
-                            except Exception:
-                                pass
+                            except asyncio.TimeoutError:
+                                _log(f"Timed out forwarding event {event.type}, skipping")
+                            except Exception as e:
+                                _log(f"Failed to forward event {event.type}: {e}")
 
             except asyncio.CancelledError:
                 break

@@ -1,4 +1,4 @@
-.PHONY: build-api build-worker build-all run-api run-worker stop clean
+.PHONY: build-api build-worker build-all dev run-api run-worker stop clean deploy-modal push-worker
 
 # ── Build ────────────────────────────────────────────────────────────────────
 
@@ -9,6 +9,17 @@ build-worker:
 	docker build -f worker/Dockerfile -t mad-worker:latest .
 
 build-all: build-api build-worker
+
+# ── Push ────────────────────────────────────────────────────────────────────
+
+push-worker: build-worker
+	docker tag mad-worker:latest ghcr.io/bkitano/mad-worker:latest
+	docker push ghcr.io/bkitano/mad-worker:latest
+
+# ── Dev ──────────────────────────────────────────────────────────────────────
+
+dev:
+	set -a; source ../.env; uv run uvicorn api.api:app --port 8001
 
 # ── Run ──────────────────────────────────────────────────────────────────────
 
@@ -35,6 +46,9 @@ clean:
 	-docker rmi mad-api:latest mad-worker:latest 2>/dev/null
 
 # ── Test ─────────────────────────────────────────────────────────────────────
+
+deploy-modal:
+	uv run python -m modal deploy worker.modal_worker
 
 test:
 	uv run python -m pytest tests/test_opencode_types.py tests/test_opencode_service.py -v

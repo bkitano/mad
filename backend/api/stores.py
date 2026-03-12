@@ -13,7 +13,51 @@ from typing import Any, Optional
 import psycopg2
 import psycopg2.extras
 
+from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
+
 from api.db import DatabaseManager
+
+
+@dataclass
+class Experiment:
+    id: str
+    proposal_id: str
+    status: str
+    worker_id: Optional[str] = None
+    code_dir: Optional[str] = None
+    code_hash: Optional[str] = None
+    modal_job_id: Optional[str] = None
+    modal_url: Optional[str] = None
+    wandb_run_id: Optional[str] = None
+    wandb_url: Optional[str] = None
+    config: Optional[dict] = None
+    results: Optional[dict] = None
+    error: Optional[str] = None
+    error_class: Optional[str] = None
+    retry_count: int = 0
+    cost_estimate: Optional[Decimal] = None
+    cost_actual: Optional[Decimal] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    submitted_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    run_number: int = 1
+    agent_id: Optional[str] = None
+
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        setattr(self, key, value)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
+
+    @classmethod
+    def from_row(cls, row: dict) -> "Experiment":
+        return cls(**{k: v for k, v in row.items() if k in cls.__dataclass_fields__})
 
 
 class ExperimentsStore:
@@ -27,7 +71,7 @@ class ExperimentsStore:
         cost_estimate: Optional[float] = None,
         worker_id: Optional[str] = None,
         run_number: int = 1,
-    ) -> dict:
+    ) -> Experiment:
         self.db._execute(
             """INSERT INTO experiments
                (id, proposal_id, status, cost_estimate, worker_id, run_number)
@@ -36,8 +80,9 @@ class ExperimentsStore:
         )
         return self.get(experiment_id)
 
-    def get(self, experiment_id: str) -> Optional[dict]:
-        return self.db._fetch_one("SELECT * FROM experiments WHERE id = %s", (experiment_id,))
+    def get(self, experiment_id: str) -> Optional[Experiment]:
+        row = self.db._fetch_one("SELECT * FROM experiments WHERE id = %s", (experiment_id,))
+        return Experiment.from_row(row) if row else None
 
     def get_next_run_number(self, base_id: str) -> int:
         """Return MAX(run_number) + 1 across all reruns of base_id."""
@@ -51,9 +96,10 @@ class ExperimentsStore:
         self,
         status: Optional[str] = None,
         proposal_id: Optional[str] = None,
+        worker_id: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[dict]:
+    ) -> list[Experiment]:
         conditions: list[str] = []
         params: list[Any] = []
         if status:
@@ -62,14 +108,18 @@ class ExperimentsStore:
         if proposal_id:
             conditions.append("proposal_id = %s")
             params.append(proposal_id)
+        if worker_id:
+            conditions.append("worker_id = %s")
+            params.append(worker_id)
         where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
         params.extend([limit, offset])
-        return self.db._fetch(
+        rows = self.db._fetch(
             f"SELECT * FROM experiments{where} ORDER BY created_at DESC LIMIT %s OFFSET %s",
             tuple(params),
         )
+        return [Experiment.from_row(r) for r in rows]
 
-    def update(self, experiment_id: str, **fields) -> Optional[dict]:
+    def update(self, experiment_id: str, **fields) -> Optional[Experiment]:
         if not fields:
             return self.get(experiment_id)
 
@@ -177,9 +227,10 @@ class ProposalsStore:
             )
             return dict(cur.fetchone())
 
-    def list(self) -> list[dict]:
+    def list(self, limit: int = 100, offset: int = 0) -> list[dict]:
         return self.db._fetch(
-            "SELECT * FROM proposals ORDER BY proposal_id"
+            "SELECT * FROM proposals ORDER BY proposal_id LIMIT %s OFFSET %s",
+            (limit, offset),
         )
 
     def get(self, proposal_id: str) -> Optional[dict]:
@@ -226,7 +277,7 @@ class WorkersStore:
     def get(self, worker_id: str) -> Optional[dict]:
         return self.db._fetch_one("SELECT * FROM workers WHERE worker_id = %s", (worker_id,))
 
-    def list(self, include_stopped: bool = False) -> list[dict]:
+    def list(self, include_stopped: bool = False, limit: int = 100, offset: int = 0) -> list[dict]:
         # Mark workers as stale if heartbeat is too old
         self.db._execute(
             f"""UPDATE workers SET status = 'stale'
@@ -234,9 +285,13 @@ class WorkersStore:
                 AND last_heartbeat < now() - interval '{HEARTBEAT_TTL_MINUTES} minutes'""",
         )
         if include_stopped:
-            return self.db._fetch("SELECT * FROM workers ORDER BY registered_at DESC")
+            return self.db._fetch(
+                "SELECT * FROM workers ORDER BY registered_at DESC LIMIT %s OFFSET %s",
+                (limit, offset),
+            )
         return self.db._fetch(
-            "SELECT * FROM workers WHERE status != 'stopped' ORDER BY registered_at DESC"
+            "SELECT * FROM workers WHERE status != 'stopped' ORDER BY registered_at DESC LIMIT %s OFFSET %s",
+            (limit, offset),
         )
 
     def remove(self, worker_id: str) -> Optional[dict]:

@@ -385,8 +385,11 @@ def get_event_children(
 
 
 @app.get("/proposals")
-def list_proposals():
-    rows = proposals.list()
+def list_proposals(
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    rows = proposals.list(limit=limit, offset=offset)
 
     return [
         {
@@ -484,11 +487,31 @@ def create_experiment(req: CreateExperimentRequest):
         run_num = experiments.get_next_run_number(experiment_id)
         experiment_id = f"{experiment_id}-r{run_num}"
 
+    # Spawn a Modal worker for this experiment if endpoint is configured
+    worker_id = req.worker_id
+    if not worker_id and MODAL_CREATE_JOB_URL:
+        try:
+            modal_resp = _httpx.post(
+                MODAL_CREATE_JOB_URL,
+                json={
+                    "worker_id": f"exp-{experiment_id}",
+                    "service_url": os.environ.get("MAD_SERVICE_URL", "http://mad.briankitano.com"),
+                },
+                timeout=15.0,
+            )
+            modal_resp.raise_for_status()
+            modal_result = modal_resp.json()
+            worker_id = modal_result.get("worker_id")
+            fc_id = modal_result.get("function_call_id")
+        except Exception:
+            modal_result = None
+            fc_id = None
+
     exp = experiments.create(
         experiment_id=experiment_id,
         proposal_id=req.proposal_id,
         cost_estimate=req.cost_estimate,
-        worker_id=req.worker_id,
+        worker_id=worker_id,
         run_number=run_num,
     )
 
@@ -496,43 +519,30 @@ def create_experiment(req: CreateExperimentRequest):
         "experiment.created",
         f"Experiment {experiment_id} created from proposal {req.proposal_id}",
         experiment_id=experiment_id,
-        worker_id=req.worker_id,
+        worker_id=worker_id,
     )
     root_event_id = created_event.get("id")
 
-    # Submit to Modal if endpoint is configured
-    if MODAL_CREATE_JOB_URL:
-        try:
-            modal_resp = _httpx.post(
-                MODAL_CREATE_JOB_URL,
-                json={
-                    "proposal_id": req.proposal_id,
-                    "job_id": experiment_id,
-                    "service_url": os.environ.get("MAD_SERVICE_URL", "http://mad.briankitano.com"),
-                },
-                timeout=15.0,
-            )
-            modal_resp.raise_for_status()
-            modal_result = modal_resp.json()
-            fc_id = modal_result.get("function_call_id")
-            if fc_id:
-                experiments.update(experiment_id, modal_job_id=fc_id, status="submitted")
+    if not req.worker_id and MODAL_CREATE_JOB_URL:
+        if worker_id and fc_id:
+            experiments.update(experiment_id, modal_job_id=fc_id, status="submitted")
             event_bus.emit(
                 "experiment.submitted",
-                f"Modal job submitted: {modal_result.get('job_id', experiment_id)}",
+                f"Modal worker {worker_id} spawned for experiment {experiment_id}",
                 experiment_id=experiment_id,
                 details=modal_result,
                 parent_id=root_event_id,
             )
-        except Exception as e:
+        elif not worker_id:
             event_bus.emit(
                 "experiment.submit_error",
-                f"Failed to submit to Modal: {e}",
+                f"Failed to spawn Modal worker for experiment {experiment_id}",
                 experiment_id=experiment_id,
                 parent_id=root_event_id,
             )
 
     exp["root_event_id"] = root_event_id
+
     return exp
 
 
@@ -623,21 +633,105 @@ def _get_worker_url(worker_id: str) -> str:
 
 
 @app.get("/workers")
-def list_workers(include_stopped: bool = False):
+def list_workers(
+    include_stopped: bool = False,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
     """List all registered workers. Stale workers are auto-detected via heartbeat TTL."""
-    return workers_store.list(include_stopped=include_stopped)
+    return workers_store.list(include_stopped=include_stopped, limit=limit, offset=offset)
 
 
 @app.post("/workers/register")
-def register_worker(req: WorkerRegisterRequest):
+async def register_worker(req: WorkerRegisterRequest):
     """Register a worker's opencode URL (and optional Modal function_call_id)."""
+    opencode_url = req.opencode_url.rstrip("/")
     row = workers_store.register(
         worker_id=req.worker_id,
-        opencode_url=req.opencode_url.rstrip("/"),
+        opencode_url=opencode_url,
         function_call_id=req.function_call_id,
     )
+
+    # Emit event for new worker registration
+    event_bus.emit(
+        "worker.registered",
+        f"Worker {req.worker_id} registered with opencode URL {opencode_url}",
+        worker_id=req.worker_id,
+    )
+
+    asyncio.get_event_loop().create_task(check_worker_ready(req.worker_id))
+    asyncio.get_event_loop().create_task(assign_submitted_proposals_to_worker(req.worker_id))
+
     return row
 
+@app.post("/workers/{worker_id}/readyz")
+async def check_worker_ready(worker_id: str):
+
+    worker = workers_store.get(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
+
+    # check the opencode_url is responsive
+    try:
+        async with _httpx.AsyncClient(timeout=5.0) as http:
+            resp = await http.get(f"{worker['opencode_url']}/doc")
+            resp.raise_for_status()
+    except Exception as e:
+        event_bus.emit(
+            "worker.readyz_failed",
+            f"Worker {worker_id} registration succeeded but opencode URL is not responsive: {e}",
+            worker_id=worker_id,
+        )
+
+@app.post("/workers/{worker_id}/assign_submitted_proposals")
+async def assign_submitted_proposals_to_worker(worker_id: str):
+    # send it the proposal if we have an experiment waiting for that worker
+    experiments_waiting = experiments.list(status="submitted", worker_id=worker_id)
+
+    worker = workers_store.get(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
+    
+    for exp in experiments_waiting:
+        event_bus.emit(
+            "worker.proposal_sent",
+            f"Sending proposal {exp['proposal_id']} to worker {worker_id}",
+            experiment_id=exp["id"],
+            worker_id=worker_id,
+        )
+        proposal = proposals.get(exp.proposal_id)
+        session_ids = {}
+        if not proposal:
+            continue
+        try:
+            async with _httpx.AsyncClient(base_url=worker['opencode_url'], timeout=30.0) as http:
+                sess_resp = await http.post("/session", json={})
+                sess_resp.raise_for_status()
+                session_id = sess_resp.json()["id"]
+
+                session_ids[exp.proposal_id] = session_id
+
+                await http.post(
+                    f"/session/{session_id}/prompt_async",
+                    json={"parts": [{"type": "text", "text": proposal["content"]}]},
+                )
+
+            experiments.update(exp.id, status="running")
+            event_bus.emit(
+                "worker.proposal_accepted",
+                f"Worker {worker_id} accepted proposal {exp.proposal_id} with session_id {session_id}",
+                experiment_id=exp.id,
+                worker_id=worker_id,
+            )
+        except Exception as e:
+            event_bus.emit(
+                "worker.proposal_error",
+                f"Failed to send proposal {exp['proposal_id']} to worker {worker_id}: {e}",
+                experiment_id=exp["id"],
+                worker_id=worker_id,
+            )
+    
+    return {"worker_id": worker_id, "session_ids": session_ids}
 
 @app.post("/workers/{worker_id}/heartbeat")
 def worker_heartbeat(worker_id: str):
@@ -838,6 +932,8 @@ def dispatch_task(req: DispatchTaskRequest):
 def list_dispatched_tasks(
     status: str = Query("pending", description="Filter by status"),
     agent_type: Optional[str] = None,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ):
     TASK_QUEUE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -851,7 +947,7 @@ def list_dispatched_tasks(
         tasks.append(task)
 
     tasks.sort(key=lambda t: -t.get("priority", 0))
-    return tasks
+    return tasks[offset:offset + limit]
 
 
 @app.patch("/dispatch/{task_id}")

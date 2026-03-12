@@ -43,24 +43,31 @@ class ExperimentClient:
     def __init__(self, base_url: str = DEFAULT_BASE_URL, timeout: float = 30.0):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self._client: Optional[httpx.Client] = None
+
+    def _http(self) -> httpx.Client:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.Client(base_url=self.base_url, timeout=self.timeout)
+        return self._client
+
+    def close(self) -> None:
+        if self._client and not self._client.is_closed:
+            self._client.close()
 
     def _get(self, path: str, params: Optional[dict] = None) -> dict | list:
-        with httpx.Client(timeout=self.timeout) as client:
-            resp = client.get(f"{self.base_url}{path}", params=params)
-            resp.raise_for_status()
-            return resp.json()
+        resp = self._http().get(path, params=params)
+        resp.raise_for_status()
+        return resp.json()
 
     def _post(self, path: str, json: Optional[dict] = None, params: Optional[dict] = None) -> dict:
-        with httpx.Client(timeout=self.timeout) as client:
-            resp = client.post(f"{self.base_url}{path}", json=json, params=params)
-            resp.raise_for_status()
-            return resp.json()
+        resp = self._http().post(path, json=json, params=params)
+        resp.raise_for_status()
+        return resp.json()
 
     def _patch(self, path: str, json: Optional[dict] = None, params: Optional[dict] = None) -> dict:
-        with httpx.Client(timeout=self.timeout) as client:
-            resp = client.patch(f"{self.base_url}{path}", json=json, params=params)
-            resp.raise_for_status()
-            return resp.json()
+        resp = self._http().patch(path, json=json, params=params)
+        resp.raise_for_status()
+        return resp.json()
 
     # ── Experiments ──────────────────────────────────────────────────────────
 
