@@ -9,12 +9,14 @@ Run:
 
 import asyncio
 import json
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Optional
 
 import httpx as _httpx
+import wandb
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
@@ -24,6 +26,8 @@ from supabase import acreate_client
 from api import event_bus, experiment_store
 from api.db import DatabaseManager
 from api.stores import EventsStore, ExperimentsStore, ProposalsStore, WorkersStore
+
+logger = logging.getLogger(__name__)
 
 db = DatabaseManager()
 experiments = ExperimentsStore(db)
@@ -249,25 +253,80 @@ def get_experiment_events(
     return event_bus.query(experiment_id=experiment_id, limit=limit)
 
 
+def _verify_wandb(wandb_url: str | None, wandb_run_id: str | None) -> dict:
+    """Call W&B API to validate the run actually exists and has metrics."""
+    if not wandb_url and not wandb_run_id:
+        return {"verified": False, "reason": "no wandb_url or wandb_run_id"}
+    run_ref = wandb_run_id or wandb_url
+    try:
+        api = wandb.Api()
+        run = api.run(run_ref)
+        summary = dict(run.summary)
+        return {
+            "verified": run.state == "finished",
+            "state": run.state,
+            "duration_seconds": run.summary.get("_runtime"),
+            "metrics": {k: v for k, v in summary.items() if not k.startswith("_")},
+            "created_at": str(run.created_at),
+        }
+    except Exception as e:
+        logger.error("wandb verify failed: %s: %s", type(e).__name__, e)
+        return {"verified": False, "reason": str(e)}
+
+
 @app.get("/experiments/{experiment_id}/verify")
 def verify_experiment(experiment_id: str):
     exp = experiments.get(experiment_id)
     if exp is None:
         raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
 
+    wandb_details = _verify_wandb(exp.get("wandb_url"), exp.get("wandb_run_id"))
+
+    # Compare claimed metrics vs W&B actuals if both exist
+    metrics_match = None
+    claimed_results = exp.get("results") or {}
+    claimed_metrics = claimed_results.get("final_metrics") if isinstance(claimed_results, dict) else None
+    actual_metrics = wandb_details.get("metrics")
+    if claimed_metrics and actual_metrics:
+        discrepancies = {}
+        for k in claimed_metrics:
+            if k not in actual_metrics:
+                continue
+            cv, av = claimed_metrics[k], actual_metrics[k]
+            if (isinstance(cv, bool) or isinstance(av, bool)
+                    or not isinstance(cv, (int, float))
+                    or not isinstance(av, (int, float))):
+                continue  # skip non-numeric — don't add to discrepancies
+            elif abs(cv - av) > 0.01:
+                discrepancies[k] = {"claimed": cv, "actual": av}
+        metrics_match = {"match": len(discrepancies) == 0, "discrepancies": discrepancies}
+
     checks = {
         "code_stored": experiment_store.get_code_dir(experiment_id) is not None,
         "code_integrity": experiment_store.verify_integrity(experiment_id),
         "modal_submitted": bool(exp.get("modal_job_id")),
         "modal_url": bool(exp.get("modal_url")),
-        "wandb_tracked": bool(exp.get("wandb_url")),
+        "wandb_details": wandb_details,
         "has_results": bool(exp.get("results")),
         "status": exp.get("status"),
     }
+    if metrics_match is not None:
+        checks["metrics_match"] = metrics_match
+        # Tighten wandb_details["verified"] to require metric validation too
+        wandb_details["verified"] = (
+            wandb_details.get("verified", False)
+            and bool(actual_metrics)
+            and metrics_match["match"]
+        )
+
     checks["fully_verified"] = all([
-        checks["code_stored"], checks["code_integrity"],
-        checks["modal_submitted"], checks["wandb_tracked"],
-        checks["has_results"], checks["status"] == "completed",
+        checks["code_stored"],
+        checks["code_integrity"],
+        checks["modal_submitted"],
+        wandb_details.get("verified"),
+        checks["has_results"],
+        checks["status"] == "completed",
+        metrics_match is not None and metrics_match["match"],
     ])
 
     return {"experiment_id": experiment_id, "checks": checks, "experiment": exp}
@@ -692,6 +751,7 @@ async def assign_submitted_proposals_to_worker(worker_id: str):
     if not worker:
         raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
     
+    session_ids = {}
     for exp in experiments_waiting:
         event_bus.emit(
             "worker.proposal_sent",
@@ -700,7 +760,6 @@ async def assign_submitted_proposals_to_worker(worker_id: str):
             worker_id=worker_id,
         )
         proposal = proposals.get(exp.proposal_id)
-        session_ids = {}
         if not proposal:
             continue
         try:
