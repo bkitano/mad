@@ -5,27 +5,40 @@ on:
     paths: ['backend/**']
   workflow_dispatch:
 
+env:
+  GCP_PROJECT: mad-research-490217
+  GCP_REGION: us-west1
+  GAR_REPO: mad
+  API_IMAGE: us-west1-docker.pkg.dev/mad-research-490217/mad/mad-api
+
 jobs:
   build-api:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+      - uses: google-github-actions/auth@v2
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker us-west1-docker.pkg.dev --quiet
       - uses: docker/build-push-action@v5
         with:
           context: backend
           file: backend/api/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/mad-api:latest
-            ghcr.io/${{ github.repository_owner }}/mad-api:${{ github.sha }}
+            ${{ env.API_IMAGE }}:latest
+            ${{ env.API_IMAGE }}:${{ github.sha }}
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy mad-api \
+            --image ${{ env.API_IMAGE }}:${{ github.sha }} \
+            --region ${{ env.GCP_REGION }} \
+            --quiet
 
   build-worker:
     runs-on: ubuntu-latest
