@@ -12,8 +12,8 @@ from typing import Optional
 
 import httpx
 
-from api.db import DatabaseManager
-from api.stores import EventsStore
+from src.db import DatabaseManager
+from src.stores import EventsStore
 
 _db = DatabaseManager()
 _events = EventsStore(_db)

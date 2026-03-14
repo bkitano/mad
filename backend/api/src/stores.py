@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from api.db import DatabaseManager
+from src.db import DatabaseManager
 
 
 @dataclass

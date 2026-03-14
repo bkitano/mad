@@ -23,9 +23,10 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from supabase import acreate_client
 
-from api import event_bus, experiment_store
-from api.db import DatabaseManager
-from api.stores import EventsStore, ExperimentsStore, ProposalsStore, WorkersStore
+from src.event_bus import *
+from src.experiment_store import *
+from src.db import DatabaseManager
+from src.stores import EventsStore, ExperimentsStore, ProposalsStore, WorkersStore
 
 logger = logging.getLogger(__name__)
 
