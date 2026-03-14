@@ -5,9 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && node scripts/prerender.js",
-    "preview": "vite preview",
-    "prepare": "cd .. && git config core.hooksPath blog/.husky"
+    "build": "tsc && vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@mdx-js/react": "^3.0.0",

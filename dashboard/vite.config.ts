@@ -30,7 +30,6 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@vault': path.resolve(__dirname, '..'),
-      '@interactive-linear-attention': path.resolve(__dirname, '../projects/memory-and-attention/code/memory/src'),
       // Force external files to use blog's node_modules
       'katex': path.resolve(__dirname, 'node_modules/katex'),
       'react-katex': path.resolve(__dirname, 'node_modules/react-katex'),
@@ -52,6 +51,7 @@ export default defineConfig({
       '.tail-scale.ts.net',
       '.trycloudflare.com',
       'madder.briankitano.com',
+      'madder.netlify.app',
     ],
     fs: {
       // Allow serving files from the memory-and-attention project
