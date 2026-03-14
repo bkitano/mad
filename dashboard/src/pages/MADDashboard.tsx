@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import ExperimentCard from '../components/mad/ExperimentCard'
 import LogViewer from '../components/mad/LogViewer'
@@ -70,7 +70,10 @@ export default function MADDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [selectedResult, setSelectedResult] = useState<{ id: string; content: string } | null>(null)
-  const [selectedLog, setSelectedLog] = useState<{ id: string; content: string } | null>(null)
+  const [selectedLog, setSelectedLog] = useState<{ id: string; events: Array<{ created_at: string; type: string; summary: string; worker_id?: string }> } | null>(null)
+  const selectedLogRef = useRef(selectedLog)
+  selectedLogRef.current = selectedLog
+  const logContainerRef = useRef<HTMLDivElement>(null)
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
   const [selectedArtifacts, setSelectedArtifacts] = useState<{
     id: string
@@ -214,23 +217,40 @@ export default function MADDashboard() {
   const fetchLog = async (proposalId: string) => {
     try {
       const experimentId = proposalId.split('-')[0]
-      const res = await fetch(`${API_URL}/experiments/${experimentId}/events?limit=100`)
+      const res = await fetch(`${API_URL}/experiments/${experimentId}/events?limit=200`)
       if (res.ok) {
         const events = await res.json()
-        // Format events as markdown log
-        const logContent = events.map((event: { created_at: string; type: string; summary: string; experiment_id?: string }) =>
-          `**${new Date(event.created_at).toLocaleString()}** - [${event.type}] ${event.summary}`
-        ).join('\n\n')
-        setSelectedLog({ id: proposalId, content: logContent || '# No Events\n\nNo events recorded for this experiment yet.' })
+        setSelectedLog({ id: proposalId, events })
       } else {
-        const message = `# Log Not Available\n\nNo experiment log found for ${experimentId} (${proposalId}).\n\nThe experiment may not have started yet or logs haven't been created.`
-        setSelectedLog({ id: proposalId, content: message })
+        setSelectedLog({ id: proposalId, events: [] })
       }
     } catch (err) {
       console.error('Error fetching log:', err)
-      setSelectedLog({ id: proposalId, content: `# Error\n\nFailed to load log: ${err}` })
+      setSelectedLog({ id: proposalId, events: [] })
     }
   }
+
+  // SSE subscription for live log updates when modal is open
+  useEffect(() => {
+    if (!selectedLog) return
+    const experimentId = selectedLog.id.split('-')[0]
+    const es = new EventSource(`${API_URL}/events/stream`)
+    es.onmessage = (msg) => {
+      try {
+        const event = JSON.parse(msg.data)
+        if (String(event.experiment_id) === experimentId) {
+          setSelectedLog(prev => prev ? { ...prev, events: [...prev.events, event] } : prev)
+          // Auto-scroll
+          requestAnimationFrame(() => {
+            if (logContainerRef.current) {
+              logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight
+            }
+          })
+        }
+      } catch { /* ignore */ }
+    }
+    return () => es.close()
+  }, [selectedLog?.id])
 
   // Fetch experiment results
   const fetchResult = async (proposalId: string) => {
@@ -634,27 +654,46 @@ export default function MADDashboard() {
       {/* Experiment Log Modal */}
       {selectedLog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedLog(null)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Experiment Log: {selectedLog.id}
-              </h3>
+          <div className="bg-gray-900 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 bg-gray-800">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-mono text-gray-300">
+                  Logs: {selectedLog.id}
+                </span>
+                <span className="text-xs text-gray-400">
+                  {selectedLog.events.length} events
+                </span>
+                <span className="inline-flex items-center gap-1 text-xs text-green-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  Live
+                </span>
+              </div>
               <button
                 onClick={() => setSelectedLog(null)}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                className="text-gray-400 hover:text-gray-200 text-2xl leading-none"
               >
                 ×
               </button>
             </div>
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
-              <div className="prose prose-sm max-w-none">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                >
-                  {selectedLog.content}
-                </ReactMarkdown>
-              </div>
+            <div ref={logContainerRef} className="p-4 overflow-y-auto max-h-[calc(90vh-60px)] font-mono text-xs">
+              {selectedLog.events.length === 0 ? (
+                <div className="text-gray-400 text-center py-8">No events recorded for this experiment.</div>
+              ) : (
+                selectedLog.events.map((event, idx) => (
+                  <div
+                    key={idx}
+                    className={`${
+                      event.type.includes('error') || event.type.includes('fail') ? 'text-red-400' :
+                      event.type.includes('warn') ? 'text-yellow-400' :
+                      event.type.includes('start') || event.type.includes('creat') ? 'text-blue-400' :
+                      event.type.includes('complet') || event.type.includes('success') ? 'text-green-400' :
+                      'text-gray-300'
+                    }`}
+                  >
+                    [{new Date(event.created_at).toLocaleString()}] [{event.type}]{event.worker_id ? ` [${event.worker_id}]` : ''} {event.summary}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

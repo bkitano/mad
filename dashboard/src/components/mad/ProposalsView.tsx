@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -168,6 +168,14 @@ interface ProposalExperiment {
   run_number: number
 }
 
+interface ExperimentEvent {
+  created_at: string
+  type: string
+  summary: string
+  experiment_id?: string
+  worker_id?: string
+}
+
 // Proposal Detail Component
 function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
   const navigate = useNavigate()
@@ -179,6 +187,54 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
   const [codeAvailable, setCodeAvailable] = useState(false)
   const [dispatching, setDispatching] = useState(false)
   const [dispatchResult, setDispatchResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [expandedExperimentId, setExpandedExperimentId] = useState<string | null>(null)
+  const [experimentEvents, setExperimentEvents] = useState<ExperimentEvent[]>([])
+  const [eventsLoading, setEventsLoading] = useState(false)
+  const inlineLogRef = useRef<HTMLDivElement>(null)
+
+  const fetchExperimentEvents = async (experimentId: string) => {
+    setEventsLoading(true)
+    try {
+      const res = await fetch(`${apiUrl}/experiments/${experimentId}/events?limit=200`)
+      if (res.ok) {
+        setExperimentEvents(await res.json())
+      }
+    } catch (err) {
+      console.error('Error fetching experiment events:', err)
+    } finally {
+      setEventsLoading(false)
+    }
+  }
+
+  // SSE subscription for live log updates when inline panel is open
+  useEffect(() => {
+    if (!expandedExperimentId) return
+    const es = new EventSource(`${apiUrl}/events/stream`)
+    es.onmessage = (msg) => {
+      try {
+        const event = JSON.parse(msg.data)
+        if (String(event.experiment_id) === expandedExperimentId) {
+          setExperimentEvents(prev => [...prev, event])
+          requestAnimationFrame(() => {
+            if (inlineLogRef.current) {
+              inlineLogRef.current.scrollTop = inlineLogRef.current.scrollHeight
+            }
+          })
+        }
+      } catch { /* ignore */ }
+    }
+    return () => es.close()
+  }, [expandedExperimentId, apiUrl])
+
+  const toggleExperimentLogs = (experimentId: string) => {
+    if (expandedExperimentId === experimentId) {
+      setExpandedExperimentId(null)
+      setExperimentEvents([])
+    } else {
+      setExpandedExperimentId(experimentId)
+      fetchExperimentEvents(experimentId)
+    }
+  }
 
   const dispatchExperiment = async () => {
     if (!proposalId) return
@@ -192,7 +248,7 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
       })
       if (res.ok) {
         const data = await res.json()
-        setDispatchResult({ success: true, message: `Experiment ${data.experiment_id} created` })
+        setDispatchResult({ success: true, message: `Experiment ${data.id} created` })
         // Refresh experiments list
         fetchExperiments()
       } else {
@@ -381,8 +437,15 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {proposalExperiments.map((exp) => (
-                    <tr key={exp.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">{exp.id}</td>
+                    <Fragment key={exp.id}>
+                    <tr
+                      className={`hover:bg-gray-50 cursor-pointer ${expandedExperimentId === exp.id ? 'bg-blue-50' : ''}`}
+                      onClick={() => toggleExperimentLogs(exp.id)}
+                    >
+                      <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">
+                        <span className={`inline-block transition-transform mr-1 ${expandedExperimentId === exp.id ? 'rotate-90' : ''}`}>&#9656;</span>
+                        {exp.id}
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-700">#{exp.run_number}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
@@ -411,7 +474,7 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
                       <td className="px-4 py-3 text-sm">
                         <div className="flex items-center gap-2">
                           {exp.wandb_url && (
-                            <a href={exp.wandb_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-xs underline">W&B</a>
+                            <a href={exp.wandb_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-xs underline" onClick={(e) => e.stopPropagation()}>W&B</a>
                           )}
                           {exp.results && (
                             <span className="text-xs text-green-600" title={JSON.stringify(exp.results, null, 2)}>Has results</span>
@@ -422,6 +485,51 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
                         </div>
                       </td>
                     </tr>
+                    {expandedExperimentId === exp.id && (
+                      <tr>
+                        <td colSpan={8} className="p-0">
+                          <div className="bg-gray-900 border-t border-gray-700">
+                            <div className="px-4 py-2 bg-gray-800 flex items-center justify-between">
+                              <span className="text-sm font-mono text-gray-300">
+                                Logs for experiment {exp.id}
+                              </span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs text-gray-400">
+                                  {eventsLoading ? 'Loading...' : `${experimentEvents.length} events`}
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-xs text-green-400">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                                  Live
+                                </span>
+                              </div>
+                            </div>
+                            <div ref={inlineLogRef} className="p-4 overflow-auto max-h-80 font-mono text-xs">
+                              {eventsLoading ? (
+                                <div className="text-gray-400 text-center py-4">Loading logs...</div>
+                              ) : experimentEvents.length === 0 ? (
+                                <div className="text-gray-400 text-center py-4">No events recorded for this experiment.</div>
+                              ) : (
+                                experimentEvents.map((event, idx) => (
+                                  <div
+                                    key={idx}
+                                    className={`${
+                                      event.type.includes('error') || event.type.includes('fail') ? 'text-red-400' :
+                                      event.type.includes('warn') ? 'text-yellow-400' :
+                                      event.type.includes('start') || event.type.includes('creat') ? 'text-blue-400' :
+                                      event.type.includes('complet') || event.type.includes('success') ? 'text-green-400' :
+                                      'text-gray-300'
+                                    }`}
+                                  >
+                                    [{new Date(event.created_at).toLocaleString()}] [{event.type}]{event.worker_id ? ` [${event.worker_id}]` : ''} {event.summary}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

@@ -126,6 +126,7 @@ class WorkerRegisterRequest(BaseModel):
 class WorkerPromptRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
+    experiment_id: Optional[str] = None
 
 
 # -- GET /experiments ----------------------------------------------------------
@@ -858,6 +859,8 @@ async def create_worker_session(worker_id: str):
 @app.post("/workers/{worker_id}/prompt")
 async def worker_prompt(worker_id: str, req: WorkerPromptRequest):
     """Send a message to a worker (fire-and-forget). Auto-creates session if needed."""
+    if req.experiment_id:
+        workers_store.set_current_experiment(worker_id, req.experiment_id)
     url = _get_worker_url(worker_id)
     async with _httpx.AsyncClient(base_url=url, timeout=30.0) as http:
         session_id = req.session_id
@@ -877,6 +880,8 @@ async def worker_prompt(worker_id: str, req: WorkerPromptRequest):
 @app.post("/workers/{worker_id}/prompt/sync")
 async def worker_prompt_sync(worker_id: str, req: WorkerPromptRequest):
     """Send a message and wait for the full response."""
+    if req.experiment_id:
+        workers_store.set_current_experiment(worker_id, req.experiment_id)
     url = _get_worker_url(worker_id)
     async with _httpx.AsyncClient(base_url=url, timeout=None) as http:
         session_id = req.session_id
@@ -941,10 +946,16 @@ def cancel_experiment(experiment_id: str):
 
 @app.post("/events")
 def post_event(req: EmitEventRequest):
+    experiment_id = req.experiment_id
+    # Backfill experiment_id from the worker's current experiment if not provided
+    if not experiment_id and req.worker_id:
+        worker = workers_store.get(req.worker_id)
+        if worker:
+            experiment_id = worker.get("current_experiment_id")
     return event_bus.emit(
         event_type=req.event_type,
         summary=req.summary,
-        experiment_id=req.experiment_id,
+        experiment_id=experiment_id,
         details=req.details,
         parent_id=req.parent_id,
         worker_id=req.worker_id,
