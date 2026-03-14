@@ -21,7 +21,7 @@ import time
 import httpx
 import pytest
 
-BASE_URL = os.environ.get("MAD_SERVICE_URL", "http://localhost:8000")
+BASE_URL = os.environ.get("MAD_SERVICE_URL", "http://localhost:8001")
 
 # ── MNIST training code submitted as code_files ──────────────────────────────
 
@@ -194,6 +194,7 @@ Train a 2-layer conv-net on MNIST for 2 epochs with batch size 256.
     # ── 2. Create experiment from the proposal ────────────────────────────────
     resp = api.post("/experiments", json={
         "proposal_id": proposal_id,
+        "service_url": "http://mad.briankitano.com" # local dev proxy
     })
     assert resp.status_code == 200, f"Failed to create experiment: {resp.text}"
     experiment = resp.json()

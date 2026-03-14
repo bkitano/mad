@@ -21,7 +21,7 @@ export default function LogViewer({ apiUrl }: LogViewerProps) {
           const logLines = events.map((event: { created_at: string; type: string; summary: string; experiment_id?: string; worker_id?: string }) =>
             `[${new Date(event.created_at).toLocaleString()}] [${event.type}]${event.experiment_id ? ` [${event.experiment_id}]` : ''}${event.worker_id ? ` [${event.worker_id}]` : ''} ${event.summary}`
           )
-          setLogs(logLines || [])
+          setLogs(logLines?.reverse() || [])
         }
       } catch (err) {
         console.error('Error fetching logs:', err)

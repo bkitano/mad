@@ -76,6 +76,7 @@ class CreateExperimentRequest(BaseModel):
     proposal_id: str
     cost_estimate: Optional[float] = None
     worker_id: Optional[str] = None
+    service_url: Optional[str] = None  # override MAD_SERVICE_URL for Modal worker
 
 
 class StoreCodeRequest(BaseModel):
@@ -556,7 +557,7 @@ def create_experiment(req: CreateExperimentRequest):
                 MODAL_CREATE_JOB_URL,
                 json={
                     "worker_id": f"exp-{experiment_id}",
-                    "service_url": os.environ.get("MAD_SERVICE_URL", "http://mad.briankitano.com"),
+                    "service_url": req.service_url or os.environ.get("MAD_SERVICE_URL", "http://mad.briankitano.com"),
                 },
                 timeout=15.0,
             )
@@ -777,6 +778,7 @@ async def assign_submitted_proposals_to_worker(worker_id: str):
                     json={"parts": [{"type": "text", "text": proposal["content"]}]},
                 )
 
+            workers_store.set_current_experiment(worker_id, exp.id)
             experiments.update(exp.id, status="running")
             event_bus.emit(
                 "worker.proposal_accepted",
@@ -948,17 +950,21 @@ def cancel_experiment(experiment_id: str):
 @app.post("/events")
 def post_event(req: EmitEventRequest):
     experiment_id = req.experiment_id
+    parent_id = req.parent_id
     # Backfill experiment_id from the worker's current experiment if not provided
     if not experiment_id and req.worker_id:
         worker = workers_store.get(req.worker_id)
         if worker:
             experiment_id = worker.get("current_experiment_id")
+    # Backfill parent_id from the root event if we have an experiment but no parent
+    if experiment_id and not parent_id:
+        parent_id = event_bus.get_root_event(experiment_id)
     return event_bus.emit(
         event_type=req.event_type,
         summary=req.summary,
         experiment_id=experiment_id,
         details=req.details,
-        parent_id=req.parent_id,
+        parent_id=parent_id,
         worker_id=req.worker_id,
     )
 
