@@ -777,8 +777,6 @@ async def assign_submitted_proposals_to_worker(worker_id: str):
                     f"/session/{session_id}/prompt_async",
                     json={"parts": [{"type": "text", "text": proposal["content"]}]},
                 )
-
-            workers_store.set_current_experiment(worker_id, exp.id)
             experiments.update(exp.id, status="running")
             event_bus.emit(
                 "worker.proposal_accepted",
@@ -862,8 +860,6 @@ async def create_worker_session(worker_id: str):
 @app.post("/workers/{worker_id}/prompt")
 async def worker_prompt(worker_id: str, req: WorkerPromptRequest):
     """Send a message to a worker (fire-and-forget). Auto-creates session if needed."""
-    if req.experiment_id:
-        workers_store.set_current_experiment(worker_id, req.experiment_id)
     url = _get_worker_url(worker_id)
     async with _httpx.AsyncClient(base_url=url, timeout=30.0) as http:
         session_id = req.session_id
@@ -883,8 +879,6 @@ async def worker_prompt(worker_id: str, req: WorkerPromptRequest):
 @app.post("/workers/{worker_id}/prompt/sync")
 async def worker_prompt_sync(worker_id: str, req: WorkerPromptRequest):
     """Send a message and wait for the full response."""
-    if req.experiment_id:
-        workers_store.set_current_experiment(worker_id, req.experiment_id)
     url = _get_worker_url(worker_id)
     async with _httpx.AsyncClient(base_url=url, timeout=None) as http:
         session_id = req.session_id
@@ -951,11 +945,11 @@ def cancel_experiment(experiment_id: str):
 def post_event(req: EmitEventRequest):
     experiment_id = req.experiment_id
     parent_id = req.parent_id
-    # Backfill experiment_id from the worker's current experiment if not provided
+    # Backfill experiment_id from the experiment assigned to this worker
     if not experiment_id and req.worker_id:
-        worker = workers_store.get(req.worker_id)
-        if worker:
-            experiment_id = worker.get("current_experiment_id")
+        worker_exps = experiments.list(worker_id=req.worker_id, limit=1)
+        if worker_exps:
+            experiment_id = worker_exps[0].id
     # Backfill parent_id from the root event if we have an experiment but no parent
     if experiment_id and not parent_id:
         parent_id = event_bus.get_root_event(experiment_id)

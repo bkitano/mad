@@ -13,6 +13,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 
 interface ActiveExperiment {
+  id: string
   proposal_id: string
   started_at: string
   status: string
@@ -131,7 +132,8 @@ export default function MADDashboard() {
 
           const activeWork: Record<string, ActiveExperiment> = {}
           for (const exp of runningExps) {
-            activeWork[exp.proposal_id] = {
+            activeWork[exp.id] = {
+              id: exp.id,
               proposal_id: exp.proposal_id,
               started_at: exp.created_at,
               status: exp.status
@@ -178,7 +180,8 @@ export default function MADDashboard() {
               .then(runningExps => {
                 const activeWork: Record<string, ActiveExperiment> = {}
                 for (const exp of runningExps) {
-                  activeWork[exp.proposal_id] = {
+                  activeWork[exp.id] = {
+                    id: exp.id,
                     proposal_id: exp.proposal_id,
                     started_at: exp.created_at,
                     status: exp.status
@@ -214,31 +217,29 @@ export default function MADDashboard() {
   }, [])
 
   // Fetch experiment log (events)
-  const fetchLog = async (proposalId: string) => {
+  const fetchLog = async (experimentId: string) => {
     try {
-      const experimentId = proposalId.split('-')[0]
       const res = await fetch(`${API_URL}/experiments/${experimentId}/events?limit=200`)
       if (res.ok) {
         const events = await res.json()
-        setSelectedLog({ id: proposalId, events })
+        setSelectedLog({ id: experimentId, events })
       } else {
-        setSelectedLog({ id: proposalId, events: [] })
+        setSelectedLog({ id: experimentId, events: [] })
       }
     } catch (err) {
       console.error('Error fetching log:', err)
-      setSelectedLog({ id: proposalId, events: [] })
+      setSelectedLog({ id: experimentId, events: [] })
     }
   }
 
   // SSE subscription for live log updates when modal is open
   useEffect(() => {
     if (!selectedLog) return
-    const experimentId = selectedLog.id.split('-')[0]
     const es = new EventSource(`${API_URL}/events/stream`)
     es.onmessage = (msg) => {
       try {
         const event = JSON.parse(msg.data)
-        if (String(event.experiment_id) === experimentId) {
+        if (String(event.experiment_id) === selectedLog.id) {
           setSelectedLog(prev => prev ? { ...prev, events: [...prev.events, event] } : prev)
           // Auto-scroll
           requestAnimationFrame(() => {
@@ -441,14 +442,14 @@ export default function MADDashboard() {
               </div>
             ) : (
               <div className="space-y-4">
-                {Object.entries(data?.active_work || {}).map(([proposalId, exp]) => (
+                {Object.entries(data?.active_work || {}).map(([experimentId, exp]) => (
                   <ExperimentCard
-                    key={proposalId}
-                    proposalId={proposalId}
+                    key={experimentId}
+                    proposalId={exp.proposal_id}
                     experiment={exp}
                     apiUrl={API_URL}
                     onViewProposal={() => {
-                      navigate(`/proposals/${proposalId}`)
+                      navigate(`/proposals/${exp.proposal_id}`)
                     }}
                     onViewLog={fetchLog}
                     onViewCode={setSelectedCode}
@@ -562,7 +563,7 @@ export default function MADDashboard() {
                                 Code
                               </button>
                               <button
-                                onClick={() => fetchLog(exp.proposal_id)}
+                                onClick={() => fetchLog(exp.id)}
                                 className="text-blue-600 hover:text-blue-800 text-xs underline"
                               >
                                 Log
@@ -781,7 +782,7 @@ export default function MADDashboard() {
                   <button
                     onClick={() => {
                       setSelectedArtifacts(null)
-                      fetchLog(selectedArtifacts.proposal_id)
+                      fetchLog(selectedArtifacts.id)
                     }}
                     className="text-blue-600 hover:text-blue-800 underline text-sm"
                   >

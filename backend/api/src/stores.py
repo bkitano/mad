@@ -294,13 +294,6 @@ class WorkersStore:
             (limit, offset),
         )
 
-    def set_current_experiment(self, worker_id: str, experiment_id: Optional[str]) -> Optional[dict]:
-        self.db._execute(
-            "UPDATE workers SET current_experiment_id = %s WHERE worker_id = %s",
-            (experiment_id, worker_id),
-        )
-        return self.get(worker_id)
-
     def remove(self, worker_id: str) -> Optional[dict]:
         row = self.get(worker_id)
         if row:
