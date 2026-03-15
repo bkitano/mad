@@ -17,6 +17,5 @@ dependencies = [
     "opencode-ai>=0.1.0a36",
     "httpx>=0.27.0",
     "watchdog>=6.0.0",
-    "supabase>=2.0.0",
     "fastapi[standard]>=0.133.1",
 ]

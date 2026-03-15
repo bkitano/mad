@@ -405,15 +405,15 @@ async def run_experiment_cycle(
             except Exception as e:
                 log(f"Warning: code storage failed: {e}")
 
-        # Upload experiment artifacts to Supabase Storage
+        # Upload experiment artifacts to Hugging Face Hub
         artifacts_url = None
-        if os.environ.get("SUPABASE_URL"):
+        if os.environ.get("HF_TOKEN") and os.environ.get("HF_REPO_ID"):
             try:
                 from worker.artifact_upload import upload_artifacts
                 artifacts_url = upload_artifacts(experiment_id, EXPERIMENTS_DIR)
                 client.emit_event(
                     "experiment.artifacts_ready",
-                    "Artifacts uploaded to Supabase Storage",
+                    "Artifacts uploaded to Hugging Face Hub",
                     experiment_id=experiment_id,
                     details={"artifacts_url": artifacts_url},
                     parent_id=root_event_id,
