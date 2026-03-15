@@ -355,13 +355,16 @@ def get_experiment_artifacts(experiment_id: str):
 
     results = exp.get("results")
     if not results:
-        completed_events = event_bus.query(
-            experiment_id=experiment_id,
-            event_type="completed",
-            limit=1,
-        )
-        if completed_events:
-            results = completed_events[0].get("details", {}).get("results")
+        # Worker emits "completed" if results file exists, "failed" otherwise — check both
+        for event_type in ("completed", "failed"):
+            outcome_events = event_bus.query(
+                experiment_id=experiment_id,
+                event_type=event_type,
+                limit=1,
+            )
+            if outcome_events:
+                results = outcome_events[0].get("details", {}).get("results")
+                break
 
     return {
         "id": experiment_id,
