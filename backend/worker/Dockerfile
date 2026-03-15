@@ -13,7 +13,7 @@ COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
 COPY worker/ ./worker/
-COPY opencode.jsonc /workspace/opencode.jsonc
+COPY worker/opencode/opencode.jsonc /workspace/opencode.jsonc
 RUN mkdir -p /workspace/proposals /workspace/code /workspace/experiments
 ENV MAD_WORKSPACE=/workspace
 ENV OPENCODE_CONFIG=/workspace/opencode.jsonc
