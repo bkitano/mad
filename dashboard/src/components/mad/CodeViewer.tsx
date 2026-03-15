@@ -26,8 +26,7 @@ export default function CodeViewer({ experimentId, apiUrl, onClose, embedded = f
   const [error, setError] = useState<string | null>(null)
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
 
-  // Extract experiment number from proposal ID (e.g., "029-some-name" -> "029")
-  const experimentNumber = experimentId.split('-')[0]
+  const experimentNumber = experimentId
 
   useEffect(() => {
     fetchFileTree()

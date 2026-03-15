@@ -144,7 +144,7 @@ class ModalWorker:
         heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
         try:
-            with modal.forward(OPENCODE_PORT) as tunnel:
+            async with modal.forward(OPENCODE_PORT) as tunnel:
                 self.opencode_url = tunnel.url
                 self._log(f"Tunnel open at {self.opencode_url}")
 

@@ -300,11 +300,11 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
 
   // Check if code is available
   useEffect(() => {
-    if (proposalId) {
-      const experimentNumber = proposalId.split('-')[0]
+    if (proposalExperiments.length > 0) {
+      const latestExpId = proposalExperiments[0].id
       const checkCodeAvailable = async () => {
         try {
-          const res = await fetch(`${apiUrl}/experiments/${experimentNumber}/code/tree`)
+          const res = await fetch(`${apiUrl}/experiments/${latestExpId}/code/tree`)
           setCodeAvailable(res.ok)
         } catch (err) {
           setCodeAvailable(false)
@@ -312,7 +312,7 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
       }
       checkCodeAvailable()
     }
-  }, [proposalId, apiUrl])
+  }, [proposalExperiments, apiUrl])
 
   if (!proposalId) return null
 
@@ -406,7 +406,7 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
           }}
         >
           <CodeViewer
-            experimentId={proposalId}
+            experimentId={proposalExperiments[0]?.id || proposalId}
             apiUrl={apiUrl}
             onClose={() => setViewMode('proposal')}
             embedded={true}

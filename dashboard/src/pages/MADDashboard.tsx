@@ -254,13 +254,10 @@ export default function MADDashboard() {
   }, [selectedLog?.id])
 
   // Fetch experiment results
-  const fetchResult = async (proposalId: string) => {
+  const fetchResult = async (experimentId: string) => {
     try {
-      // Extract experiment number from proposal ID (e.g., "029-some-name" -> "029")
-      const experimentId = proposalId.split('-')[0]
-
       // Check if experiment is currently active
-      const isActive = data?.active_work && proposalId in data.active_work
+      const isActive = data?.active_work && experimentId in data.active_work
 
       const res = await fetch(`${API_URL}/experiments/${experimentId}`)
       if (res.ok) {
@@ -271,20 +268,20 @@ export default function MADDashboard() {
             `**Status:** ${experiment.status}\n\n` +
             (experiment.wandb_url ? `**W&B:** [View Run](${experiment.wandb_url})\n\n` : '') +
             `## Results\n\n\`\`\`json\n${JSON.stringify(experiment.results, null, 2)}\n\`\`\``
-          setSelectedResult({ id: proposalId, content: resultsContent })
+          setSelectedResult({ id: experimentId, content: resultsContent })
         } else {
           const message = isActive
-            ? `# Experiment In Progress\n\nExperiment ${experimentId} (${proposalId}) is currently running.\n\nCheck back later for results, or view the Active Experiments section above for real-time status.`
-            : `# Results Not Available\n\nNo results found for experiment ${experimentId} (${proposalId}).\n\n**Status:** ${experiment.status}`
-          setSelectedResult({ id: proposalId, content: message })
+            ? `# Experiment In Progress\n\nExperiment ${experimentId} is currently running.\n\nCheck back later for results, or view the Active Experiments section above for real-time status.`
+            : `# Results Not Available\n\nNo results found for experiment ${experimentId}.\n\n**Status:** ${experiment.status}`
+          setSelectedResult({ id: experimentId, content: message })
         }
       } else {
-        const message = `# Experiment Not Found\n\nExperiment ${experimentId} (${proposalId}) was not found.`
-        setSelectedResult({ id: proposalId, content: message })
+        const message = `# Experiment Not Found\n\nExperiment ${experimentId} was not found.`
+        setSelectedResult({ id: experimentId, content: message })
       }
     } catch (err) {
       console.error('Error fetching result:', err)
-      setSelectedResult({ id: proposalId, content: `# Error\n\nFailed to load results: ${err}` })
+      setSelectedResult({ id: experimentId, content: `# Error\n\nFailed to load results: ${err}` })
     }
   }
 
@@ -527,7 +524,7 @@ export default function MADDashboard() {
                         <tr
                           key={exp.id}
                           className="hover:bg-gray-50 cursor-pointer"
-                          onClick={() => fetchResult(exp.proposal_id)}
+                          onClick={() => fetchResult(exp.id)}
                         >
                           <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">{exp.id}</td>
                           <td className="px-4 py-3 text-sm text-gray-700 max-w-[200px] truncate">{exp.proposal_id}</td>
