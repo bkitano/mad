@@ -9,6 +9,8 @@ WANDB_API_KEY=""
 ANTHROPIC_API_KEY=""
 OPENCODE_GO_API_KEY=""
 OPENCODE_CONFIG="./opencode.jsonc"
+HF_TOKEN=""
+HF_REPO_ID=""
 ```
 
 1. Start the API.
