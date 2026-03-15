@@ -353,14 +353,24 @@ def get_experiment_artifacts(experiment_id: str):
 
     code_files = experiment_store.list_files(experiment_id) if exp.get("code_hash") else []
 
+    results = exp.get("results")
+    if not results:
+        completed_events = event_bus.query(
+            experiment_id=experiment_id,
+            event_type="completed",
+            limit=1,
+        )
+        if completed_events:
+            results = completed_events[0].get("details", {}).get("results")
+
     return {
-        "experiment_id": experiment_id,
+        "id": experiment_id,
         "proposal_id": exp.get("proposal_id"),
         "status": exp.get("status"),
         "artifacts_url": artifacts_url,
         "code_files": code_files,
         "wandb_url": exp.get("wandb_url"),
-        "results": exp.get("results"),
+        "results": results,
     }
 
 
@@ -953,7 +963,7 @@ def post_event(req: EmitEventRequest):
     # Backfill parent_id from the root event if we have an experiment but no parent
     if experiment_id and not parent_id:
         parent_id = event_bus.get_root_event(experiment_id)
-    return event_bus.emit(
+    result = event_bus.emit(
         event_type=req.event_type,
         summary=req.summary,
         experiment_id=experiment_id,
@@ -961,6 +971,18 @@ def post_event(req: EmitEventRequest):
         parent_id=parent_id,
         worker_id=req.worker_id,
     )
+    # Auto-complete experiment when opencode session goes idle
+    if req.event_type == "session.idle" and experiment_id:
+        exp = experiments.get(experiment_id)
+        if exp and exp.get("status") == "running":
+            experiments.update(experiment_id, status="completed")
+            event_bus.emit(
+                "experiment.completed",
+                f"Experiment {experiment_id} completed (session idle)",
+                experiment_id=experiment_id,
+                parent_id=event_bus.get_root_event(experiment_id),
+            )
+    return result
 
 
 # -- POST /dispatch ------------------------------------------------------------
