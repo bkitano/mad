@@ -270,10 +270,14 @@ export default function MADDashboard() {
             `## Results\n\n\`\`\`json\n${JSON.stringify(experiment.results, null, 2)}\n\`\`\``
           setSelectedResult({ id: experimentId, content: resultsContent })
         } else {
-          const message = isActive
-            ? `# Experiment In Progress\n\nExperiment ${experimentId} is currently running.\n\nCheck back later for results, or view the Active Experiments section above for real-time status.`
-            : `# Results Not Available\n\nNo results found for experiment ${experimentId}.\n\n**Status:** ${experiment.status}`
-          setSelectedResult({ id: experimentId, content: message })
+          if (experiment.status === 'completed' || experiment.status === 'failed') {
+            fetchArtifacts(experiment)
+          } else {
+            const message = isActive
+              ? `# Experiment In Progress\n\nExperiment ${experimentId} is currently running.\n\nCheck back later for results, or view the Active Experiments section above for real-time status.`
+              : `# Results Not Available\n\nNo results found for experiment ${experimentId}.\n\n**Status:** ${experiment.status}`
+            setSelectedResult({ id: experimentId, content: message })
+          }
         }
       } else {
         const message = `# Experiment Not Found\n\nExperiment ${experimentId} was not found.`

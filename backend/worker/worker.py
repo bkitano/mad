@@ -428,6 +428,10 @@ async def run_experiment_cycle(
         client.update_experiment(
             experiment_id,
             status="completed" if result["status"] == "completed" else "failed",
+            results={
+                "results_text": result.get("results_text", ""),
+                "status": result["status"],
+            },
         )
         client.emit_event(
             "completed" if result["status"] == "completed" else "failed",
