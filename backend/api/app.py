@@ -955,7 +955,7 @@ def cancel_experiment(experiment_id: str):
 
 
 @app.post("/events")
-def post_event(req: EmitEventRequest):
+async def post_event(req: EmitEventRequest):
     experiment_id = req.experiment_id
     parent_id = req.parent_id
     # Backfill experiment_id from the experiment assigned to this worker
