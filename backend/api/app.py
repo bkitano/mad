@@ -985,7 +985,85 @@ def post_event(req: EmitEventRequest):
                 experiment_id=experiment_id,
                 parent_id=event_bus.get_root_event(experiment_id),
             )
+            asyncio.get_event_loop().create_task(
+                _post_process_experiment(experiment_id)
+            )
     return result
+
+
+def _normalize_path(file_path: str) -> str:
+    """Strip workspace prefixes to get a relative path."""
+    prefixes = ["/root/", "/workspace/code/", "/workspace/"]
+    for prefix in prefixes:
+        if file_path.startswith(prefix):
+            file_path = file_path[len(prefix):]
+    return file_path.lstrip("/")
+
+
+async def _post_process_experiment(experiment_id: str):
+    """Extract code and results from forwarded events after auto-completion."""
+    try:
+        all_events = event_bus.query(
+            experiment_id=experiment_id,
+            event_type="message.part.updated",
+            limit=500,
+        )
+
+        code_files = {}
+        results_text = ""
+        wandb_url = None
+
+        for ev in all_events:
+            details = ev.get("details", {})
+            part = details.get("part", {})
+            part_type = part.get("type")
+
+            if part_type == "tool":
+                tool_name = (part.get("toolName") or part.get("tool") or "").lower()
+                state = part.get("state", {})
+                if tool_name == "write" and state.get("status") == "completed":
+                    inp = part.get("input", {})
+                    file_path = inp.get("file_path", "")
+                    content = inp.get("content", "")
+                    if file_path and content:
+                        rel = _normalize_path(file_path)
+                        code_files[rel] = content
+
+            elif part_type == "text":
+                text = part.get("text", "").strip()
+                if text:
+                    results_text = text
+                    match = re.search(r'https://wandb\.ai/\S+', text)
+                    if match:
+                        wandb_url = match.group(0)
+
+        updates = {}
+
+        if code_files:
+            store_result = experiment_store.store_code_from_dict(
+                experiment_id, code_files
+            )
+            updates["code_dir"] = store_result["code_dir"]
+            updates["code_hash"] = store_result["code_hash"]
+
+        if results_text:
+            updates["results"] = {
+                "results_text": results_text,
+                "status": "completed",
+            }
+
+        if wandb_url:
+            updates["wandb_url"] = wandb_url
+
+        if updates:
+            experiments.update(experiment_id, **updates)
+            print(
+                f"[post-process] {experiment_id}: stored {len(code_files)} files, "
+                f"results={'yes' if results_text else 'no'}, wandb={'yes' if wandb_url else 'no'}",
+                flush=True,
+            )
+    except Exception as e:
+        print(f"[post-process] Error for {experiment_id}: {e}", flush=True)
 
 
 # -- POST /dispatch ------------------------------------------------------------
