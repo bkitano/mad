@@ -395,23 +395,29 @@ function ProposalDetail({ apiUrl, proposalId }: ProposalDetailProps) {
 
       {/* Content display */}
       {viewMode === 'code' ? (
-        <div
-          className="border border-gray-200 rounded-lg overflow-hidden"
-          style={{
-            height: 'calc(100vh - 300px)',
-            width: '100vw',
-            marginLeft: 'calc(-50vw + 50%)',
-            marginRight: 'calc(-50vw + 50%)',
-            maxWidth: 'none'
-          }}
-        >
-          <CodeViewer
-            experimentId={proposalExperiments[0]?.id || proposalId}
-            apiUrl={apiUrl}
-            onClose={() => setViewMode('proposal')}
-            embedded={true}
-          />
-        </div>
+        proposalExperiments[0]?.id ? (
+          <div
+            className="border border-gray-200 rounded-lg overflow-hidden"
+            style={{
+              height: 'calc(100vh - 300px)',
+              width: '100vw',
+              marginLeft: 'calc(-50vw + 50%)',
+              marginRight: 'calc(-50vw + 50%)',
+              maxWidth: 'none'
+            }}
+          >
+            <CodeViewer
+              experimentId={proposalExperiments[0].id}
+              apiUrl={apiUrl}
+              onClose={() => setViewMode('proposal')}
+              embedded={true}
+            />
+          </div>
+        ) : (
+          <div className="bg-gray-50 p-8 rounded-lg text-center text-gray-500">
+            No experiment selected. Run an experiment first to browse code.
+          </div>
+        )
       ) : viewMode === 'experiments' ? (
         <div>
           {experimentsLoading ? (

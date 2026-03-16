@@ -452,8 +452,8 @@ export default function MADDashboard() {
                     onViewProposal={() => {
                       navigate(`/proposals/${exp.proposal_id}`)
                     }}
-                    onViewLog={fetchLog}
-                    onViewCode={setSelectedCode}
+                    onViewLog={() => fetchLog(experimentId)}
+                    onViewCode={() => setSelectedCode(experimentId)}
                   />
                 ))}
               </div>

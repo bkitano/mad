@@ -13,7 +13,7 @@ interface ExperimentCardProps {
   apiUrl: string
   onViewProposal?: (proposalId: string) => void
   onViewLog?: (experimentId: string) => void
-  onViewCode?: (proposalId: string) => void
+  onViewCode?: (experimentId: string) => void
 }
 
 export default function ExperimentCard({ proposalId, experiment, onViewProposal, onViewLog, onViewCode }: ExperimentCardProps) {
@@ -127,7 +127,7 @@ export default function ExperimentCard({ proposalId, experiment, onViewProposal,
             )}
             {onViewCode && (
               <button
-                onClick={() => onViewCode(proposalId)}
+                onClick={() => onViewCode(experiment.id || proposalId)}
                 className="px-3 py-1.5 text-xs font-medium text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 rounded transition-colors"
               >
                 View Code

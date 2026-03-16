@@ -1,0 +1,14 @@
+[project]
+name = "mad-backend"
+version = "0.1.0"
+description = "MAD Architecture Search — Backend (API + Worker)"
+requires-python = ">=3.11"
+dependencies = [
+    "mad-worker",  # worker package for running experiments
+]
+
+[tool.uv.workspace]
+members = ["api", "worker"]
+
+[tool.uv.sources]
+mad-worker = { workspace = true }

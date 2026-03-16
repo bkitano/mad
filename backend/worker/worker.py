@@ -319,6 +319,26 @@ Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
     }
 
 
+# -- Helpers ----------------------------------------------------------------
+
+
+def _read_code_dir(code_dir: Path) -> dict[str, str]:
+    """Read all files from code_dir into {relative_path: content}. Skips __pycache__, dotfiles."""
+    files = {}
+    for src in sorted(code_dir.rglob("*")):
+        if not src.is_file():
+            continue
+        rel = src.relative_to(code_dir)
+        if any(p.startswith(".") for p in rel.parts) or rel.parts[0] == "__pycache__":
+            continue
+        try:
+            files[str(rel)] = src.read_text()
+        except UnicodeDecodeError:
+            # Binary file - skip or use placeholder; experiment code is typically text
+            files[str(rel)] = f"<binary file: {src.stat().st_size} bytes>"
+    return files
+
+
 # -- Main Cycle ----------------------------------------------------------------
 
 
@@ -343,6 +363,8 @@ async def run_experiment_cycle(
     proposal_id = proposal["id"]
     log(f"Selected proposal: {proposal_id}")
 
+    experiment_id = None
+    code_stored = False
     try:
         # 2. Fetch full proposal content
         full_proposal = client.get_proposal(proposal_id)
@@ -396,14 +418,22 @@ async def run_experiment_cycle(
             stop_heartbeat.set()
             heartbeat_task.cancel()
 
-        # 6. Store code from disk and upload artifacts
+        # 6. Store code (always attempt, even if agent failed — we may have partial code)
         code_src = CODE_DIR / experiment_id
         if code_src.exists():
             try:
-                client.store_code_from_disk(experiment_id, str(code_src))
-                log(f"Code stored for {experiment_id}")
+                files = _read_code_dir(code_src)
+                if files:
+                    log(f"Storing {len(files)} files for {experiment_id}...")
+                    client.store_code(experiment_id, files)
+                    code_stored = True
+                    log(f"Code stored for {experiment_id} ({len(files)} files)")
+                else:
+                    log(f"Code directory empty for {experiment_id}")
             except Exception as e:
                 log(f"Warning: code storage failed: {e}")
+                import traceback
+                traceback.print_exc()
 
         # Upload experiment artifacts to Hugging Face Hub
         artifacts_url = None
@@ -455,6 +485,20 @@ async def run_experiment_cycle(
         return False
 
     finally:
+        # Store code if agent failed before we could (timeout, crash, etc.) — we may have partial code
+        if experiment_id and not code_stored:
+            code_src = CODE_DIR / experiment_id
+            if code_src.exists():
+                try:
+                    files = _read_code_dir(code_src)
+                    if files:
+                        log(f"Storing {len(files)} files for {experiment_id} (agent failed, salvaging code)...")
+                        client.store_code(experiment_id, files)
+                        log(f"Code stored for {experiment_id} ({len(files)} files)")
+                except Exception as e:
+                    log(f"Warning: code storage failed in finally: {e}")
+                    import traceback
+                    traceback.print_exc()
         # Clear metadata so stale context doesn't leak into the next cycle
         opencode.metadata.clear()
         client._current_experiment_id = None
@@ -506,7 +550,9 @@ async def main_async():
     service_url = args.service_url or os.environ.get("MAD_SERVICE_URL", "http://localhost:8000")
     client = ExperimentClient(base_url=service_url)
 
-    opencode = OpencodeService(port=args.opencode_port, client=client, worker_id=WORKER_ID)
+    opencode = OpencodeService(
+        port=args.opencode_port, client=client, worker_id=WORKER_ID, workspace=str(WORKSPACE)
+    )
     opencode.start()
 
     log(f"Worker starting, service={service_url}, workspace={WORKSPACE}")
