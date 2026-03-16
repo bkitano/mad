@@ -1,35 +1,53 @@
 ## Running the Worker Locally
-0. Make sure your `mad/.env` has everything in it.
-```
-POSTGRES_URL=""
+1. Make sure your `mad/.env` has everything in it.
+```bash
+PGUSER=""
+PGPASSWORD=""
+PGHOST=""
+PGPORT=""
+PGDATABASE=postgres
 SUPABASE_URL=""
 SUPABASE_KEY=""
 MODAL_CREATE_JOB_URL=""
 WANDB_API_KEY=""
 ANTHROPIC_API_KEY=""
 OPENCODE_GO_API_KEY=""
-OPENCODE_CONFIG="./opencode.jsonc"
+OPENCODE_CONFIG="path/to/opencode.jsonc"
 HF_TOKEN=""
 HF_REPO_ID=""
 ```
 
-1. Start the API.
-```
-cd mad/backend/
-set -a; source ../.env; uv run uvicorn api.api:app --port 8001 --reload
-```
-
-2. Start up Opencode in a directory `mad/.e2e/`
-```
-cd mad/
-set -a; source .env; opencode serve
+2. Start ngrok.
+```bash
+ngrok http 8001
 ```
 
-3. Run the worker
-```
+3. Start the API.
+```bash
 cd mad/backend/
-rm -rf ../.e2e/*; export MAD_WORKSPACE="$HOME/Desktop/projects/mad/.e2e/"; export MAD_SERVICE_URL=<local-api-host:port>; uv run python -m service.worker --proposal   999-mnist-e2e-test
+set -a; source ../../.env; uv run uvicorn app:app --port 8001 --reload
+```
+
+4. Run the worker
+```bash
+cd mad/backend/
+rm -rf ../.e2e/*; MAD_SERVICE_URL=<YOUR_NGROK_URL> pytest tests/test_e2e_mnist.py -v -s
+```
+
+## Using the Dashboard
+
+### Production
+https://madder.netlify.app/
+
+### Local
+1. Start ngrok for your backend API if you haven't already.
+```bash
+ngrok http 8001
+```
+2. Start the dashboard app.
+```bash
+cd mad/dashboard
+VITE_API_URL=<YOUR_NGROK_URL> npm run dev
 ```
 
 ## Deploying to Modal
-
