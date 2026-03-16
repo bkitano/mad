@@ -129,12 +129,13 @@ class ModalWorker:
         os.environ["MAD_WORKSPACE"] = workspace
         os.environ["MAD_WORKER_ID"] = self.worker_id
 
-        # Start opencode + SSE forwarder
+        # Start opencode + SSE forwarder (cwd=workspace so /file API paths match agent writes)
         self.opencode = OpencodeService(
             port=OPENCODE_PORT,
             client=self.client,
             worker_id=self.worker_id,
             hostname="0.0.0.0",
+            workspace=workspace,
         )
         self.opencode.start()
         self.opencode.wait_until_ready()

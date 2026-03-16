@@ -21,12 +21,10 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
-from supabase import acreate_client
-
-from src import event_bus
-from src import experiment_store
+from src import event_bus, experiment_store, opencode_code
 from src.db import DatabaseManager
 from src.stores import EventsStore, ExperimentsStore, ProposalsStore, WorkersStore
+from supabase import acreate_client
 
 logger = logging.getLogger(__name__)
 
@@ -152,8 +150,34 @@ def get_experiment(experiment_id: str):
     return exp
 
 
+def _try_opencode_code(experiment_id: str) -> tuple[dict, dict[str, str]] | None:
+    """Fetch code from worker's OpenCode API when experiment has an active worker. Returns (manifest_info, files) or None."""
+    exp = experiments.get(experiment_id)
+    if not exp or not exp.get("worker_id"):
+        return None
+    worker = workers_store.get(exp["worker_id"])
+    if not worker or worker.get("status") == "stopped":
+        return None
+    opencode_url = worker.get("opencode_url")
+    if not opencode_url:
+        return None
+    return opencode_code.get_code_from_opencode(experiment_id, opencode_url)
+
+
 @app.get("/experiments/{experiment_id}/code")
 def get_experiment_code(experiment_id: str):
+    opencode_result = _try_opencode_code(experiment_id)
+    if opencode_result is not None:
+        manifest_info, files = opencode_result
+        return {
+            "experiment_id": experiment_id,
+            "code_hash": None,
+            "stored_at": None,
+            "total_files": manifest_info["total_files"],
+            "files": files,
+            "source": "opencode",
+        }
+
     manifest = experiment_store.get_manifest(experiment_id)
     if manifest is None:
         raise HTTPException(status_code=404, detail=f"No stored code for experiment {experiment_id}")
@@ -174,6 +198,18 @@ def get_experiment_code(experiment_id: str):
 
 @app.get("/experiments/{experiment_id}/code/tree")
 def get_experiment_code_tree(experiment_id: str):
+    opencode_result = _try_opencode_code(experiment_id)
+    if opencode_result is not None:
+        manifest_info, _ = opencode_result
+        return {
+            "experiment_id": experiment_id,
+            "code_hash": None,
+            "total_files": manifest_info["total_files"],
+            "total_size_bytes": manifest_info["total_size_bytes"],
+            "files": [{"path": f["path"], "size": f["size"]} for f in manifest_info["files"]],
+            "source": "opencode",
+        }
+
     manifest = experiment_store.get_manifest(experiment_id)
     if manifest is None:
         raise HTTPException(status_code=404, detail=f"No stored code for experiment {experiment_id}")
@@ -203,6 +239,19 @@ def download_experiment_code(experiment_id: str):
 
 @app.get("/experiments/{experiment_id}/code/raw/{file_path:path}")
 def get_experiment_file_raw(experiment_id: str, file_path: str):
+    opencode_result = _try_opencode_code(experiment_id)
+    if opencode_result is not None:
+        _, files = opencode_result
+        content = files.get(file_path)
+        if content is not None:
+            ext = Path(file_path).suffix
+            media_types = {
+                ".py": "text/x-python", ".yaml": "text/yaml", ".yml": "text/yaml",
+                ".json": "application/json", ".toml": "text/plain", ".md": "text/markdown",
+                ".sh": "text/x-shellscript", ".txt": "text/plain",
+            }
+            return PlainTextResponse(content=content, media_type=media_types.get(ext, "text/plain"))
+
     content = experiment_store.get_file(experiment_id, file_path)
     if content is None:
         raise HTTPException(status_code=404, detail=f"File {file_path} not found in experiment {experiment_id}")
@@ -218,6 +267,19 @@ def get_experiment_file_raw(experiment_id: str, file_path: str):
 
 @app.get("/experiments/{experiment_id}/code/review")
 def review_experiment_code(experiment_id: str):
+    opencode_result = _try_opencode_code(experiment_id)
+    if opencode_result is not None:
+        manifest_info, files = opencode_result
+        parts = [f"# Experiment {experiment_id} — Code Review (OpenCode)\n"]
+        parts.append(f"# Files: {manifest_info['total_files']}\n")
+        for path, content in sorted(files.items()):
+            sep = "=" * 70
+            parts.append(f"\n{sep}")
+            parts.append(f"# {path} ({len(content.encode('utf-8'))} bytes)")
+            parts.append(sep)
+            parts.append(content or "<empty>")
+        return PlainTextResponse(content="\n".join(parts), media_type="text/plain")
+
     manifest = experiment_store.get_manifest(experiment_id)
     if manifest is None:
         raise HTTPException(status_code=404, detail=f"No stored code for experiment {experiment_id}")
@@ -239,6 +301,13 @@ def review_experiment_code(experiment_id: str):
 
 @app.get("/experiments/{experiment_id}/code/{file_path:path}")
 def get_experiment_file(experiment_id: str, file_path: str):
+    opencode_result = _try_opencode_code(experiment_id)
+    if opencode_result is not None:
+        _, files = opencode_result
+        content = files.get(file_path)
+        if content is not None:
+            return {"path": file_path, "content": content, "source": "opencode"}
+
     content = experiment_store.get_file(experiment_id, file_path)
     if content is None:
         raise HTTPException(status_code=404, detail=f"File {file_path} not found in experiment {experiment_id}")

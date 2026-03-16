@@ -43,9 +43,11 @@ class OpencodeService:
         client: ExperimentClient,
         worker_id: Optional[str] = None,
         hostname: str = "127.0.0.1",
+        workspace: Optional[str] = None,
     ):
         self.hostname = hostname
         self.port = port
+        self.workspace = workspace
         self.url = f"http://127.0.0.1:{port}"
         self.client = client
         self.worker_id = worker_id
@@ -61,10 +63,12 @@ class OpencodeService:
     def start(self) -> None:
         """Start the opencode server subprocess and the SSE forwarder task."""
         _log("Starting opencode serve...")
+        kwargs: dict = {"stdout": subprocess.PIPE, "stderr": subprocess.STDOUT}
+        if self.workspace:
+            kwargs["cwd"] = self.workspace
         self._proc = subprocess.Popen(
             ["opencode", "serve", "--hostname", self.hostname, "--port", str(self.port)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            **kwargs,
         )
         time.sleep(2)
         if self._proc.poll() is not None:
