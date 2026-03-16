@@ -311,11 +311,36 @@ Work in {WORKSPACE}. All code goes under {CODE_DIR}/{experiment_id}/.
     results_file = EXPERIMENTS_DIR / f"{experiment_id}_results.md"
     results_text = results_file.read_text() if results_file.exists() else ""
 
+    # Parse structured JSON block from results markdown
+    structured = {}
+    json_match = re.search(r'```json\s*\n(.*?)\n\s*```', results_text, re.DOTALL)
+    if not json_match:
+        json_match = re.search(r'\{[^{}]*"(?:wandb_run_id|final_metrics|modal_job_id)"[^{}]*\}', results_text, re.DOTALL)
+    if json_match:
+        try:
+            raw = json_match.group(1) if '```' in json_match.group(0) else json_match.group(0)
+            structured = json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+
+    # Extract wandb URL from results text
+    wandb_url = None
+    wandb_match = re.search(r'https://wandb\.ai/\S+', results_text)
+    if wandb_match:
+        wandb_url = wandb_match.group(0)
+
+    # Read experiment log
+    log_file = EXPERIMENTS_DIR / f"experiment-log-{experiment_id}.md"
+    log_text = log_file.read_text() if log_file.exists() else ""
+
     return {
         "experiment_id": experiment_id,
         "messages": messages,
         "results_text": results_text,
         "status": "completed" if results_file.exists() else "unknown",
+        "structured": structured,
+        "wandb_url": wandb_url,
+        "log_text": log_text,
     }
 
 
@@ -405,33 +430,18 @@ async def run_experiment_cycle(
             except Exception as e:
                 log(f"Warning: code storage failed: {e}")
 
-        # Upload experiment artifacts to Hugging Face Hub
-        artifacts_url = None
-        if os.environ.get("HF_TOKEN") and os.environ.get("HF_REPO_ID"):
-            try:
-                from worker.artifact_upload import upload_artifacts
-                artifacts_url = upload_artifacts(experiment_id, EXPERIMENTS_DIR)
-                client.emit_event(
-                    "experiment.artifacts_ready",
-                    "Artifacts uploaded to Hugging Face Hub",
-                    experiment_id=experiment_id,
-                    details={"artifacts_url": artifacts_url},
-                    parent_id=root_event_id,
-                    worker_id=WORKER_ID,
-                )
-                log(f"Artifacts uploaded: {artifacts_url[:80]}...")
-            except Exception as e:
-                log(f"Warning: artifact upload failed: {e}")
-
-        # 7. Report outcome
+        # 7. Report outcome FIRST (before HF upload so results are saved even if upload fails)
         log(f"Agent finished. Status: {result['status']}")
         client.update_experiment(
             experiment_id,
             status="completed" if result["status"] == "completed" else "failed",
             results={
                 "results_text": result.get("results_text", ""),
+                "log_text": result.get("log_text", ""),
                 "status": result["status"],
+                **result.get("structured", {}),
             },
+            **({"wandb_url": result["wandb_url"]} if result.get("wandb_url") else {}),
         )
         client.emit_event(
             "completed" if result["status"] == "completed" else "failed",
@@ -441,6 +451,30 @@ async def run_experiment_cycle(
             parent_id=root_event_id,
             worker_id=WORKER_ID,
         )
+
+        # 8. Upload experiment artifacts to Hugging Face Hub
+        try:
+            from worker.artifact_upload import upload_artifacts
+            artifacts_url = upload_artifacts(experiment_id, EXPERIMENTS_DIR)
+            client.emit_event(
+                "experiment.artifacts_ready",
+                "Artifacts uploaded to Hugging Face Hub",
+                experiment_id=experiment_id,
+                details={"artifacts_url": artifacts_url},
+                parent_id=root_event_id,
+                worker_id=WORKER_ID,
+            )
+            log(f"Artifacts uploaded: {artifacts_url[:80]}...")
+        except Exception as e:
+            log(f"Warning: HF artifact upload failed: {e}")
+            client.emit_event(
+                "experiment.artifacts_failed",
+                f"HF artifact upload failed: {str(e)[:200]}",
+                experiment_id=experiment_id,
+                details={"error": str(e)},
+                parent_id=root_event_id,
+                worker_id=WORKER_ID,
+            )
 
         return True
 

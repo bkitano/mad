@@ -366,14 +366,26 @@ def get_experiment_artifacts(experiment_id: str):
                 results = outcome_events[0].get("details", {}).get("results")
                 break
 
+    # Fetch proposal content
+    proposal = None
+    proposal_id = exp.get("proposal_id")
+    if proposal_id:
+        proposal = proposals.get(proposal_id)
+
+    # Extract log_text from results if available
+    log_text = results.get("log_text", "") if isinstance(results, dict) else ""
+
     return {
         "id": experiment_id,
-        "proposal_id": exp.get("proposal_id"),
+        "proposal_id": proposal_id,
+        "proposal_title": proposal.get("title") if proposal else None,
+        "proposal_content": proposal.get("content") if proposal else None,
         "status": exp.get("status"),
         "artifacts_url": artifacts_url,
         "code_files": code_files,
         "wandb_url": exp.get("wandb_url"),
         "results": results,
+        "log_text": log_text,
     }
 
 
