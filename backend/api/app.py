@@ -639,7 +639,7 @@ def create_experiment(req: CreateExperimentRequest):
                 MODAL_CREATE_JOB_URL,
                 json={
                     "worker_id": f"exp-{experiment_id}",
-                    "service_url": req.service_url or os.environ.get("MAD_SERVICE_URL", "http://mad.briankitano.com"),
+                    "service_url": req.service_url or os.environ["MAD_SERVICE_URL"],
                 },
                 timeout=15.0,
             )
