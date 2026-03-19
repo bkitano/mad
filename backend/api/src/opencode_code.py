@@ -14,23 +14,43 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+class OpenCodeProxyError(Exception):
+    """Connection/HTTP error reaching the worker's opencode server."""
+    pass
+
+
+class OpenCodeNoFiles(Exception):
+    """Proxy succeeded but the code directory is empty or doesn't exist yet."""
+    pass
+
+
+# Directories to skip when listing workspace root — these are infrastructure,
+# not experiment code written by the agent.
+_SKIP_DIRS = {"wandb", "proposals", "experiments", "code", ".opencode", "__pycache__", ".git"}
+
+
 def get_code_from_opencode(
     experiment_id: str,
     opencode_url: str,
-) -> tuple[dict, dict[str, str]] | None:
+) -> tuple[dict, dict[str, str]]:
     """
     Fetch experiment code from worker's OpenCode API.
-    Returns (manifest_info, files) or None on any error.
+
+    The agent writes code directly into the workspace root (/workspace/),
+    not into code/{experiment_id}/.  We list the root and skip known
+    infrastructure directories (wandb/, proposals/, etc.).
+
+    Returns (manifest_info, files).
+    Raises OpenCodeProxyError on connection/HTTP failure.
+    Raises OpenCodeNoFiles when the workspace has no code files yet.
     """
     url = opencode_url.rstrip("/")
-    code_prefix = f"code/{experiment_id}/"
 
     timeout = httpx.Timeout(connect=3.0, read=10.0, write=5.0, pool=5.0)
     with httpx.Client(timeout=timeout) as http:
-        # OpenCode must use cwd=WORKSPACE (set in worker) so path code/exp_id resolves correctly
+        # List the workspace root — opencode runs with cwd=/workspace
         try:
-            file_url = f"{url}/file"
-            resp = http.get(file_url, params={"path": code_prefix.rstrip("/")})
+            resp = http.get(f"{url}/file", params={"path": "."})
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:
@@ -38,13 +58,13 @@ def get_code_from_opencode(
                 "opencode file listing failed: url=%s experiment=%s error=%s: %s",
                 url, experiment_id, type(exc).__name__, exc,
             )
-            return None
+            raise OpenCodeProxyError(f"{type(exc).__name__}: {exc}") from exc
 
         nodes = data if isinstance(data, list) else data.get("children") or data.get("nodes") or []
         file_list: list[tuple[str, int]] = []
 
         def walk(ns: list, prefix: str, current_path: str) -> None:
-            """OpenCode returns flat listings; recurse into directories via another /file request."""
+            """Recurse into directories via /file requests, skipping infrastructure dirs."""
             for node in ns:
                 if not isinstance(node, dict):
                     continue
@@ -54,6 +74,9 @@ def get_code_from_opencode(
                     continue
                 rel = f"{prefix}{name}" if prefix else name
                 if node_type == "directory":
+                    # Skip infrastructure directories at root level
+                    if not prefix and name in _SKIP_DIRS:
+                        continue
                     subpath = f"{current_path}/{name}".lstrip("/")
                     try:
                         r = http.get(f"{url}/file", params={"path": subpath})
@@ -70,24 +93,23 @@ def get_code_from_opencode(
                     sz = node.get("size") or node.get("length") or 0
                     file_list.append((rel, sz))
 
-        base_path = code_prefix.rstrip("/")
-        walk(nodes, "", base_path)
+        walk(nodes, "", ".")
 
         if not file_list:
-            logger.warning(
-                "opencode returned no files: url=%s experiment=%s raw_response=%s",
+            logger.info(
+                "opencode workspace has no code files: url=%s experiment=%s raw_response=%s",
                 url, experiment_id, data,
             )
-            return None
+            raise OpenCodeNoFiles(
+                f"Worker workspace is empty — the agent may not have written code yet"
+            )
 
         files: dict[str, str] = {}
         for rel_path, _ in file_list:
-            full_path = f"{code_prefix}{rel_path}"
             try:
-                cr = http.get(f"{url}/file/content", params={"path": full_path})
+                cr = http.get(f"{url}/file/content", params={"path": rel_path})
                 cr.raise_for_status()
                 content_data = cr.json()
-                # OpenCode FileContent: {content: string} or {text: string} or raw string
                 if isinstance(content_data, str):
                     content = content_data
                 elif isinstance(content_data, dict):
@@ -98,12 +120,14 @@ def get_code_from_opencode(
             except Exception as exc:
                 logger.warning(
                     "opencode file content failed: url=%s path=%s error=%s: %s",
-                    url, full_path, type(exc).__name__, exc,
+                    url, rel_path, type(exc).__name__, exc,
                 )
                 continue
 
         if not files:
-            return None
+            raise OpenCodeNoFiles(
+                f"Found {len(file_list)} file entries but failed to read any content"
+            )
 
         total_bytes = sum(len(c.encode("utf-8")) for c in files.values())
         manifest_info = {
