@@ -24,6 +24,7 @@ export default function CodeViewer({ experimentId, apiUrl, onClose, embedded = f
   const [fileContent, setFileContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [errorType, setErrorType] = useState<'not_found' | 'proxy_failed' | 'unknown' | null>(null)
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
 
   const experimentNumber = experimentId
@@ -37,18 +38,27 @@ export default function CodeViewer({ experimentId, apiUrl, onClose, embedded = f
   const fetchFileTree = async () => {
     try {
       setLoading(true)
+      setError(null)
+      setErrorType(null)
       const res = await fetch(`${apiUrl}/experiments/${experimentNumber}/code/tree`)
       if (res.ok) {
         const data = await res.json()
         // Transform flat file list into tree structure
         const tree = buildFileTree(data.files || [])
         setFileTree(tree)
+      } else if (res.status === 502) {
+        setErrorType('proxy_failed')
+        const data = await res.json().catch(() => null)
+        setError(data?.detail || 'Worker is running but code viewer connection failed')
       } else if (res.status === 404) {
+        setErrorType('not_found')
         setError('Code not available yet - experiment may still be setting up')
       } else {
+        setErrorType('unknown')
         setError('Failed to load code structure')
       }
     } catch (err) {
+      setErrorType('unknown')
       setError(`Error: ${err}`)
     } finally {
       setLoading(false)
@@ -205,7 +215,22 @@ export default function CodeViewer({ experimentId, apiUrl, onClose, embedded = f
           {loading && !fileTree && (
             <div className="p-4 text-sm text-gray-500">Loading...</div>
           )}
-          {error && (
+          {error && errorType === 'proxy_failed' && (
+            <div className="p-4">
+              <div className="text-sm text-orange-600 mb-2">⚠️ Connection Failed</div>
+              <div className="text-xs text-gray-600 mb-3">{error}</div>
+              <div className="text-xs text-gray-500 mb-3">
+                The worker is running but the code viewer couldn't connect. This may be a temporary network issue.
+              </div>
+              <button
+                onClick={fetchFileTree}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-orange-500 hover:bg-orange-600 rounded"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {error && errorType !== 'proxy_failed' && (
             <div className="p-4">
               <div className="text-sm text-amber-600 mb-2">⚠️ Code Not Available</div>
               <div className="text-xs text-gray-600">{error}</div>
