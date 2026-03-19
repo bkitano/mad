@@ -7,7 +7,11 @@ OpenCode's /file and /file/content endpoints operate on the workspace filesystem
 
 from __future__ import annotations
 
+import logging
+
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 def get_code_from_opencode(
@@ -21,13 +25,19 @@ def get_code_from_opencode(
     url = opencode_url.rstrip("/")
     code_prefix = f"code/{experiment_id}/"
 
-    with httpx.Client(timeout=15.0) as http:
+    timeout = httpx.Timeout(connect=3.0, read=10.0, write=5.0, pool=5.0)
+    with httpx.Client(timeout=timeout) as http:
         # OpenCode must use cwd=WORKSPACE (set in worker) so path code/exp_id resolves correctly
         try:
-            resp = http.get(f"{url}/file", params={"path": code_prefix.rstrip("/")}, timeout=10.0)
+            file_url = f"{url}/file"
+            resp = http.get(file_url, params={"path": code_prefix.rstrip("/")})
             resp.raise_for_status()
             data = resp.json()
-        except Exception:
+        except Exception as exc:
+            logger.error(
+                "opencode file listing failed: url=%s experiment=%s error=%s: %s",
+                url, experiment_id, type(exc).__name__, exc,
+            )
             return None
 
         nodes = data if isinstance(data, list) else data.get("children") or data.get("nodes") or []
@@ -46,13 +56,16 @@ def get_code_from_opencode(
                 if node_type == "directory":
                     subpath = f"{current_path}/{name}".lstrip("/")
                     try:
-                        r = http.get(f"{url}/file", params={"path": subpath}, timeout=10.0)
+                        r = http.get(f"{url}/file", params={"path": subpath})
                         r.raise_for_status()
                         subnodes = r.json()
                         subnodes = subnodes if isinstance(subnodes, list) else subnodes.get("children") or subnodes.get("nodes") or []
                         walk(subnodes, f"{rel}/", subpath)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning(
+                            "opencode directory walk failed: url=%s path=%s error=%s: %s",
+                            url, subpath, type(exc).__name__, exc,
+                        )
                 else:
                     sz = node.get("size") or node.get("length") or 0
                     file_list.append((rel, sz))
@@ -61,13 +74,17 @@ def get_code_from_opencode(
         walk(nodes, "", base_path)
 
         if not file_list:
+            logger.warning(
+                "opencode returned no files: url=%s experiment=%s raw_response=%s",
+                url, experiment_id, data,
+            )
             return None
 
         files: dict[str, str] = {}
         for rel_path, _ in file_list:
             full_path = f"{code_prefix}{rel_path}"
             try:
-                cr = http.get(f"{url}/file/content", params={"path": full_path}, timeout=10.0)
+                cr = http.get(f"{url}/file/content", params={"path": full_path})
                 cr.raise_for_status()
                 content_data = cr.json()
                 # OpenCode FileContent: {content: string} or {text: string} or raw string
@@ -78,7 +95,11 @@ def get_code_from_opencode(
                 else:
                     content = ""
                 files[rel_path] = content
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "opencode file content failed: url=%s path=%s error=%s: %s",
+                    url, full_path, type(exc).__name__, exc,
+                )
                 continue
 
         if not files:

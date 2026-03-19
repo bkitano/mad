@@ -26,6 +26,7 @@ from src.db import DatabaseManager
 from src.stores import EventsStore, ExperimentsStore, ProposalsStore, WorkersStore
 from supabase import acreate_client
 
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 
 db = DatabaseManager()
@@ -150,24 +151,51 @@ def get_experiment(experiment_id: str):
     return exp
 
 
-def _try_opencode_code(experiment_id: str) -> tuple[dict, dict[str, str]] | None:
-    """Fetch code from worker's OpenCode API when experiment has an active worker. Returns (manifest_info, files) or None."""
+def _try_opencode_code(experiment_id: str) -> tuple[dict, dict[str, str]] | None | str:
+    """Fetch code from worker's OpenCode API when experiment has an active worker.
+
+    Returns:
+        (manifest_info, files) on success,
+        None when no active worker exists (caller should fall through to stored code),
+        str error message when worker exists but proxy failed (caller should return 502).
+    """
     exp = experiments.get(experiment_id)
     if not exp or not exp.get("worker_id"):
+        logger.debug("opencode skip: no worker_id for experiment %s", experiment_id)
         return None
-    worker = workers_store.get(exp["worker_id"])
-    if not worker or worker.get("status") == "stopped":
+    worker_id = exp["worker_id"]
+    worker = workers_store.get(worker_id)
+    if not worker:
+        logger.info("opencode skip: worker %s not found for experiment %s", worker_id, experiment_id)
+        return None
+    worker_status = worker.get("status")
+    if worker_status in ("stopped", "stale"):
+        logger.info("opencode skip: worker %s is %s for experiment %s", worker_id, worker_status, experiment_id)
         return None
     opencode_url = worker.get("opencode_url")
     if not opencode_url:
-        return None
-    return opencode_code.get_code_from_opencode(experiment_id, opencode_url)
+        logger.warning("opencode skip: worker %s has no opencode_url for experiment %s", worker_id, experiment_id)
+        return f"Worker {worker_id} registered but has no opencode_url"
+    result = opencode_code.get_code_from_opencode(experiment_id, opencode_url)
+    if result is None:
+        logger.warning(
+            "opencode proxy returned None: worker=%s url=%s experiment=%s",
+            worker_id, opencode_url, experiment_id,
+        )
+        return f"Worker {worker_id} is active but code proxy to {opencode_url} failed"
+    return result
 
 
 @app.get("/experiments/{experiment_id}/code")
 def get_experiment_code(experiment_id: str):
     opencode_result = _try_opencode_code(experiment_id)
-    if opencode_result is not None:
+    if isinstance(opencode_result, str):
+        # Worker exists but proxy failed — check for stored code fallback
+        manifest = experiment_store.get_manifest(experiment_id)
+        if manifest is None:
+            raise HTTPException(status_code=502, detail=opencode_result)
+        # Fall through to stored code below
+    elif opencode_result is not None:
         manifest_info, files = opencode_result
         return {
             "experiment_id": experiment_id,
@@ -199,7 +227,11 @@ def get_experiment_code(experiment_id: str):
 @app.get("/experiments/{experiment_id}/code/tree")
 def get_experiment_code_tree(experiment_id: str):
     opencode_result = _try_opencode_code(experiment_id)
-    if opencode_result is not None:
+    if isinstance(opencode_result, str):
+        manifest = experiment_store.get_manifest(experiment_id)
+        if manifest is None:
+            raise HTTPException(status_code=502, detail=opencode_result)
+    elif opencode_result is not None:
         manifest_info, _ = opencode_result
         return {
             "experiment_id": experiment_id,
@@ -240,7 +272,11 @@ def download_experiment_code(experiment_id: str):
 @app.get("/experiments/{experiment_id}/code/raw/{file_path:path}")
 def get_experiment_file_raw(experiment_id: str, file_path: str):
     opencode_result = _try_opencode_code(experiment_id)
-    if opencode_result is not None:
+    if isinstance(opencode_result, str):
+        content = experiment_store.get_file(experiment_id, file_path)
+        if content is None:
+            raise HTTPException(status_code=502, detail=opencode_result)
+    elif opencode_result is not None:
         _, files = opencode_result
         content = files.get(file_path)
         if content is not None:
@@ -268,7 +304,12 @@ def get_experiment_file_raw(experiment_id: str, file_path: str):
 @app.get("/experiments/{experiment_id}/code/review")
 def review_experiment_code(experiment_id: str):
     opencode_result = _try_opencode_code(experiment_id)
-    if opencode_result is not None:
+    if isinstance(opencode_result, str):
+        manifest = experiment_store.get_manifest(experiment_id)
+        if manifest is None:
+            raise HTTPException(status_code=502, detail=opencode_result)
+        # Fall through to stored code path below
+    elif opencode_result is not None:
         manifest_info, files = opencode_result
         parts = [f"# Experiment {experiment_id} — Code Review (OpenCode)\n"]
         parts.append(f"# Files: {manifest_info['total_files']}\n")
@@ -302,7 +343,13 @@ def review_experiment_code(experiment_id: str):
 @app.get("/experiments/{experiment_id}/code/{file_path:path}")
 def get_experiment_file(experiment_id: str, file_path: str):
     opencode_result = _try_opencode_code(experiment_id)
-    if opencode_result is not None:
+    if isinstance(opencode_result, str):
+        # Worker exists but proxy failed — try stored code fallback
+        content = experiment_store.get_file(experiment_id, file_path)
+        if content is None:
+            raise HTTPException(status_code=502, detail=opencode_result)
+        return {"path": file_path, "content": content}
+    elif opencode_result is not None:
         _, files = opencode_result
         content = files.get(file_path)
         if content is not None:

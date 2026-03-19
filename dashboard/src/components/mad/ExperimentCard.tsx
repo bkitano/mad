@@ -3,7 +3,7 @@ import { useState } from 'react'
 interface ExperimentCardProps {
   proposalId: string
   experiment: {
-    id?: string
+    id: string
     proposal_id: string
     started_at: string
     last_heartbeat?: string
@@ -119,7 +119,7 @@ export default function ExperimentCard({ proposalId, experiment, onViewProposal,
             )}
             {onViewLog && (
               <button
-                onClick={() => onViewLog(experiment.id || proposalId)}
+                onClick={() => onViewLog(experiment.id)}
                 className="px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded transition-colors"
               >
                 View Log
@@ -127,7 +127,7 @@ export default function ExperimentCard({ proposalId, experiment, onViewProposal,
             )}
             {onViewCode && (
               <button
-                onClick={() => onViewCode(experiment.id || proposalId)}
+                onClick={() => onViewCode(experiment.id)}
                 className="px-3 py-1.5 text-xs font-medium text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 rounded transition-colors"
               >
                 View Code
