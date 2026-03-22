@@ -1,3 +1,4 @@
+.tricks/
 node_modules/
 .env
 .env.*
