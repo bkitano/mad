@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from src import event_bus, experiment_store, opencode_code
 from src.db import DatabaseManager
-from src.stores import EventsStore, ExperimentsStore, ProposalsStore, WorkersStore
+from src.stores import EventsStore, ExperimentsStore, ProposalsStore, TricksStore, WorkersStore
 from supabase import acreate_client
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
@@ -34,6 +34,7 @@ experiments = ExperimentsStore(db)
 events = EventsStore(db)
 proposals = ProposalsStore(db)
 workers_store = WorkersStore(db)
+tricks_store = TricksStore(db)
 
 MODAL_CREATE_JOB_URL = os.environ.get("MODAL_CREATE_JOB_URL", "")
 
@@ -629,6 +630,127 @@ def create_proposal(req: CreateProposalRequest):
         "hypothesis": row.get("hypothesis"),
         "content": row["content"],
     }
+
+
+# -- Tricks CRUD ---------------------------------------------------------------
+
+
+@app.get("/tricks")
+def list_tricks(
+    category: Optional[str] = Query(None),
+    gain_type: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    rows = tricks_store.list(
+        category=category, gain_type=gain_type, search=search, limit=limit, offset=offset
+    )
+    return [
+        {
+            "id": row["id"],
+            "slug": row["slug"],
+            "title": row["title"],
+            "category": row["category"],
+            "gain_type": row["gain_type"],
+            "source": row.get("source"),
+            "paper": row.get("paper"),
+            "documented": str(row["documented"]) if row.get("documented") else None,
+            "created_at": str(row["created_at"]) if row.get("created_at") else None,
+        }
+        for row in rows
+    ]
+
+
+@app.get("/tricks/{trick_id}")
+def get_trick(trick_id: str):
+    # Support both numeric id and slug lookup
+    if trick_id.isdigit():
+        row = tricks_store.get(int(trick_id))
+    else:
+        row = tricks_store.get_by_slug(trick_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Trick {trick_id} not found")
+    return {
+        "id": row["id"],
+        "slug": row["slug"],
+        "title": row["title"],
+        "category": row["category"],
+        "gain_type": row["gain_type"],
+        "source": row.get("source"),
+        "paper": row.get("paper"),
+        "documented": str(row["documented"]) if row.get("documented") else None,
+        "content": row["content"],
+        "created_at": str(row["created_at"]) if row.get("created_at") else None,
+        "updated_at": str(row["updated_at"]) if row.get("updated_at") else None,
+    }
+
+
+class CreateTrickRequest(BaseModel):
+    slug: str
+    title: str
+    category: str
+    gain_type: str
+    content: str
+    source: Optional[str] = None
+    paper: Optional[str] = None
+    documented: Optional[str] = None
+
+
+@app.post("/tricks")
+def create_trick(req: CreateTrickRequest):
+    row = tricks_store.create(
+        slug=req.slug,
+        title=req.title,
+        category=req.category,
+        gain_type=req.gain_type,
+        content=req.content,
+        source=req.source,
+        paper=req.paper,
+        documented=req.documented,
+    )
+    return {
+        "id": row["id"],
+        "slug": row["slug"],
+        "title": row["title"],
+        "category": row["category"],
+        "gain_type": row["gain_type"],
+        "content": row["content"],
+    }
+
+
+class UpdateTrickRequest(BaseModel):
+    slug: Optional[str] = None
+    title: Optional[str] = None
+    category: Optional[str] = None
+    gain_type: Optional[str] = None
+    content: Optional[str] = None
+    source: Optional[str] = None
+    paper: Optional[str] = None
+    documented: Optional[str] = None
+
+
+@app.patch("/tricks/{trick_id}")
+def update_trick(trick_id: int, req: UpdateTrickRequest):
+    fields = {k: v for k, v in req.model_dump().items() if v is not None}
+    row = tricks_store.update(trick_id, **fields)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Trick {trick_id} not found")
+    return {
+        "id": row["id"],
+        "slug": row["slug"],
+        "title": row["title"],
+        "category": row["category"],
+        "gain_type": row["gain_type"],
+        "content": row["content"],
+    }
+
+
+@app.delete("/tricks/{trick_id}")
+def delete_trick(trick_id: int):
+    if not tricks_store.delete(trick_id):
+        raise HTTPException(status_code=404, detail=f"Trick {trick_id} not found")
+    return {"deleted": True, "id": trick_id}
 
 
 # -- GET /stats ----------------------------------------------------------------

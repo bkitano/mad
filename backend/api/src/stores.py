@@ -240,6 +240,89 @@ class ProposalsStore:
         )
 
 
+class TricksStore:
+    def __init__(self, db: DatabaseManager) -> None:
+        self.db = db
+
+    def list(
+        self,
+        category: Optional[str] = None,
+        gain_type: Optional[str] = None,
+        search: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if category:
+            conditions.append("category = %s")
+            params.append(category)
+        if gain_type:
+            conditions.append("gain_type = %s")
+            params.append(gain_type)
+        if search:
+            conditions.append("(title ILIKE %s OR slug ILIKE %s OR content ILIKE %s)")
+            like = f"%{search}%"
+            params.extend([like, like, like])
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        params.extend([limit, offset])
+        return self.db._fetch(
+            f"SELECT id, slug, title, category, gain_type, source, paper, documented, created_at, updated_at FROM tricks{where} ORDER BY id LIMIT %s OFFSET %s",
+            tuple(params),
+        )
+
+    def get(self, trick_id: int) -> Optional[dict]:
+        return self.db._fetch_one("SELECT * FROM tricks WHERE id = %s", (trick_id,))
+
+    def get_by_slug(self, slug: str) -> Optional[dict]:
+        return self.db._fetch_one("SELECT * FROM tricks WHERE slug = %s", (slug,))
+
+    def create(
+        self,
+        slug: str,
+        title: str,
+        category: str,
+        gain_type: str,
+        content: str,
+        source: Optional[str] = None,
+        paper: Optional[str] = None,
+        documented: Optional[str] = None,
+    ) -> dict:
+        with self.db.get_connection() as conn, conn.cursor(
+            cursor_factory=psycopg2.extras.RealDictCursor
+        ) as cur:
+            cur.execute(
+                """INSERT INTO tricks (slug, title, category, gain_type, content, source, paper, documented)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                   RETURNING *""",
+                (slug, title, category, gain_type, content, source, paper, documented),
+            )
+            return dict(cur.fetchone())
+
+    def update(self, trick_id: int, **fields) -> Optional[dict]:
+        if not fields:
+            return self.get(trick_id)
+        fields["updated_at"] = "now()"
+        set_parts = []
+        values = []
+        for k, v in fields.items():
+            if v == "now()":
+                set_parts.append(f"{k} = now()")
+            else:
+                set_parts.append(f"{k} = %s")
+                values.append(v)
+        values.append(trick_id)
+        self.db._execute(
+            f"UPDATE tricks SET {', '.join(set_parts)} WHERE id = %s",
+            tuple(values),
+        )
+        return self.get(trick_id)
+
+    def delete(self, trick_id: int) -> bool:
+        count = self.db._execute("DELETE FROM tricks WHERE id = %s", (trick_id,))
+        return count > 0
+
+
 HEARTBEAT_TTL_MINUTES = 3  # Mark stale if no heartbeat for this long
 
 

@@ -6,14 +6,49 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 
 interface Trick {
-  id: string
-  filename: string
-  title?: string
-  modified: number
+  id: number
+  slug: string
+  title: string
+  category: string
+  gain_type: string
+  source?: string
+  paper?: string
+  documented?: string
+  created_at?: string
+}
+
+interface TrickFull extends Trick {
+  content: string
+  updated_at?: string
 }
 
 interface TricksViewProps {
   apiUrl: string
+}
+
+const CATEGORY_COLORS: Record<string, string> = {
+  decomposition: 'bg-blue-100 text-blue-800',
+  parallelization: 'bg-purple-100 text-purple-800',
+  kernel: 'bg-orange-100 text-orange-800',
+  stability: 'bg-green-100 text-green-800',
+  efficiency: 'bg-teal-100 text-teal-800',
+  algebraic: 'bg-rose-100 text-rose-800',
+  approximation: 'bg-amber-100 text-amber-800',
+}
+
+const GAIN_TYPE_COLORS: Record<string, string> = {
+  efficiency: 'bg-emerald-100 text-emerald-800',
+  expressivity: 'bg-violet-100 text-violet-800',
+  accuracy: 'bg-sky-100 text-sky-800',
+}
+
+function Badge({ label, colorMap }: { label: string; colorMap: Record<string, string> }) {
+  const color = colorMap[label] || 'bg-gray-100 text-gray-800'
+  return (
+    <span className={`px-2 py-0.5 rounded text-xs font-medium ${color}`}>
+      {label}
+    </span>
+  )
 }
 
 // Tricks List Component
@@ -22,16 +57,25 @@ function TricksList({ apiUrl }: TricksViewProps) {
   const [tricks, setTricks] = useState<Trick[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState<string>('')
+  const [gainTypeFilter, setGainTypeFilter] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
 
-  // Fetch tricks list
-  // Note: Tricks endpoint not available in current backend API
   useEffect(() => {
     const fetchTricks = async () => {
       try {
-        // Tricks endpoint not implemented in new API
-        setError('Tricks functionality is not available in the current API version')
-        setTricks([])
+        setLoading(true)
+        const params = new URLSearchParams()
+        params.set('limit', '1000')
+        if (searchTerm) params.set('search', searchTerm)
+        if (categoryFilter) params.set('category', categoryFilter)
+        if (gainTypeFilter) params.set('gain_type', gainTypeFilter)
+
+        const res = await fetch(`${apiUrl}/tricks?${params}`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        setTricks(data)
+        setError(null)
       } catch (err) {
         console.error('Error fetching tricks:', err)
         setError('Failed to load tricks')
@@ -40,40 +84,18 @@ function TricksList({ apiUrl }: TricksViewProps) {
       }
     }
 
-    fetchTricks()
-  }, [apiUrl])
+    const debounce = setTimeout(fetchTricks, searchTerm ? 300 : 0)
+    return () => clearTimeout(debounce)
+  }, [apiUrl, searchTerm, categoryFilter, gainTypeFilter])
 
-  // Filter tricks by search term
-  const filteredTricks = tricks.filter(t => {
-    if (!searchTerm) return true
-    const search = searchTerm.toLowerCase()
-    return (
-      t.id.toLowerCase().includes(search) ||
-      (t.title && t.title.toLowerCase().includes(search))
-    )
-  })
+  // Extract unique categories and gain types for filters
+  const categories = [...new Set(tricks.map(t => t.category))].sort()
+  const gainTypes = [...new Set(tricks.map(t => t.gain_type))].sort()
 
-  if (loading) {
+  if (loading && tricks.length === 0) {
     return (
       <div className="bg-gray-50 p-6 rounded-lg text-center text-gray-500">
         Loading tricks...
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-4">
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-gray-900 mb-2">What are Tricks?</h3>
-          <p className="text-sm text-gray-700 mb-2">
-            Tricks are atomic, reusable insights extracted from research papers. Think of them as a curated
-            knowledge base of techniques, optimizations, and implementation patterns from the broader ML literature.
-          </p>
-        </div>
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
-          {error}
-        </div>
       </div>
     )
   }
@@ -83,53 +105,82 @@ function TricksList({ apiUrl }: TricksViewProps) {
       {/* About Tricks */}
       <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-2">What are Tricks?</h3>
-        <p className="text-sm text-gray-700 mb-2">
-          Tricks are atomic, reusable insights extracted from research papers. Think of them as a curated
-          knowledge base of techniques, optimizations, and implementation patterns from the broader ML literature.
-        </p>
         <p className="text-sm text-gray-700">
-          The Research Agent reads papers and distills key ideas into self-contained "tricks"—things like
-          specific CUDA kernel patterns, numerical stability techniques, or architectural components.
-          These tricks become building blocks that the agent can mix and combine when generating new proposals,
-          allowing it to draw from the collective knowledge of the research community.
+          Tricks are atomic, reusable insights extracted from research papers — specific CUDA kernel patterns,
+          numerical stability techniques, or architectural components that serve as building blocks for new proposals.
         </p>
       </div>
 
-      {/* Search */}
-      <div className="flex items-center gap-4">
+      {error && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
+          {error}
+        </div>
+      )}
+
+      {/* Search & Filters */}
+      <div className="flex flex-wrap items-center gap-3">
         <input
           type="text"
           placeholder="Search tricks..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm"
+          className="flex-1 min-w-[200px] border border-gray-300 rounded px-3 py-2 text-sm"
         />
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="border border-gray-300 rounded px-3 py-2 text-sm"
+        >
+          <option value="">All categories</option>
+          {categories.map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+        <select
+          value={gainTypeFilter}
+          onChange={(e) => setGainTypeFilter(e.target.value)}
+          className="border border-gray-300 rounded px-3 py-2 text-sm"
+        >
+          <option value="">All gain types</option>
+          {gainTypes.map(g => (
+            <option key={g} value={g}>{g}</option>
+          ))}
+        </select>
         <div className="text-gray-500 text-sm">
-          {filteredTricks.length} trick{filteredTricks.length !== 1 ? 's' : ''}
+          {tricks.length} trick{tricks.length !== 1 ? 's' : ''}
         </div>
       </div>
 
-      {/* Tricks List */}
+      {/* Tricks Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {filteredTricks.map(trick => (
+        {tricks.map(trick => (
           <button
             key={trick.id}
-            onClick={() => navigate(`/tricks/${trick.id}`)}
+            onClick={() => navigate(`/tricks/${trick.slug}`)}
             className="text-left p-3 border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
           >
-            <div className="font-mono text-xs text-gray-500 mb-1">
-              {trick.id}
+            <div className="flex items-center gap-2 mb-2">
+              <span className="font-mono text-xs text-gray-400">#{trick.id}</span>
+              <Badge label={trick.category} colorMap={CATEGORY_COLORS} />
+              <Badge label={trick.gain_type} colorMap={GAIN_TYPE_COLORS} />
             </div>
-            <div className="text-sm text-gray-900">
-              {trick.title || trick.id}
+            <div className="text-sm font-medium text-gray-900 mb-1">
+              {trick.title}
             </div>
+            {trick.source && (
+              <div className="text-xs text-gray-500 truncate">
+                {trick.source}
+              </div>
+            )}
           </button>
         ))}
       </div>
 
-      {filteredTricks.length === 0 && (
+      {tricks.length === 0 && !loading && (
         <div className="bg-gray-50 p-8 rounded-lg text-center text-gray-500">
-          No tricks match "{searchTerm}"
+          {searchTerm || categoryFilter || gainTypeFilter
+            ? 'No tricks match your filters'
+            : 'No tricks yet'}
         </div>
       )}
     </div>
@@ -144,22 +195,22 @@ interface TrickDetailProps {
 // Trick Detail Component
 function TrickDetail({ apiUrl, trickId }: TrickDetailProps) {
   const navigate = useNavigate()
-  const [trickContent, setTrickContent] = useState<string>('')
+  const [trick, setTrick] = useState<TrickFull | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Fetch trick content
-  // Note: Tricks endpoint not available in current backend API
   useEffect(() => {
     if (!trickId) return
 
     const fetchContent = async () => {
       try {
-        // Tricks endpoint not implemented in new API
-        setError('Trick details are not available in the current API version')
-        setTrickContent('')
+        const res = await fetch(`${apiUrl}/tricks/${encodeURIComponent(trickId)}`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        setTrick(data)
+        setError(null)
       } catch (err) {
-        console.error('Error fetching trick content:', err)
+        console.error('Error fetching trick:', err)
         setError('Failed to load trick')
       } finally {
         setLoading(false)
@@ -183,23 +234,42 @@ function TrickDetail({ apiUrl, trickId }: TrickDetailProps) {
         onClick={() => navigate('/tricks')}
         className="mb-4 text-blue-600 hover:text-blue-800 text-sm"
       >
-        ← Back to tricks list
+        &larr; Back to tricks list
       </button>
 
       {error ? (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
           {error}
         </div>
-      ) : (
-        <div className="prose prose-sm max-w-none">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[rehypeKatex]}
-          >
-            {trickContent}
-          </ReactMarkdown>
+      ) : trick ? (
+        <div>
+          {/* Header */}
+          <div className="mb-4 pb-4 border-b border-gray-200">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="font-mono text-sm text-gray-400">#{trick.id}</span>
+              <Badge label={trick.category} colorMap={CATEGORY_COLORS} />
+              <Badge label={trick.gain_type} colorMap={GAIN_TYPE_COLORS} />
+            </div>
+            <h1 className="text-xl font-semibold text-gray-900 mb-2">{trick.title}</h1>
+            {trick.source && (
+              <p className="text-sm text-gray-600">{trick.source}</p>
+            )}
+            {trick.documented && (
+              <p className="text-xs text-gray-400 mt-1">Documented: {trick.documented}</p>
+            )}
+          </div>
+
+          {/* Content */}
+          <div className="prose prose-sm max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+            >
+              {trick.content}
+            </ReactMarkdown>
+          </div>
         </div>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -208,7 +278,6 @@ function TrickDetail({ apiUrl, trickId }: TrickDetailProps) {
 export default function TricksView({ apiUrl }: TricksViewProps) {
   const location = useLocation()
 
-  // Check if we're viewing a specific trick (e.g., /tricks/some-trick)
   const pathParts = location.pathname.split('/').filter(Boolean)
   const trickId = pathParts.length > 2 && pathParts[1] === 'tricks' ? pathParts[2] : null
 
