@@ -279,7 +279,7 @@ export default function TricksView({ apiUrl }: TricksViewProps) {
   const location = useLocation()
 
   const pathParts = location.pathname.split('/').filter(Boolean)
-  const trickId = pathParts.length > 2 && pathParts[1] === 'tricks' ? pathParts[2] : null
+  const trickId = pathParts.length > 1 && pathParts[0] === 'tricks' ? pathParts[1] : null
 
   if (trickId) {
     return <TrickDetail apiUrl={apiUrl} trickId={trickId} />
