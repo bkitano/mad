@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { BlockMath, InlineMath } from 'react-katex'
+import 'katex/dist/katex.min.css'
 
 interface Section {
   id: string
@@ -139,9 +141,11 @@ export default function ThesisPage() {
               significant computational challenges.
             </p>
             <div className="thesis-equation">
-              <code>Attention(Q, K, V) = softmax(QK&sup1; / &radic;d) &middot; V</code>
+              <BlockMath math="\text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right) V" />
             </div>
             <p className="thesis-p">
+              The computational cost is dominated by the matrix product <InlineMath math="QK^\top \in \mathbb{R}^{n \times n}" />,
+              which requires <InlineMath math="\mathcal{O}(n^2 d)" /> time and <InlineMath math="\mathcal{O}(n^2)" /> memory.
               This quadratic bottleneck has motivated a rich line of research into efficient
               alternatives: linear attention, sparse attention, low-rank approximations, and
               state-space models. Each offers different trade-offs between expressiveness and
@@ -159,7 +163,15 @@ export default function ThesisPage() {
               frontier.
             </div>
             <p className="thesis-p">
-              This hypothesis rests on several assumptions: (1) the architecture design space is
+              More formally, let <InlineMath math="\mathcal{A}" /> denote the space of valid architectures and{' '}
+              <InlineMath math="f: \mathcal{A} \to \mathbb{R}^k" /> a multi-objective evaluation function
+              mapping architectures to quality and efficiency metrics. We seek to approximate the Pareto frontier:
+            </p>
+            <div className="thesis-equation">
+              <BlockMath math="\mathcal{P}^* = \left\{ a \in \mathcal{A} \;\middle|\; \nexists\, a' \in \mathcal{A} : f(a') \succ f(a) \right\}" />
+            </div>
+            <p className="thesis-p">
+              This hypothesis rests on several assumptions: (1) the architecture design space <InlineMath math="|\mathcal{A}|" /> is
               large enough that automated exploration can find regions missed by human designers,
               (2) proxy evaluation metrics are sufficiently correlated with downstream performance,
               and (3) AI agents can effectively navigate high-dimensional discrete search spaces
@@ -176,6 +188,20 @@ export default function ThesisPage() {
               connectivity patterns, we use language model agents to generate arbitrary PyTorch
               code. This dramatically expands the search space while leveraging the model's
               knowledge of existing architectures as an informed prior.
+            </p>
+            <p className="thesis-p">
+              Traditional NAS methods parameterize the search space as a directed acyclic graph{' '}
+              <InlineMath math="G = (V, E)" /> where nodes represent operations{' '}
+              <InlineMath math="o_i \in \mathcal{O}" /> drawn from a fixed set. The search objective is typically:
+            </p>
+            <div className="thesis-equation">
+              <BlockMath math="\alpha^* = \arg\min_{\alpha \in \mathcal{A}} \; \mathcal{L}_{\text{val}}\!\left(w^*(\alpha), \alpha\right) \quad \text{s.t.} \quad w^*(\alpha) = \arg\min_w \; \mathcal{L}_{\text{train}}(w, \alpha)" />
+            </div>
+            <p className="thesis-p">
+              By contrast, our search space is the set of all programs <InlineMath math="p \in \mathcal{P}" /> that
+              implement a valid <code>nn.Module</code>. The agent acts as a learned proposal
+              distribution <InlineMath math="q_\theta(p \mid \mathcal{H})" /> conditioned on the history of
+              prior experiments <InlineMath math="\mathcal{H} = \{(p_i, f(p_i))\}_{i=1}^t" />.
             </p>
           </section>
 
@@ -211,24 +237,33 @@ export default function ThesisPage() {
             <h3 className="thesis-h3">Evaluation Strategy</h3>
             <p className="thesis-p">
               Each candidate architecture is evaluated on a suite of proxy tasks designed to
-              measure both quality and efficiency. The evaluation pipeline is fully automated:
+              measure both quality and efficiency. We define a composite score:
+            </p>
+            <div className="thesis-equation">
+              <BlockMath math="S(a) = \underbrace{-\log \text{PPL}(a)}_{\text{quality}} + \lambda_1 \underbrace{\log \text{Throughput}(a)}_{\text{speed}} - \lambda_2 \underbrace{\log \text{Memory}(a)}_{\text{footprint}}" />
+            </div>
+            <p className="thesis-p">
+              where <InlineMath math="\lambda_1, \lambda_2 > 0" /> control the efficiency&ndash;quality trade-off.
+              The evaluation pipeline is fully automated:
             </p>
             <ol className="thesis-list">
               <li>
-                <strong>Correctness:</strong> The module must compile and pass shape tests across
-                a range of input dimensions and batch sizes.
+                <strong>Correctness:</strong> The module must compile and pass shape tests:
+                verify <InlineMath math="f_a(x) \in \mathbb{R}^{B \times T \times d}" /> for
+                all <InlineMath math="(B, T) \in \{1,4,8\} \times \{128, 512, 2048\}" />.
               </li>
               <li>
-                <strong>Language modeling loss:</strong> Train on a small corpus (10M tokens) for a
-                fixed number of steps and measure validation perplexity.
+                <strong>Language modeling loss:</strong> Train on a small corpus (<InlineMath math="10^7" /> tokens) for{' '}
+                <InlineMath math="N = 5000" /> steps and measure validation perplexity{' '}
+                <InlineMath math="\text{PPL} = \exp\!\left(\frac{1}{|V|}\sum_{t} -\log p(x_t \mid x_{<t})\right)" />.
               </li>
               <li>
-                <strong>Throughput:</strong> Measure tokens processed per second at various
-                sequence lengths (512, 1024, 2048, 4096).
+                <strong>Throughput:</strong> Measure tokens per second at sequence
+                lengths <InlineMath math="T \in \{512, 1024, 2048, 4096\}" />.
               </li>
               <li>
-                <strong>Memory footprint:</strong> Peak GPU memory usage during training at each
-                sequence length.
+                <strong>Memory footprint:</strong> Peak GPU memory <InlineMath math="M_{\text{peak}}" /> during
+                training at each sequence length.
               </li>
             </ol>
             <p className="thesis-p">
@@ -250,48 +285,60 @@ export default function ThesisPage() {
             <h3 className="thesis-h3">Softmax Attention</h3>
             <p className="thesis-p">
               Standard softmax attention computes a weighted sum over values, where the weights
-              are determined by the compatibility between queries and keys:
+              are determined by the compatibility between queries and keys. Given input{' '}
+              <InlineMath math="X \in \mathbb{R}^{n \times d}" />, we compute projections{' '}
+              <InlineMath math="Q = XW_Q" />, <InlineMath math="K = XW_K" />, <InlineMath math="V = XW_V" /> and:
             </p>
             <div className="thesis-equation">
-              <code>
-                A(Q, K, V)&#8582; = &sum;&#8645; softmax(Q&#8582;K&sup1; / &radic;d)&#8582;&#8645;
-                &middot; V&#8645;
-              </code>
+              <BlockMath math="\text{Attention}(Q, K, V)_i = \sum_{j=1}^{n} \frac{\exp\!\left(q_i^\top k_j / \sqrt{d_k}\right)}{\sum_{\ell=1}^{n} \exp\!\left(q_i^\top k_\ell / \sqrt{d_k}\right)} \, v_j" />
             </div>
             <p className="thesis-p">
               The softmax function ensures that attention weights are non-negative and sum to one,
-              providing a probabilistic interpretation. However, this normalization couples all
-              positions in the sequence, making the computation inherently sequential in the
-              attention dimension and quadratic in sequence length.
+              providing a probabilistic interpretation: <InlineMath math="\alpha_{ij} \geq 0" /> and{' '}
+              <InlineMath math="\sum_j \alpha_{ij} = 1" />. However, this normalization couples all
+              positions in the sequence, making the computation inherently quadratic.
             </p>
+            <p className="thesis-p">
+              For multi-head attention with <InlineMath math="h" /> heads, each head operates on a{' '}
+              <InlineMath math="d_k = d/h" /> dimensional subspace. The outputs are concatenated and
+              projected:
+            </p>
+            <div className="thesis-equation">
+              <BlockMath math="\text{MHA}(X) = \text{Concat}(\text{head}_1, \ldots, \text{head}_h) \, W_O \quad \text{where} \quad \text{head}_i = \text{Attention}(XW_Q^i, XW_K^i, XW_V^i)" />
+            </div>
             <div className="thesis-callout">
-              <strong>Complexity:</strong> O(n&sup2;d) time and O(n&sup2;) memory, where n is
-              sequence length and d is head dimension.
+              <strong>Complexity:</strong> <InlineMath math="\mathcal{O}(n^2 d)" /> time
+              and <InlineMath math="\mathcal{O}(n^2)" /> memory, where <InlineMath math="n" /> is
+              sequence length and <InlineMath math="d" /> is model dimension.
             </div>
           </section>
 
           <section id="linear-attention" className="thesis-section mb-12">
             <h3 className="thesis-h3">Linear Attention</h3>
             <p className="thesis-p">
-              Linear attention replaces the softmax with a decomposable kernel function
-              &phi;, enabling the computation to be rearranged using the associativity of matrix
-              multiplication:
+              Linear attention replaces the softmax kernel with a decomposable feature
+              map <InlineMath math="\phi: \mathbb{R}^d \to \mathbb{R}^D" />, enabling the computation to be
+              rearranged via the associativity of matrix multiplication:
             </p>
             <div className="thesis-equation">
-              <code>
-                A(Q, K, V)&#8582; = &phi;(Q&#8582;) &middot; (&sum;&#8645; &phi;(K&#8645;)&sup1;
-                V&#8645;) / (&phi;(Q&#8582;) &middot; &sum;&#8645; &phi;(K&#8645;))
-              </code>
+              <BlockMath math="\text{LinAttn}(Q, K, V)_i = \frac{\phi(q_i)^\top \sum_{j=1}^{n} \phi(k_j) v_j^\top}{\phi(q_i)^\top \sum_{j=1}^{n} \phi(k_j)} = \frac{\phi(q_i)^\top S}{\phi(q_i)^\top z}" />
             </div>
             <p className="thesis-p">
-              The key insight is that the term &sum;&#8645; &phi;(K&#8645;)&sup1; V&#8645; can be
-              computed once and shared across all query positions, reducing the complexity from
-              quadratic to linear. The choice of feature map &phi; determines the approximation
-              quality and computational characteristics.
+              where <InlineMath math="S = \sum_j \phi(k_j) v_j^\top \in \mathbb{R}^{D \times d}" /> and{' '}
+              <InlineMath math="z = \sum_j \phi(k_j) \in \mathbb{R}^D" /> can be computed once and shared
+              across all query positions. This reduces the complexity from{' '}
+              <InlineMath math="\mathcal{O}(n^2 d)" /> to <InlineMath math="\mathcal{O}(nDd)" />, which
+              is linear in <InlineMath math="n" /> when <InlineMath math="D" /> is fixed.
             </p>
             <p className="thesis-p">
-              Common choices include the ELU+1 activation (Katharopoulos et al., 2020), random
-              Fourier features (Performer), and learned feature maps. Each introduces different
+              For causal (autoregressive) modeling, we maintain a running state that can be updated recurrently:
+            </p>
+            <div className="thesis-equation">
+              <BlockMath math="S_t = S_{t-1} + \phi(k_t) v_t^\top, \qquad z_t = z_{t-1} + \phi(k_t), \qquad o_t = \frac{\phi(q_t)^\top S_t}{\phi(q_t)^\top z_t}" />
+            </div>
+            <p className="thesis-p">
+              Common choices for <InlineMath math="\phi" /> include the <InlineMath math="\text{elu}(x) + 1" /> activation
+              (Katharopoulos et al., 2020), random Fourier features (Performer), and learned feature maps. Each introduces different
               trade-offs between approximation quality, training stability, and computational
               overhead.
             </p>
@@ -301,21 +348,29 @@ export default function ThesisPage() {
             <h3 className="thesis-h3">Kernel Methods</h3>
             <p className="thesis-p">
               The connection between attention and kernel methods provides a powerful theoretical
-              framework. The softmax attention kernel can be expressed as:
+              framework. Softmax attention implicitly uses the kernel:
             </p>
             <div className="thesis-equation">
-              <code>k(x, y) = exp(x &middot; y / &radic;d)</code>
+              <BlockMath math="k(x, y) = \exp\!\left(\frac{x^\top y}{\sqrt{d}}\right) = \exp\!\left(\frac{\|x\|^2}{2\sqrt{d}}\right) \exp\!\left(\frac{\|y\|^2}{2\sqrt{d}}\right) \exp\!\left(\frac{-\|x - y\|^2}{2\sqrt{d}}\right)" />
             </div>
             <p className="thesis-p">
-              This perspective suggests that attention mechanisms can be understood as
-              kernel-weighted averaging, opening the door to the rich theory of reproducing kernel
-              Hilbert spaces (RKHS). Different kernels induce different notions of similarity and
-              different computational trade-offs.
+              By Mercer's theorem, any positive-definite kernel admits a (possibly infinite-dimensional)
+              feature map <InlineMath math="\phi" /> such that <InlineMath math="k(x,y) = \langle \phi(x), \phi(y) \rangle_{\mathcal{H}}" />.
+              This opens the door to the rich theory of reproducing kernel
+              Hilbert spaces (RKHS).
             </p>
             <p className="thesis-p">
-              Of particular interest are polynomial kernels and Maclaurin expansions, which provide
-              finite-dimensional feature maps and thus exact (rather than approximate) linear
-              attention with controllable complexity.
+              Of particular interest are polynomial kernels of degree <InlineMath math="p" />:
+            </p>
+            <div className="thesis-equation">
+              <BlockMath math="k_p(x, y) = (1 + x^\top y)^p = \sum_{r=0}^{p} \binom{p}{r} (x^\top y)^r" />
+            </div>
+            <p className="thesis-p">
+              These admit exact, finite-dimensional feature maps of
+              dimension <InlineMath math="D = \binom{d+p}{p}" /> via the Veronese
+              embedding. For <InlineMath math="p = 2" /> and <InlineMath math="d = 64" />,
+              this gives <InlineMath math="D = 2145" />&mdash;tractable for linear attention with no
+              approximation error.
             </p>
           </section>
 
@@ -332,22 +387,31 @@ export default function ThesisPage() {
           <section id="scaling-laws" className="thesis-section mb-12">
             <h3 className="thesis-h3">Scaling Laws</h3>
             <p className="thesis-p">
-              We observe consistent scaling behavior across architecture variants. When controlling
-              for parameter count, the best agent-discovered architectures achieve validation
-              perplexity within 5% of standard transformers at sequence lengths up to 2048, while
-              offering 2&ndash;4x throughput improvements at sequence length 4096.
+              Following Kaplan et al. (2020), we model validation loss as a power law in compute:
+            </p>
+            <div className="thesis-equation">
+              <BlockMath math="L(C) = L_\infty + \left(\frac{C_0}{C}\right)^\beta" />
+            </div>
+            <p className="thesis-p">
+              where <InlineMath math="C" /> is training compute in FLOPs, <InlineMath math="L_\infty" /> is the
+              irreducible loss, and <InlineMath math="\beta" /> is the scaling exponent. We fit this for each
+              architecture variant and find that the best agent-discovered architectures
+              achieve <InlineMath math="\beta \approx 0.076" />, comparable to the
+              transformer baseline (<InlineMath math="\beta_{\text{transformer}} \approx 0.079" />),
+              while offering 2&ndash;4x throughput improvements at sequence length 4096.
             </p>
             <div className="thesis-figure">
               <div className="thesis-figure-placeholder">
                 [Figure: Scaling curves for top-5 discovered architectures vs. baseline transformer.
-                X-axis: training tokens (log scale). Y-axis: validation perplexity.]
+                X-axis: training compute <InlineMath math="C" /> (log scale). Y-axis: validation loss <InlineMath math="L(C)" />.]
               </div>
             </div>
             <p className="thesis-p">
-              Interestingly, the scaling exponents differ between attention variants. Linear
-              attention variants tend to show steeper initial improvement but earlier saturation,
-              while hybrid approaches maintain more consistent scaling across the range of compute
-              budgets tested.
+              Interestingly, the scaling exponents <InlineMath math="\beta" /> differ between attention variants. Linear
+              attention variants tend to show larger <InlineMath math="\beta" /> (steeper initial improvement)
+              but higher <InlineMath math="L_\infty" /> (earlier saturation),
+              while hybrid approaches maintain more consistent scaling with{' '}
+              <InlineMath math="L_\infty" /> values within 3% of the transformer baseline.
             </p>
           </section>
 
@@ -428,8 +492,8 @@ export default function ThesisPage() {
               </li>
               <li>
                 <strong>Multi-objective optimization:</strong> Explicitly optimize the
-                Pareto frontier across quality, latency, memory, and hardware utilization,
-                rather than treating efficiency as a constraint.
+                Pareto frontier using scalarization <InlineMath math="\min_a \max_\lambda \sum_i \lambda_i f_i(a)" /> across
+                quality, latency, memory, and hardware utilization.
               </li>
               <li>
                 <strong>Theoretical analysis:</strong> Use the discovered architectures to develop
