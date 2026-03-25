@@ -1,3 +1,13 @@
+import { Link } from 'react-router-dom'
+
+const guides = [
+  {
+    slug: 'hello-world',
+    title: 'Hello, World',
+    description: 'Portfolios, positions, and portfolio veracity consensus.',
+  },
+]
+
 export default function PlatformPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--paper)' }}>
@@ -17,20 +27,31 @@ export default function PlatformPage() {
           </p>
         </header>
 
-        <div
-          className="rounded-lg border p-8 text-center"
-          style={{
-            borderColor: 'var(--paper-deep)',
-            backgroundColor: 'var(--paper)',
-            color: 'var(--ink-muted)',
-            fontFamily: 'var(--font-body)',
-          }}
-        >
-          <p className="text-lg mb-2">Coming soon.</p>
-          <p className="text-sm">
-            This section will contain walkthroughs, worked examples, and reference
-            documentation for the conjecture market.
-          </p>
+        <div className="space-y-4">
+          {guides.map(({ slug, title, description }) => (
+            <Link
+              key={slug}
+              to={`/platform/${slug}`}
+              className="block rounded-lg border p-6 hover:border-current transition-colors"
+              style={{
+                borderColor: 'var(--paper-deep)',
+                color: 'var(--ink)',
+              }}
+            >
+              <h2
+                className="text-lg font-semibold mb-1"
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
+                {title}
+              </h2>
+              <p
+                className="text-sm leading-relaxed"
+                style={{ fontFamily: 'var(--font-body)', color: 'var(--ink-muted)' }}
+              >
+                {description}
+              </p>
+            </Link>
+          ))}
         </div>
       </div>
     </div>
