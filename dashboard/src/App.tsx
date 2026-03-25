@@ -9,6 +9,7 @@ import HelloWorldPage from './pages/platform/HelloWorldPage'
 import CreatingConjecturesPage from './pages/platform/CreatingConjecturesPage'
 import IntegrationsPage from './pages/platform/IntegrationsPage'
 import OpenProblemsPage from './pages/platform/OpenProblemsPage'
+import ScoringMetricsPage from './pages/platform/ScoringMetricsPage'
 import { mdxComponents } from './components/MDXComponents'
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
         <Route path="/thesis" element={<Layout><ThesisPage /></Layout>} />
         <Route path="/platform" element={<Layout><PlatformPage /></Layout>} />
         <Route path="/platform/hello-world" element={<Layout><HelloWorldPage /></Layout>} />
+        <Route path="/platform/scoring-metrics" element={<Layout><ScoringMetricsPage /></Layout>} />
         <Route path="/platform/creating-conjectures" element={<Layout><CreatingConjecturesPage /></Layout>} />
         <Route path="/platform/integrations" element={<Layout><IntegrationsPage /></Layout>} />
         <Route path="/platform/open-problems" element={<Layout><OpenProblemsPage /></Layout>} />
