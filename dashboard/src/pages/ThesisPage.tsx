@@ -9,24 +9,30 @@ interface Section {
 }
 
 const sections: Section[] = [
-  { id: 'introduction', title: 'Introduction', level: 1 },
-  { id: 'motivation', title: 'Motivation', level: 2 },
-  { id: 'core-hypothesis', title: 'Core Hypothesis', level: 2 },
-  { id: 'architecture-search', title: 'Architecture Search with AI', level: 1 },
-  { id: 'search-space', title: 'The Search Space', level: 2 },
-  { id: 'evaluation-strategy', title: 'Evaluation Strategy', level: 2 },
-  { id: 'attention-mechanisms', title: 'Attention Mechanisms', level: 1 },
-  { id: 'softmax-attention', title: 'Softmax Attention', level: 2 },
-  { id: 'linear-attention', title: 'Linear Attention', level: 2 },
-  { id: 'kernel-methods', title: 'Kernel Methods', level: 2 },
-  { id: 'experimental-results', title: 'Experimental Results', level: 1 },
-  { id: 'scaling-laws', title: 'Scaling Laws', level: 2 },
-  { id: 'efficiency-benchmarks', title: 'Efficiency Benchmarks', level: 2 },
-  { id: 'future-directions', title: 'Future Directions', level: 1 },
+  { id: 'overview', title: 'Overview', level: 1 },
+  { id: 'challenges-today', title: 'Challenges and Limitations in Science Today', level: 1 },
+  { id: 'reproduceability', title: 'Reproduceability', level: 2 },
+  { id: 'peer-review-delay', title: 'Peer Review Delay', level: 2 },
+  { id: 'high-barriers', title: 'High Barriers to Entry', level: 2 },
+  { id: 'null-results', title: 'Lack of Null Result Publications', level: 2 },
+  { id: 'non-perfect-confidence', title: 'Lack of Non-Perfect Confidence Publications', level: 2 },
+  { id: 'challenges-future', title: 'Challenges and Opportunities in the Near Future', level: 1 },
+  { id: 'peer-review-collapse', title: 'Peer Review Collapse', level: 2 },
+  { id: 'ai-faster-signals', title: 'AI Needs Faster Signals', level: 2 },
+  { id: 'designing-markets', title: 'Designing Markets via Microeconomics', level: 1 },
+  { id: 'marketplace-of-ideas', title: 'Science as a Marketplace of Ideas', level: 1 },
+  { id: 'conjecture-markets', title: 'Conjecture/Belief Markets', level: 1 },
+  { id: 'how-they-work', title: 'How They Work', level: 2 },
+  { id: 'vs-prediction-markets', title: 'vs. Prediction Markets', level: 2 },
+  { id: 'vs-stocks', title: 'vs. Stocks', level: 2 },
+  { id: 'creating-value', title: 'Creating Value in Conjecture Markets', level: 1 },
+  { id: 'cold-start', title: 'Solving the Cold-Start Problem', level: 1 },
+  { id: 'portfolio-rl', title: 'Portfolio Value as RL Signal', level: 1 },
+  { id: 'onboarding', title: 'Onboarding Real Actors', level: 1 },
 ]
 
 export default function ThesisPage() {
-  const [activeSection, setActiveSection] = useState('introduction')
+  const [activeSection, setActiveSection] = useState('overview')
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -97,15 +103,13 @@ export default function ThesisPage() {
               className="text-4xl font-bold mb-4 leading-tight"
               style={{ fontFamily: 'var(--font-display)', color: 'var(--ink)' }}
             >
-              Notes on AI-Driven Architecture Search
+              Science 2028
             </h1>
             <p
               className="text-lg leading-relaxed"
               style={{ fontFamily: 'var(--font-body)', color: 'var(--ink-muted)' }}
             >
-              A collection of working notes on using AI agents to explore the space of neural
-              network architectures, with a focus on efficient attention mechanisms and
-              automated experimentation.
+              A position paper on scientific discovery, veracity, and market mechanisms in the age of AI.
             </p>
             <div
               className="mt-4 text-sm"
@@ -115,397 +119,473 @@ export default function ThesisPage() {
             </div>
           </header>
 
-          {/* Introduction */}
-          <section id="introduction" className="thesis-section mb-16">
-            <h2 className="thesis-h2">Introduction</h2>
+          {/* 1. Overview */}
+          <section id="overview" className="thesis-section mb-16">
+            <h2 className="thesis-h2">1. Overview</h2>
             <p className="thesis-p">
-              The design of neural network architectures has traditionally been a manual process,
-              guided by researcher intuition and incremental refinement. While this approach has
-              yielded remarkable results&mdash;from convolutional networks to transformers&mdash;the
-              space of possible architectures remains vastly underexplored.
+              The promise of AI in science is great. AI agents are beginning to write proofs, run experiments,
+              and generate hypotheses at a pace that no individual researcher can match. But the institutions
+              of science&mdash;peer review, publication, citation, reputation&mdash;were designed for a world
+              where humans were both the producers and the consumers of knowledge. As AI accelerates the
+              production side, the bottleneck shifts to evaluation, verification, and consensus.
             </p>
             <p className="thesis-p">
-              We propose using AI agents to systematically explore this design space, treating
-              architecture design as a search problem where the objective function captures both
-              model quality and computational efficiency.
-            </p>
-          </section>
-
-          <section id="motivation" className="thesis-section mb-12">
-            <h3 className="thesis-h3">Motivation</h3>
-            <p className="thesis-p">
-              The transformer architecture, introduced by Vaswani et al. (2017), has become the
-              dominant paradigm in deep learning. Its core innovation&mdash;the self-attention
-              mechanism&mdash;enables models to capture long-range dependencies in data. However,
-              the quadratic complexity of self-attention with respect to sequence length presents
-              significant computational challenges.
-            </p>
-            <div className="thesis-equation">
-              <BlockMath math="\text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right) V" />
-            </div>
-            <p className="thesis-p">
-              The computational cost is dominated by the matrix product <InlineMath math="QK^\top \in \mathbb{R}^{n \times n}" />,
-              which requires <InlineMath math="\mathcal{O}(n^2 d)" /> time and <InlineMath math="\mathcal{O}(n^2)" /> memory.
-              This quadratic bottleneck has motivated a rich line of research into efficient
-              alternatives: linear attention, sparse attention, low-rank approximations, and
-              state-space models. Each offers different trade-offs between expressiveness and
-              efficiency, but the space of possibilities extends far beyond what has been manually
-              explored.
+              We are pre-paradigmatic on AI science research. There is no steam engine yet. This paper
+              proposes a framework for formalizing the contours of what is needed to do science in an era
+              where humans are the bottleneck.
             </p>
           </section>
 
-          <section id="core-hypothesis" className="thesis-section mb-12">
-            <h3 className="thesis-h3">Core Hypothesis</h3>
+          {/* 2. Challenges and Limitations in Science Today */}
+          <section id="challenges-today" className="thesis-section mb-16">
+            <h2 className="thesis-h2">2. Challenges and Limitations in Science Today</h2>
+            <p className="thesis-p">
+              Much of what makes science work has to do with the fact that science is participatory:
+              research benefits from having people review it, challenge its components, and reproduce it.
+              Several structural problems undermine this participatory process today.
+            </p>
+          </section>
+
+          <section id="reproduceability" className="thesis-section mb-12">
+            <h3 className="thesis-h3">Reproduceability</h3>
+            <p className="thesis-p">
+              It is not obvious how individuals should evaluate or verify research results. The
+              reproducibility crisis reflects a deeper problem: veracity challenges pervade modern
+              science, and there are few quantifiable signals for whether a result is true. How do
+              people actually know that research is true? How do you find mistakes?
+            </p>
+            <p className="thesis-p">
+              Research and code may seem different, but they share a fundamental reliance on
+              empiricism&mdash;tests, artifacts, and reproducible observations. Both ultimately depend
+              on modes of verification:
+            </p>
+            <ul className="thesis-list">
+              <li>
+                <strong>Empiricism</strong> (observation of evidence that something is true)&mdash;&ldquo;if
+                you can&rsquo;t tie a claim to an observation or experience, don&rsquo;t trust it&rdquo;
+                (Hume). Strengths: anchors belief, enables falsification, scales with instrumentation.
+                Limitations: induction and failure to generalize, overfitting, data without theory is limited.
+              </li>
+              <li>
+                <strong>Theory</strong> (structure, compression, prediction)&mdash;&ldquo;internal models
+                to organize and interpret observations&rdquo; (Descartes). Theory is a compression or
+                topology of data, a predictive engine, and a causal story. Strengths: generalization,
+                counterfactuals, guides what data to collect. Weaknesses: detached abstraction,
+                underdetermination (multiple theories can explain the same thing), and motivated reasoning.
+              </li>
+            </ul>
+          </section>
+
+          <section id="peer-review-delay" className="thesis-section mb-12">
+            <h3 className="thesis-h3">Peer Review Delay</h3>
+            <p className="thesis-p">
+              Today, scientists rely on paper citation count, scientist reputation, peer review, and
+              reproductions as heuristics for result veracity. These are slow signals to generate: they
+              are bounded by scientists reviewing results and producing new papers that cite that result,
+              which itself is bottlenecked by the time to produce results and the number of scientists
+              working in a given domain. It takes months to have even modest results, draft pre-prints,
+              go through peer review, publish at conferences, and have your work cited to know that it
+              was impactful.
+            </p>
+          </section>
+
+          <section id="high-barriers" className="thesis-section mb-12">
+            <h3 className="thesis-h3">High Barriers to Entry</h3>
+            <p className="thesis-p">
+              Access to scientific contribution has historically been gated by institutional affiliation,
+              funding, equipment, and credentials. These barriers limit the number of people who can
+              contribute to science. AI has the potential to dramatically lower these barriers, but only
+              if the surrounding institutions can adapt.
+            </p>
+          </section>
+
+          <section id="null-results" className="thesis-section mb-12">
+            <h3 className="thesis-h3">Lack of Null Result Publications</h3>
+            <p className="thesis-p">
+              Because reviewers are limited, rarely do null findings get published and disseminated. This
+              creates a systematic bias in the scientific record: the published literature overrepresents
+              positive results and underrepresents the negative results that are equally informative for
+              directing future work. A system that only rewards &ldquo;wins&rdquo; systematically
+              misallocates resources.
+            </p>
+          </section>
+
+          <section id="non-perfect-confidence" className="thesis-section mb-12">
+            <h3 className="thesis-h3">Lack of Non-Perfect Confidence Publications</h3>
+            <p className="thesis-p">
+              Most publications don&rsquo;t come with confidence intervals, but even results with low
+              confidence can still be useful and incorporated into downstream work. If confidence in the
+              veracity of a result has superlinear costs (which seems true), then science conducted
+              only at high confidence thresholds will be expensive. There is a difference between
+              &ldquo;answers,&rdquo; &ldquo;improvements,&rdquo; and other kinds of research
+              results&mdash;and the current publication system collapses these distinctions.
+            </p>
+          </section>
+
+          {/* 3. Challenges, Limitations and Opportunities in the Near Future */}
+          <section id="challenges-future" className="thesis-section mb-16">
+            <h2 className="thesis-h2">3. Challenges and Opportunities in the Near Future</h2>
+            <p className="thesis-p">
+              If we experience a massive growth in the number of scientists (due to lower barriers to
+              entry by AI) and the speed of research production (due to increased throughput by AI), it
+              will lead to real changes for science and scientists that existing institutions
+              can&rsquo;t support.
+            </p>
+          </section>
+
+          <section id="peer-review-collapse" className="thesis-section mb-12">
+            <h3 className="thesis-h3">Peer Review Collapse</h3>
+            <p className="thesis-p">
+              A 100x increase in scientific throughput without commensurate gains in review capacity
+              would lead to bottlenecks on publication rate. Peer review is already collapsing under
+              current AI-assisted throughput: as humans generate and publish more research, peer
+              review can&rsquo;t keep up, and science stalls. The current system assumes that human
+              reviewers can scale with production&mdash;an assumption that AI invalidates.
+            </p>
+            <p className="thesis-p">
+              Agents also have technological limitations that compound this problem. They lack continual
+              learning: after an AI writes a proof, if you spin up a new session, it doesn&rsquo;t
+              remember how it solved the problem before. Agents either succeed or fail, but don&rsquo;t
+              yet create useful partial stages. AIs excel at breadth, and humans excel at depth.
+            </p>
+          </section>
+
+          <section id="ai-faster-signals" className="thesis-section mb-12">
+            <h3 className="thesis-h3">AI Needs Faster Signals</h3>
+            <p className="thesis-p">
+              AI needs faster signals for what constitutes good research. It takes months to have even
+              modest results, draft pre-prints, go through peer review, publish at conferences, and have
+              your work cited to know that it was impactful. For AI agents to improve at doing science,
+              they need tighter feedback loops than the current publication cycle provides.
+            </p>
+            <p className="thesis-p">
+              How should research agents do work that is well-structured and aligned? Key considerations
+              include pedagogical viability (how well do results lend themselves to being interpreted by
+              humans?), minimizing consensus-building friction (how can you create artifacts that minimize
+              the effort required for humans to accept their veracity?), and whether there is a difference
+              in how humans verify versus how agents verify.
+            </p>
             <div className="thesis-callout">
-              <strong>Hypothesis:</strong> AI agents equipped with the ability to write, run, and
-              evaluate code can discover novel architecture components that match or exceed
-              human-designed alternatives, particularly in the efficiency&ndash;quality trade-off
-              frontier.
+              <strong>Bayesian loop:</strong> theory &rarr; prediction &rarr; experiment &rarr; data
+              &rarr; update theory &rarr; &hellip; The criteria for each cycle include empirical adequacy,
+              falsifiability (Popper), predictive power, parsimony (Occam&rsquo;s Razor), coherence with
+              other well-supported theories, and causal robustness (surviving intervention, not just
+              correlation).
             </div>
-            <p className="thesis-p">
-              More formally, let <InlineMath math="\mathcal{A}" /> denote the space of valid architectures and{' '}
-              <InlineMath math="f: \mathcal{A} \to \mathbb{R}^k" /> a multi-objective evaluation function
-              mapping architectures to quality and efficiency metrics. We seek to approximate the Pareto frontier:
-            </p>
-            <div className="thesis-equation">
-              <BlockMath math="\mathcal{P}^* = \left\{ a \in \mathcal{A} \;\middle|\; \nexists\, a' \in \mathcal{A} : f(a') \succ f(a) \right\}" />
-            </div>
-            <p className="thesis-p">
-              This hypothesis rests on several assumptions: (1) the architecture design space <InlineMath math="|\mathcal{A}|" /> is
-              large enough that automated exploration can find regions missed by human designers,
-              (2) proxy evaluation metrics are sufficiently correlated with downstream performance,
-              and (3) AI agents can effectively navigate high-dimensional discrete search spaces
-              through a combination of prior knowledge and systematic experimentation.
-            </p>
           </section>
 
-          {/* Architecture Search */}
-          <section id="architecture-search" className="thesis-section mb-16">
-            <h2 className="thesis-h2">Architecture Search with AI</h2>
+          {/* 4. Designing Markets via Microeconomics */}
+          <section id="designing-markets" className="thesis-section mb-16">
+            <h2 className="thesis-h2">4. Designing Markets via Microeconomics</h2>
             <p className="thesis-p">
-              Our approach differs from traditional Neural Architecture Search (NAS) in a
-              fundamental way: rather than searching over a predefined set of operations and
-              connectivity patterns, we use language model agents to generate arbitrary PyTorch
-              code. This dramatically expands the search space while leveraging the model's
-              knowledge of existing architectures as an informed prior.
+              Microeconomics offers a mature set of principles for diagnosing why markets fail and how
+              to fix them. Before applying these to science specifically, it is worth laying out the
+              core concepts, because the problems described in the previous sections map onto them
+              with surprising precision.
             </p>
             <p className="thesis-p">
-              Traditional NAS methods parameterize the search space as a directed acyclic graph{' '}
-              <InlineMath math="G = (V, E)" /> where nodes represent operations{' '}
-              <InlineMath math="o_i \in \mathcal{O}" /> drawn from a fixed set. The search objective is typically:
+              Foundational principles of market design hold that well-functioning markets should
+              be <strong>thick</strong>, <strong>deep</strong>, <strong>uncongested</strong>,
+              and <strong>safe</strong>.
             </p>
-            <div className="thesis-equation">
-              <BlockMath math="\alpha^* = \arg\min_{\alpha \in \mathcal{A}} \; \mathcal{L}_{\text{val}}\!\left(w^*(\alpha), \alpha\right) \quad \text{s.t.} \quad w^*(\alpha) = \arg\min_w \; \mathcal{L}_{\text{train}}(w, \alpha)" />
-            </div>
-            <p className="thesis-p">
-              By contrast, our search space is the set of all programs <InlineMath math="p \in \mathcal{P}" /> that
-              implement a valid <code>nn.Module</code>. The agent acts as a learned proposal
-              distribution <InlineMath math="q_\theta(p \mid \mathcal{H})" /> conditioned on the history of
-              prior experiments <InlineMath math="\mathcal{H} = \{(p_i, f(p_i))\}_{i=1}^t" />.
-            </p>
-          </section>
-
-          <section id="search-space" className="thesis-section mb-12">
-            <h3 className="thesis-h3">The Search Space</h3>
-            <p className="thesis-p">
-              The search space is implicitly defined by the set of all valid PyTorch modules that
-              conform to a specified interface. An architecture component must accept inputs of a
-              given shape and produce outputs of the expected shape, but the internal computation
-              is unconstrained.
-            </p>
-            <div className="thesis-code">
-              <pre>
-                <code>{`class AttentionVariant(nn.Module):
-    def __init__(self, d_model: int, n_heads: int):
-        super().__init__()
-        # Architecture is unconstrained here
-        ...
-
-    def forward(self, x: Tensor) -> Tensor:
-        # Must return tensor of same shape
-        ...`}</code>
-              </pre>
-            </div>
-            <p className="thesis-p">
-              This formulation allows the agent to explore mechanisms that don't fit neatly into
-              existing taxonomies&mdash;hybrid approaches that combine elements of attention,
-              convolution, and recurrence in novel ways.
-            </p>
-          </section>
-
-          <section id="evaluation-strategy" className="thesis-section mb-12">
-            <h3 className="thesis-h3">Evaluation Strategy</h3>
-            <p className="thesis-p">
-              Each candidate architecture is evaluated on a suite of proxy tasks designed to
-              measure both quality and efficiency. We define a composite score:
-            </p>
-            <div className="thesis-equation">
-              <BlockMath math="S(a) = \underbrace{-\log \text{PPL}(a)}_{\text{quality}} + \lambda_1 \underbrace{\log \text{Throughput}(a)}_{\text{speed}} - \lambda_2 \underbrace{\log \text{Memory}(a)}_{\text{footprint}}" />
-            </div>
-            <p className="thesis-p">
-              where <InlineMath math="\lambda_1, \lambda_2 > 0" /> control the efficiency&ndash;quality trade-off.
-              The evaluation pipeline is fully automated:
-            </p>
-            <ol className="thesis-list">
+            <ul className="thesis-list">
               <li>
-                <strong>Correctness:</strong> The module must compile and pass shape tests:
-                verify <InlineMath math="f_a(x) \in \mathbb{R}^{B \times T \times d}" /> for
-                all <InlineMath math="(B, T) \in \{1,4,8\} \times \{128, 512, 2048\}" />.
+                <strong>Thick:</strong> enough participants and opportunities show up in one place to
+                make good matches possible. A thin market has too few participants to generate useful
+                signal. In science, many subfields are thin: only a handful of researchers work on a
+                given problem, so results go unreviewed, unreplicated, and unchallenged for years.
+                High barriers to entry (section 2) directly reduce thickness.
               </li>
               <li>
-                <strong>Language modeling loss:</strong> Train on a small corpus (<InlineMath math="10^7" /> tokens) for{' '}
-                <InlineMath math="N = 5000" /> steps and measure validation perplexity{' '}
-                <InlineMath math="\text{PPL} = \exp\!\left(\frac{1}{|V|}\sum_{t} -\log p(x_t \mid x_{<t})\right)" />.
+                <strong>Deep:</strong> the market has enough resting interest near the current price
+                so that large orders can trade with limited price impact. A deep market absorbs new
+                information smoothly; a shallow one overreacts to noise. In science, depth corresponds
+                to the capacity of a field to evaluate new results without being overwhelmed. A field
+                where a single flashy paper can redirect an entire community&rsquo;s attention&mdash;before
+                anyone has reproduced the result&mdash;is shallow. The reproducibility crisis (section 2)
+                is in part a depth problem.
               </li>
               <li>
-                <strong>Throughput:</strong> Measure tokens per second at sequence
-                lengths <InlineMath math="T \in \{512, 1024, 2048, 4096\}" />.
+                <strong>Uncongested:</strong> the system gives participants enough structure, time, and
+                mechanism to evaluate options instead of getting overwhelmed or forced into premature
+                decisions. Congestion occurs when the rate of incoming information exceeds the
+                community&rsquo;s capacity to process it. This is exactly the peer review collapse
+                described in section 3: a 100x increase in throughput without commensurate gains in
+                review capacity creates congestion. Participants cannot evaluate what is in front of
+                them, so they either ignore it or accept it uncritically.
               </li>
               <li>
-                <strong>Memory footprint:</strong> Peak GPU memory <InlineMath math="M_{\text{peak}}" /> during
-                training at each sequence length.
+                <strong>Safe:</strong> participants can act on their true preferences without excessive
+                gaming, adverse selection, or fear that honest participation will punish them. A safe
+                market is one where honest behavior is incentive-compatible. In science, the absence
+                of safety manifests as publication bias: researchers are punished for publishing null
+                results or low-confidence findings (section 2), so they withhold them. The market
+                never sees the information, and everyone is worse off.
               </li>
-            </ol>
+            </ul>
             <p className="thesis-p">
-              The agent uses these metrics to iteratively refine its proposals, building on
-              successful experiments and learning from failures.
+              Beyond these structural properties, several core microeconomic concepts diagnose specific
+              failures in how science currently operates.
+            </p>
+            <p className="thesis-p">
+              <strong>Price discovery.</strong> In markets, price discovery occurs when transactions
+              between buyers and sellers are broadcasted, and the price adjusts as new information
+              about the underlying value of an asset becomes available. Determining the veracity of a
+              scientific result is the same kind of discovery procedure under uncertainty: a distributed
+              consensus process where many participants contribute partial information. Today, the
+              &ldquo;price&rdquo; of a scientific result&mdash;the community&rsquo;s credence in
+              it&mdash;is discovered through citation count, reputation, peer review, and
+              reproductions. All of these are slow, bounded by human bandwidth, and provide only
+              coarse-grained signal.
+            </p>
+            <p className="thesis-p">
+              <strong>Liquidity.</strong> A liquid market lets information move into prices quickly
+              because participation is easy. An epistemically liquid field lets claims get evaluated
+              quickly because tools, benchmarks, data, and reviewer bandwidth are available. Illiquid
+              knowledge systems have lots of claims but few decisive tests. The peer review delays
+              described in section 2 are a liquidity problem: information exists (a result has been
+              produced) but cannot be efficiently incorporated into the community&rsquo;s beliefs
+              because the mechanisms for evaluation are too slow and too scarce.
+            </p>
+            <p className="thesis-p">
+              <strong>Externalities.</strong> An externality occurs when a transaction affects parties
+              not involved in it. Science is dominated by positive externalities: a foundational result
+              creates value for everyone who builds on it, but the original author captures only a
+              fraction of that value (via citations, which carry no direct compensation). This leads to
+              systematic underproduction of the most broadly useful work&mdash;infrastructure, tooling,
+              negative results, and careful replications&mdash;because the incentives favor narrow,
+              publishable novelty.
+            </p>
+            <p className="thesis-p">
+              <strong>Information asymmetry.</strong> Adverse selection arises when one party knows more
+              about the quality of a good than the other. In science, the author of a result knows far
+              more about its robustness&mdash;which experiments failed, which parameters were
+              tuned, which results were cherry-picked&mdash;than any reader does. Peer review is the
+              primary mechanism for closing this gap, but it is slow, noisy, and does not scale. A
+              well-designed system would make verification cheaper so that the asymmetry narrows faster.
+            </p>
+            <p className="thesis-p">
+              Each of the problems identified in sections 2 and 3&mdash;reproducibility, peer review
+              delay, barriers to entry, publication bias, review collapse, slow feedback&mdash;maps
+              onto a recognized market failure. This is not coincidence: science is a system of
+              distributed agents exchanging information under uncertainty, which is precisely what
+              markets are. The question is whether we can design the market better.
             </p>
           </section>
 
-          {/* Attention Mechanisms */}
-          <section id="attention-mechanisms" className="thesis-section mb-16">
-            <h2 className="thesis-h2">Attention Mechanisms</h2>
+          {/* 5. Science as a Marketplace of Ideas */}
+          <section id="marketplace-of-ideas" className="thesis-section mb-16">
+            <h2 className="thesis-h2">5. Science as a Marketplace of Ideas</h2>
             <p className="thesis-p">
-              Understanding the landscape of existing attention mechanisms is essential for
-              informed search. Here we review the key variants and their theoretical properties.
+              With this microeconomic vocabulary in hand, we can now make the analogy explicit.
+              Define a <strong>scientist</strong> as a participant active in creating new results and
+              adding them to the marketplace of ideas, and <strong>science</strong> as the marketplace
+              itself. Scientists participate in science by exchanging, evaluating, and incorporating
+              results of others. Some common metrics to measure scientists are productivity (results
+              per time unit), citation count, and h-index. Some metrics to measure science (the
+              marketplace) include the number of scientists, the result adoption velocity (how quickly
+              results are integrated by other scientists), and the idea exchange network connectivity
+              (how much scientists exchange with each other).
+            </p>
+            <p className="thesis-p">
+              The mapping from the previous section is direct. The <strong>price</strong> of an asset
+              corresponds to the credence a community places in a result&mdash;not a perfect measure,
+              but an emergent consensus that aggregates the beliefs of many participants. Today, this
+              credence is approximated crudely by citation count, journal prestige, and author
+              reputation. A <strong>transaction</strong> corresponds to one researcher incorporating
+              another&rsquo;s result into their own work&mdash;citing it, building on it, reproducing
+              it. Each such exchange is an implicit endorsement, a signal that the result was valuable
+              enough to use.
+            </p>
+            <p className="thesis-p">
+              The question this framing poses is: can we construct a mechanism that aggregates
+              distributed belief about the veracity of results more efficiently than these proxies
+              do? Can we make the marketplace thicker, deeper, less congested, and safer&mdash;so
+              that it supports both a rapid increase in participants and a rapid acceleration of
+              individual production, without sacrificing the quality of science as a whole?
             </p>
           </section>
 
-          <section id="softmax-attention" className="thesis-section mb-12">
-            <h3 className="thesis-h3">Softmax Attention</h3>
+          {/* 6. Conjecture/Belief Markets */}
+          <section id="conjecture-markets" className="thesis-section mb-16">
+            <h2 className="thesis-h2">6. Conjecture/Belief Markets</h2>
             <p className="thesis-p">
-              Standard softmax attention computes a weighted sum over values, where the weights
-              are determined by the compatibility between queries and keys. Given input{' '}
-              <InlineMath math="X \in \mathbb{R}^{n \times d}" />, we compute projections{' '}
-              <InlineMath math="Q = XW_Q" />, <InlineMath math="K = XW_K" />, <InlineMath math="V = XW_V" /> and:
+              Scientific claims rarely admit final resolution; they remain revisable in light of new
+              evidence. Therefore a conjecture market should not rely on binary settlement. Instead, it
+              should reward contributors for marginal improvements in the predictive performance and
+              calibration of the conjecture network over time. Compensation is thus provisional and
+              continuously updated, reflecting whether a contribution is borne out by later evidence,
+              descendant conjectures, and empirical predictions.
+            </p>
+          </section>
+
+          <section id="how-they-work" className="thesis-section mb-12">
+            <h3 className="thesis-h3">How They Work</h3>
+            <p className="thesis-p">
+              All research aims to invalidate hypotheses about the world. A conjecture market
+              rephrases scientific claims into conjectures with predictive capacity&mdash;falsifiable
+              statements that can be traded. Each conjecture has a live price reflecting the
+              community&rsquo;s current credence in it.
+            </p>
+            <p className="thesis-p">
+              The core mechanism is simple: you buy exposure to ideas you depend on before you
+              publish. If a scientist has a new result that supports an existing conjecture, they
+              buy that conjecture before publishing their work. If the work is good, the price
+              moves, and they benefit from the delta. If participants act rationally, prices will
+              reflect the community&rsquo;s best estimate of each conjecture&rsquo;s veracity,
+              and portfolios will reflect each participant&rsquo;s scientific judgment.
+            </p>
+          </section>
+
+          <section id="vs-prediction-markets" className="thesis-section mb-12">
+            <h3 className="thesis-h3">What Makes Them Different from Prediction Markets?</h3>
+            <p className="thesis-p">
+              Conjecture markets don&rsquo;t resolve. Prediction markets (event contracts) settle on a
+              binary outcome: an event either happens or it doesn&rsquo;t. Scientific conjectures
+              rarely admit final resolution&mdash;they remain revisable in light of new evidence. The
+              price of a conjecture is never &ldquo;settled&rdquo;; it is always the
+              community&rsquo;s current best estimate, subject to change as new work is published.
+            </p>
+          </section>
+
+          <section id="vs-stocks" className="thesis-section mb-12">
+            <h3 className="thesis-h3">What Makes Them Different from Stocks?</h3>
+            <p className="thesis-p">
+              Conjecture markets don&rsquo;t pay dividends. A stock represents ownership of a
+              cash-flow-generating entity. A conjecture represents a claim about the world. Its value
+              comes entirely from the community&rsquo;s evolving credence in it&mdash;there is no
+              underlying revenue stream, only the changing beliefs of participants as new evidence
+              arrives.
+            </p>
+          </section>
+
+          {/* 7. Creating Value in Conjecture Markets */}
+          <section id="creating-value" className="thesis-section mb-16">
+            <h2 className="thesis-h2">7. Creating Value in Conjecture Markets</h2>
+            <p className="thesis-p">
+              Publishing evidence that yields a change in conjecture prices is impactful research. The
+              process is simple: you buy exposure to the conjectures your work depends on, publish your
+              research, and benefit from the resulting price movement. If the work is good, the
+              conjectures it supports go up; if it undermines them, they go down. Either way, the
+              scientist who did the work and positioned accordingly captures the value.
+            </p>
+            <p className="thesis-p">
+              Consider this from a Bayesian perspective. Let <InlineMath math="A" /> be a conjecture
+              currently priced at <InlineMath math="P(A) = 0.8" />. A scientist produces a new
+              result <InlineMath math="B" /> that depends on <InlineMath math="A" /> alongside other
+              conjectures <InlineMath math="X" />, and through independent work believes{' '}
+              <InlineMath math="B" /> is true at 80%. The posterior is:
             </p>
             <div className="thesis-equation">
-              <BlockMath math="\text{Attention}(Q, K, V)_i = \sum_{j=1}^{n} \frac{\exp\!\left(q_i^\top k_j / \sqrt{d_k}\right)}{\sum_{\ell=1}^{n} \exp\!\left(q_i^\top k_\ell / \sqrt{d_k}\right)} \, v_j" />
+              <BlockMath math="P(A \mid B, X) = \frac{P(B \mid A, X)\,P(A \mid X)}{P(B \mid X)}" />
             </div>
             <p className="thesis-p">
-              The softmax function ensures that attention weights are non-negative and sum to one,
-              providing a probabilistic interpretation: <InlineMath math="\alpha_{ij} \geq 0" /> and{' '}
-              <InlineMath math="\sum_j \alpha_{ij} = 1" />. However, this normalization couples all
-              positions in the sequence, making the computation inherently quadratic.
-            </p>
-            <p className="thesis-p">
-              For multi-head attention with <InlineMath math="h" /> heads, each head operates on a{' '}
-              <InlineMath math="d_k = d/h" /> dimensional subspace. The outputs are concatenated and
-              projected:
+              Expanding the denominator:
             </p>
             <div className="thesis-equation">
-              <BlockMath math="\text{MHA}(X) = \text{Concat}(\text{head}_1, \ldots, \text{head}_h) \, W_O \quad \text{where} \quad \text{head}_i = \text{Attention}(XW_Q^i, XW_K^i, XW_V^i)" />
+              <BlockMath math="P(B \mid X) = P(B \mid A, X)\,P(A \mid X) + P(B \mid \neg A, X)\,P(\neg A \mid X)" />
             </div>
-            <div className="thesis-callout">
-              <strong>Complexity:</strong> <InlineMath math="\mathcal{O}(n^2 d)" /> time
-              and <InlineMath math="\mathcal{O}(n^2)" /> memory, where <InlineMath math="n" /> is
-              sequence length and <InlineMath math="d" /> is model dimension.
-            </div>
-          </section>
-
-          <section id="linear-attention" className="thesis-section mb-12">
-            <h3 className="thesis-h3">Linear Attention</h3>
             <p className="thesis-p">
-              Linear attention replaces the softmax kernel with a decomposable feature
-              map <InlineMath math="\phi: \mathbb{R}^d \to \mathbb{R}^D" />, enabling the computation to be
-              rearranged via the associativity of matrix multiplication:
+              So:
             </p>
             <div className="thesis-equation">
-              <BlockMath math="\text{LinAttn}(Q, K, V)_i = \frac{\phi(q_i)^\top \sum_{j=1}^{n} \phi(k_j) v_j^\top}{\phi(q_i)^\top \sum_{j=1}^{n} \phi(k_j)} = \frac{\phi(q_i)^\top S}{\phi(q_i)^\top z}" />
+              <BlockMath math="P(A \mid B, X) = \frac{0.64}{0.64 + 0.2\,P(B \mid \neg A, X)}" />
             </div>
             <p className="thesis-p">
-              where <InlineMath math="S = \sum_j \phi(k_j) v_j^\top \in \mathbb{R}^{D \times d}" /> and{' '}
-              <InlineMath math="z = \sum_j \phi(k_j) \in \mathbb{R}^D" /> can be computed once and shared
-              across all query positions. This reduces the complexity from{' '}
-              <InlineMath math="\mathcal{O}(n^2 d)" /> to <InlineMath math="\mathcal{O}(nDd)" />, which
-              is linear in <InlineMath math="n" /> when <InlineMath math="D" /> is fixed.
+              If <InlineMath math="B" /> is likely to be true regardless of
+              whether <InlineMath math="A" /> is true, the posterior on <InlineMath math="A" /> doesn&rsquo;t
+              change. But if <InlineMath math="B" /> heavily depends on <InlineMath math="A" /> being
+              true, and we observe <InlineMath math="B" />, then <InlineMath math="A" /> should be
+              upweighted. The key insight is that scientists never personally report these
+              probabilities&mdash;they are downstream of the prices of the conjectures they trade.
+              If we can observe which conjectures researchers buy before they publish, this gives us
+              an implied posterior: a revealed belief, expressed through action rather than self-report.
+              Over time, these purchasing patterns form a dependency graph of beliefs across the
+              entire scientific community.
             </p>
             <p className="thesis-p">
-              For causal (autoregressive) modeling, we maintain a running state that can be updated recurrently:
-            </p>
-            <div className="thesis-equation">
-              <BlockMath math="S_t = S_{t-1} + \phi(k_t) v_t^\top, \qquad z_t = z_{t-1} + \phi(k_t), \qquad o_t = \frac{\phi(q_t)^\top S_t}{\phi(q_t)^\top z_t}" />
-            </div>
-            <p className="thesis-p">
-              Common choices for <InlineMath math="\phi" /> include the <InlineMath math="\text{elu}(x) + 1" /> activation
-              (Katharopoulos et al., 2020), random Fourier features (Performer), and learned feature maps. Each introduces different
-              trade-offs between approximation quality, training stability, and computational
-              overhead.
+              Having a portfolio of conjectures that increases in value is equivalent to having
+              scientific intuition. A scientist whose portfolio consistently appreciates has
+              demonstrated an ability to identify which conjectures will be borne out by future
+              evidence&mdash;the hallmark of good scientific judgment. Attribution, credit, and
+              compensation do not need to be engineered into the mechanism: if participants act
+              rationally, prices and portfolios represent all of that.
             </p>
           </section>
 
-          <section id="kernel-methods" className="thesis-section mb-12">
-            <h3 className="thesis-h3">Kernel Methods</h3>
+          {/* 8. Solving the Cold-Start Problem */}
+          <section id="cold-start" className="thesis-section mb-16">
+            <h2 className="thesis-h2">8. Solving the Cold-Start Problem</h2>
             <p className="thesis-p">
-              The connection between attention and kernel methods provides a powerful theoretical
-              framework. Softmax attention implicitly uses the kernel:
+              The cold-start problem: how do you get participants into your market if the market
+              doesn&rsquo;t exist?
+            </p>
+            <p className="thesis-p">
+              The answer is simulation backtesting on real historical participants&rsquo; implied
+              trading behavior. If we can reconstruct what scientists historically would have traded
+              based on their publication records, citation patterns, and research trajectories, we can
+              bootstrap a synthetic market with realistic dynamics.
+            </p>
+            <p className="thesis-p">
+              Building a high-fidelity simulation means we can derive explicit alpha scores from
+              research and portfolio values for scientists from their implied behavior. The simulation
+              provides the initial liquidity and price discovery that a live market would otherwise
+              lack, giving new participants a meaningful market to enter from day one.
+            </p>
+          </section>
+
+          {/* 9. Portfolio Value as RL Signal */}
+          <section id="portfolio-rl" className="thesis-section mb-16">
+            <h2 className="thesis-h2">9. Portfolio Value as RL Signal for Training Better AI Scientists</h2>
+            <p className="thesis-p">
+              With a high-fidelity simulation, we can assemble time series datasets and train agents
+              to simulate trades in conjectures. This is how agents can learn an intuition for what
+              fields will be fruitful.
+            </p>
+            <p className="thesis-p">
+              If we determine a way to estimate the cost of research, then we can train agents
+              to maximize conjecture-alpha per unit cost. This is how agents can learn to decide which
+              experiments to pursue:
             </p>
             <div className="thesis-equation">
-              <BlockMath math="k(x, y) = \exp\!\left(\frac{x^\top y}{\sqrt{d}}\right) = \exp\!\left(\frac{\|x\|^2}{2\sqrt{d}}\right) \exp\!\left(\frac{\|y\|^2}{2\sqrt{d}}\right) \exp\!\left(\frac{-\|x - y\|^2}{2\sqrt{d}}\right)" />
+              <BlockMath math="\max_{\pi} \; \mathbb{E}\!\left[\sum_t \gamma^t \frac{\Delta \text{Portfolio}_t}{\text{Cost}_t}\right]" />
             </div>
             <p className="thesis-p">
-              By Mercer's theorem, any positive-definite kernel admits a (possibly infinite-dimensional)
-              feature map <InlineMath math="\phi" /> such that <InlineMath math="k(x,y) = \langle \phi(x), \phi(y) \rangle_{\mathcal{H}}" />.
-              This opens the door to the rich theory of reproducing kernel
-              Hilbert spaces (RKHS).
-            </p>
-            <p className="thesis-p">
-              Of particular interest are polynomial kernels of degree <InlineMath math="p" />:
-            </p>
-            <div className="thesis-equation">
-              <BlockMath math="k_p(x, y) = (1 + x^\top y)^p = \sum_{r=0}^{p} \binom{p}{r} (x^\top y)^r" />
-            </div>
-            <p className="thesis-p">
-              These admit exact, finite-dimensional feature maps of
-              dimension <InlineMath math="D = \binom{d+p}{p}" /> via the Veronese
-              embedding. For <InlineMath math="p = 2" /> and <InlineMath math="d = 64" />,
-              this gives <InlineMath math="D = 2145" />&mdash;tractable for linear attention with no
-              approximation error.
+              where <InlineMath math="\pi" /> is the agent&rsquo;s policy for selecting which conjectures
+              to investigate and what evidence to produce,{' '}
+              <InlineMath math="\Delta \text{Portfolio}_t" /> is the change in portfolio value from the
+              agent&rsquo;s actions, and <InlineMath math="\text{Cost}_t" /> is the estimated cost of
+              the research conducted. The simulation provides the training environment, and portfolio
+              value provides the reward signal.
             </p>
           </section>
 
-          {/* Results */}
-          <section id="experimental-results" className="thesis-section mb-16">
-            <h2 className="thesis-h2">Experimental Results</h2>
+          {/* 10. Onboarding Real Actors */}
+          <section id="onboarding" className="thesis-section mb-16">
+            <h2 className="thesis-h2">10. Onboarding Real Actors into the Live Market</h2>
             <p className="thesis-p">
-              Our experiments span several hundred architecture proposals generated by AI agents,
-              evaluated on the proxy task suite described above. Here we summarize the key
-              findings.
+              With a high-fidelity simulation on historical data, we can start to onboard present
+              actors with novel conjectures. The transition from simulation to live market requires
+              careful consideration of different stakeholder groups:
             </p>
-          </section>
-
-          <section id="scaling-laws" className="thesis-section mb-12">
-            <h3 className="thesis-h3">Scaling Laws</h3>
-            <p className="thesis-p">
-              Following Kaplan et al. (2020), we model validation loss as a power law in compute:
-            </p>
-            <div className="thesis-equation">
-              <BlockMath math="L(C) = L_\infty + \left(\frac{C_0}{C}\right)^\beta" />
-            </div>
-            <p className="thesis-p">
-              where <InlineMath math="C" /> is training compute in FLOPs, <InlineMath math="L_\infty" /> is the
-              irreducible loss, and <InlineMath math="\beta" /> is the scaling exponent. We fit this for each
-              architecture variant and find that the best agent-discovered architectures
-              achieve <InlineMath math="\beta \approx 0.076" />, comparable to the
-              transformer baseline (<InlineMath math="\beta_{\text{transformer}} \approx 0.079" />),
-              while offering 2&ndash;4x throughput improvements at sequence length 4096.
-            </p>
-            <div className="thesis-figure">
-              <div className="thesis-figure-placeholder">
-                [Figure: Scaling curves for top-5 discovered architectures vs. baseline transformer.
-                X-axis: training compute <InlineMath math="C" /> (log scale). Y-axis: validation loss <InlineMath math="L(C)" />.]
-              </div>
-            </div>
-            <p className="thesis-p">
-              Interestingly, the scaling exponents <InlineMath math="\beta" /> differ between attention variants. Linear
-              attention variants tend to show larger <InlineMath math="\beta" /> (steeper initial improvement)
-              but higher <InlineMath math="L_\infty" /> (earlier saturation),
-              while hybrid approaches maintain more consistent scaling with{' '}
-              <InlineMath math="L_\infty" /> values within 3% of the transformer baseline.
-            </p>
-          </section>
-
-          <section id="efficiency-benchmarks" className="thesis-section mb-12">
-            <h3 className="thesis-h3">Efficiency Benchmarks</h3>
-            <p className="thesis-p">
-              The efficiency&ndash;quality Pareto frontier reveals several clusters of
-              architectures:
-            </p>
-            <div className="thesis-table-wrapper">
-              <table className="thesis-table">
-                <thead>
-                  <tr>
-                    <th>Architecture</th>
-                    <th>Perplexity</th>
-                    <th>Throughput (tok/s)</th>
-                    <th>Memory (GB)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Transformer (baseline)</td>
-                    <td>24.3</td>
-                    <td>12,400</td>
-                    <td>8.2</td>
-                  </tr>
-                  <tr>
-                    <td>Linear Attention (ELU)</td>
-                    <td>28.1</td>
-                    <td>31,200</td>
-                    <td>3.1</td>
-                  </tr>
-                  <tr>
-                    <td>Agent Discovery A</td>
-                    <td>25.1</td>
-                    <td>24,800</td>
-                    <td>4.7</td>
-                  </tr>
-                  <tr>
-                    <td>Agent Discovery B</td>
-                    <td>24.8</td>
-                    <td>19,600</td>
-                    <td>5.3</td>
-                  </tr>
-                  <tr>
-                    <td>Agent Discovery C</td>
-                    <td>26.4</td>
-                    <td>28,100</td>
-                    <td>3.4</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <p className="thesis-p">
-              Agent Discovery B is particularly noteworthy: it achieves near-baseline perplexity
-              with 58% higher throughput, using a novel combination of local windowed attention
-              with a learned gating mechanism that selectively engages a lightweight global
-              attention path.
-            </p>
-          </section>
-
-          {/* Future */}
-          <section id="future-directions" className="thesis-section mb-16">
-            <h2 className="thesis-h2">Future Directions</h2>
-            <p className="thesis-p">
-              Several promising directions emerge from this work:
-            </p>
-            <ol className="thesis-list">
+            <ul className="thesis-list">
               <li>
-                <strong>Compositional search:</strong> Rather than generating monolithic attention
-                modules, decompose the search into composable primitives (projection, aggregation,
-                normalization, gating) and search over compositions.
+                <strong>For academics:</strong> the market provides faster feedback signals than the
+                traditional publication cycle, continuous credit attribution through ownership shares,
+                and a mechanism for even partial or negative results to generate value.
               </li>
               <li>
-                <strong>Transfer across scales:</strong> Develop better proxy tasks that predict
-                large-scale performance from small-scale experiments, potentially using learned
-                scaling law models.
+                <strong>For individual contributors:</strong> lower barriers to entry than traditional
+                academic publishing, the ability to contribute evidence and earn ownership without
+                institutional affiliation, and transparent, market-based evaluation of contributions.
               </li>
               <li>
-                <strong>Multi-objective optimization:</strong> Explicitly optimize the
-                Pareto frontier using scalarization <InlineMath math="\min_a \max_\lambda \sum_i \lambda_i f_i(a)" /> across
-                quality, latency, memory, and hardware utilization.
+                <strong>For agents:</strong> a well-defined reward signal (portfolio value) that can
+                be optimized through reinforcement learning, a structured environment for producing
+                and evaluating research artifacts, and integration into the broader scientific
+                ecosystem through the dependency graph.
               </li>
-              <li>
-                <strong>Theoretical analysis:</strong> Use the discovered architectures to develop
-                new theoretical understanding of why certain computational patterns are effective
-                for sequence modeling.
-              </li>
-            </ol>
-            <p className="thesis-p">
-              The broader vision is a tighter loop between theory, implementation, and empirical
-              evaluation&mdash;where AI agents serve as tireless research assistants, systematically
-              testing hypotheses and surfacing patterns that guide human understanding.
-            </p>
+            </ul>
           </section>
 
           <footer className="mt-20 pt-8 border-t" style={{ borderColor: 'var(--paper-deep)' }}>
