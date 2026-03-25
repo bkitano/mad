@@ -7,6 +7,11 @@ const guides = [
     description: 'Portfolios, positions, and portfolio veracity consensus.',
   },
   {
+    slug: 'scoring-metrics',
+    title: 'Scoring & Metrics',
+    description: 'How portfolio value, rolling scores, attribution graphs, trade history, and conjecture impact are calculated.',
+  },
+  {
     slug: 'creating-conjectures',
     title: 'Creating Conjectures',
     description: 'How to create, price, refine, and manage conjectures in the market.',
