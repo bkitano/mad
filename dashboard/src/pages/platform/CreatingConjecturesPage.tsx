@@ -105,6 +105,90 @@ export default function CreatingConjecturesPage() {
             </div>
           </section>
 
+          {/* Principles of good conjectures */}
+          <section>
+            <h2
+              className="text-xl font-bold mb-4"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              Principles of good conjectures
+            </h2>
+            <p className="leading-relaxed mb-4">
+              Not all conjectures are created equal. Beyond being falsifiable and
+              well-scoped, a good conjecture tends to exhibit several properties that
+              emerge naturally from how the market operates.
+            </p>
+
+            <ul className="space-y-6">
+              <li className="leading-relaxed">
+                <strong>High trade volume.</strong> A conjecture that attracts a lot of
+                trades is one that many participants have opinions about&mdash;because their
+                own work is downstream of it. Trade volume is the market&rsquo;s measure of
+                how many people care about a claim, which is a direct proxy for its
+                impact. This is analogous to a paper&rsquo;s citation count: a highly
+                cited paper is one that many subsequent results depend on. A
+                high-volume conjecture is one that many portfolios are exposed to.
+                The difference is that trade volume is a live, continuous signal, while
+                citation counts accumulate slowly and are easy to game.
+              </li>
+              <li className="leading-relaxed">
+                <strong>Price sensitivity to evidence.</strong> A good conjecture moves
+                when relevant evidence is published. If a conjecture&rsquo;s price is
+                stable not because the question is settled but because no one can figure
+                out what evidence would be relevant, the conjecture is probably too vague.
+                Conjectures whose prices respond crisply to new results are well-scoped
+                by definition.
+              </li>
+              <li className="leading-relaxed">
+                <strong>Downstream conjecture generation.</strong> The best conjectures
+                are generative&mdash;they inspire more specific conjectures that test
+                particular implications. A conjecture with many active descendants in the
+                market is doing real theoretical work: it is compressing a family of
+                specific predictions into a single claim. This is the market&rsquo;s
+                version of a theory.
+              </li>
+              <li className="leading-relaxed">
+                <strong>Narrow bid-ask spread.</strong> When the spread between what buyers
+                are willing to pay and what sellers are willing to accept is tight, it means
+                the market has a clear, shared understanding of what the conjecture means
+                and what evidence is relevant. A wide spread signals ambiguity&mdash;participants
+                disagree not about the truth of the claim, but about what the claim
+                even means. Good conjectures have tight spreads.
+              </li>
+            </ul>
+
+            <div
+              className="rounded-lg border p-6 mt-6"
+              style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+            >
+              <h3
+                className="text-sm font-semibold uppercase tracking-widest mb-4"
+                style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+              >
+                Historical example: The Higgs boson
+              </h3>
+              <p className="leading-relaxed mb-4">
+                The conjecture &ldquo;there exists a scalar boson that gives mass to
+                elementary particles via spontaneous symmetry breaking&rdquo; (Higgs, 1964)
+                would have exhibited all four properties. It would have had enormous trade
+                volume: virtually every particle physicist had work downstream of
+                it. Its price would have been sensitive to evidence from each generation of
+                colliders. It generated many downstream conjectures about the boson&rsquo;s
+                mass, decay channels, and coupling constants. And the spread would have
+                been tight, because the claim was precise enough that the community agreed
+                on what would count as confirmation.
+              </p>
+              <p className="leading-relaxed">
+                Compare this to a vague conjecture like &ldquo;there are undiscovered
+                fundamental particles.&rdquo; This is almost certainly true, but it would
+                have low trade volume (what would you do with a position in it?), low price
+                sensitivity (what evidence would move it?), few downstream conjectures
+                (it&rsquo;s too vague to derive specific predictions from), and a wide
+                spread (participants would disagree on what counts).
+              </p>
+            </div>
+          </section>
+
           {/* How conjectures are initially priced */}
           <section>
             <h2
