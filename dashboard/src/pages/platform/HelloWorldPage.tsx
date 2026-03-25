@@ -88,6 +88,39 @@ export default function HelloWorldPage() {
               className="text-sm font-semibold uppercase tracking-widest mb-4"
               style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
             >
+              Historical example: Continental drift
+            </h3>
+            <p className="leading-relaxed mb-4">
+              In 1912, Alfred Wegener proposed that the continents were once joined and had
+              drifted apart. The idea was dismissed by most geologists for decades. If a
+              conjecture market had existed, &ldquo;the continents move relative to one
+              another&rdquo; might have been priced at 0.05&mdash;a fringe claim.
+            </p>
+            <p className="leading-relaxed mb-4">
+              Wegener would have bought a position. Over the following decades, evidence
+              accumulated: matching fossil records across oceans, mid-ocean ridge
+              discoveries in the 1950s, and magnetic striping on the seafloor in the 1960s.
+              Each piece of evidence would have moved the price upward. By the time plate
+              tectonics was widely accepted in the late 1960s, the price would have been
+              near 0.95.
+            </p>
+            <p className="leading-relaxed">
+              Wegener&rsquo;s portfolio would have appreciated enormously&mdash;not because
+              anyone declared him right, but because the community&rsquo;s credence moved in
+              the direction he positioned for, over fifty years of accumulating evidence.
+              Meanwhile, a geologist who held positions in &ldquo;continents are
+              fixed&rdquo; would have watched their portfolio decline as the evidence mounted.
+            </p>
+          </div>
+
+          <div
+            className="rounded-lg border p-6"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-4"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
               What your portfolio tells you
             </h3>
             <ul className="space-y-3">
@@ -107,6 +140,33 @@ export default function HelloWorldPage() {
                 beliefs in either direction.
               </li>
             </ul>
+          </div>
+
+          <div
+            className="rounded-lg border p-6"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-4"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              Historical example: Barbara McClintock and transposable elements
+            </h3>
+            <p className="leading-relaxed mb-4">
+              In the 1940s and 50s, Barbara McClintock discovered &ldquo;jumping
+              genes&rdquo;&mdash;segments of DNA that move within a genome. Her work was
+              largely ignored or dismissed by the genetics community for decades. A
+              conjecture like &ldquo;genes can change position within chromosomes&rdquo;
+              would have been priced very low.
+            </p>
+            <p className="leading-relaxed">
+              McClintock&rsquo;s portfolio would have been flat for years&mdash;no new
+              evidence moved the price, because few people were looking. But when molecular
+              biology tools matured in the 1970s and transposons were independently confirmed
+              in bacteria, the price would have surged. She won the Nobel Prize in 1983. A
+              flat portfolio is not necessarily a wrong portfolio&mdash;it may simply be
+              waiting for the right evidence to arrive.
+            </p>
           </div>
 
           <p className="leading-relaxed">

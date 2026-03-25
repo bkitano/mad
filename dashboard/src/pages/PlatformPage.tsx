@@ -6,6 +6,21 @@ const guides = [
     title: 'Hello, World',
     description: 'Portfolios, positions, and portfolio veracity consensus.',
   },
+  {
+    slug: 'creating-conjectures',
+    title: 'Creating Conjectures',
+    description: 'How to create, price, refine, and manage conjectures in the market.',
+  },
+  {
+    slug: 'integrations',
+    title: 'Integrations',
+    description: 'Connecting the conjecture market to arXiv, Google Scholar, and peer-reviewed venues.',
+  },
+  {
+    slug: 'open-problems',
+    title: 'Open Problems in Market Incentives and Alignment',
+    description: 'Unsolved design questions: rewarding predictive capacity, not just specificity.',
+  },
 ]
 
 export default function PlatformPage() {
