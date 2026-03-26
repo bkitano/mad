@@ -14,6 +14,7 @@ const sections: Section[] = [
   { id: 'prediction-registration', title: 'Prediction registration', level: 2 },
   { id: 'compression', title: 'Compression as a signal', level: 2 },
   { id: 'does-veracity-matter', title: 'Does veracity matter?', level: 1 },
+  { id: 'science-without-reproducibility', title: 'How science works without reproducibility', level: 2 },
   { id: 'platform-still-matters', title: 'Why the platform might still matter', level: 2 },
 ]
 
@@ -289,6 +290,126 @@ export default function OpenProblemsPage() {
                 reflects predictive success, and predictive success is what lets us build bridges
                 and cure diseases. Truth, if it enters at all, enters as a downstream consequence
                 of sustained predictive capacity&mdash;not as a prerequisite for it.
+              </p>
+
+              <h3
+                id="science-without-reproducibility"
+                className="text-lg font-semibold mb-4 mt-8"
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
+                How science works without simple reproducibility
+              </h3>
+              <p className="leading-relaxed mb-4">
+                This is not just a philosophical argument. There is an empirical question
+                underneath it: does science actually work despite well-documented failures
+                of reproducibility? And the answer, awkwardly, seems to be yes.
+              </p>
+              <p className="leading-relaxed mb-4">
+                The reproducibility crisis is real and severe. The Open Science
+                Collaboration&rsquo;s 2015 effort to replicate 100 psychology studies found
+                that only 36% produced statistically significant results the second time
+                around. Cancer biology has fared similarly&mdash;an Amgen team reported in 2012
+                that they could reproduce only 6 of 53 landmark oncology papers. Surveys of
+                researchers themselves confirm the pattern: a 2016 Nature survey found that
+                over 70% of scientists had tried and failed to reproduce another
+                scientist&rsquo;s work, and over half had failed to reproduce their own.
+              </p>
+              <p className="leading-relaxed mb-4">
+                And yet. Drug development continues to produce effective therapies. The mRNA
+                vaccines developed during COVID-19 worked, built on decades of immunology and
+                molecular biology that included plenty of irreproducible individual results.
+                CRISPR gene editing works. Semiconductor fabrication at 3-nanometer nodes works.
+                SpaceX lands rockets on barges. The bridges hold. If the scientific literature
+                were as broken as the reproducibility numbers suggest, you would expect the
+                engineering built on top of it to fail much more often than it does.
+              </p>
+              <p className="leading-relaxed mb-4">
+                So what explains the gap? How does science produce reliable technology and
+                genuine understanding while resting on a foundation where individual results
+                frequently don&rsquo;t replicate? Several mechanisms seem to be doing the
+                real load-bearing work:
+              </p>
+              <ul className="space-y-4 mb-6">
+                <li className="leading-relaxed">
+                  <strong>Convergence across methods.</strong> Science rarely depends on any
+                  single experiment. A finding becomes load-bearing when it is confirmed by
+                  multiple independent methods, each with different biases and failure modes.
+                  The structure of DNA was not established by one X-ray diffraction
+                  image&mdash;it was confirmed by chemical analysis, electron microscopy,
+                  and eventually by the success of molecular biology built on the double-helix
+                  model. Any individual experiment might be wrong. But when five different
+                  methods all point in the same direction, the probability that they are all
+                  wrong in the same way drops sharply. Science is resilient not because each
+                  brick is solid, but because the wall is built with redundancy.
+                </li>
+                <li className="leading-relaxed">
+                  <strong>Engineering as a filter.</strong> When a scientific finding is used
+                  to build something&mdash;a drug, a chip, a rocket&mdash;reality provides
+                  a merciless check. The chip either works at 3 nanometers or it
+                  doesn&rsquo;t. The drug either reduces mortality in a Phase III trial or it
+                  doesn&rsquo;t. This means the findings that matter most are precisely the
+                  ones that get tested most ruthlessly. The irreproducible results tend to
+                  cluster in areas where the feedback loop is weak: social priming studies,
+                  candidate gene associations, nutritional epidemiology. Where the feedback
+                  loop is strong&mdash;where someone is betting real money or real lives on
+                  the result&mdash;the bad findings get filtered out. Science self-corrects,
+                  but it self-corrects through use, not through replication.
+                </li>
+                <li className="leading-relaxed">
+                  <strong>Tacit knowledge and craft.</strong> A surprising amount of what
+                  makes science work lives not in the published paper but in the hands and
+                  intuitions of the people doing the work. A protocol that &ldquo;fails to
+                  replicate&rdquo; in a different lab may work perfectly well in the original
+                  lab because the original team knows a hundred small things&mdash;how to
+                  handle the cells, what temperature the reagent actually needs to be, when
+                  the instrument is drifting&mdash;that never made it into the methods section.
+                  This is not fraud. It is the difference between a recipe and knowing how to
+                  cook. It means that &ldquo;failure to replicate&rdquo; is sometimes a
+                  failure of knowledge transfer, not a failure of the original result.
+                </li>
+                <li className="leading-relaxed">
+                  <strong>Theoretical coherence.</strong> Scientists do not evaluate findings
+                  in isolation. A result that is consistent with a well-established theoretical
+                  framework gets more weight than one that appears out of nowhere. When a
+                  new cancer drug fails to replicate in an independent trial, oncologists
+                  ask whether the mechanism of action makes sense given what is known about
+                  the pathway. When it does, the failure might be attributed to differences
+                  in protocol or patient population. When it doesn&rsquo;t, the original
+                  finding is treated with more skepticism. The theoretical web acts as a
+                  prior&mdash;an implicit Bayesian filter that down-weights surprising results
+                  and up-weights expected ones.
+                </li>
+                <li className="leading-relaxed">
+                  <strong>Selection through citation and use.</strong> The scientific
+                  literature is not a flat archive where every paper counts equally. In
+                  practice, a small fraction of papers are cited heavily, taught in textbooks,
+                  and used as foundations for further work. The rest are effectively ignored.
+                  This is a form of natural selection: findings that are useful, that lead
+                  to further discoveries, that enable technology, get amplified. Findings
+                  that are noisy, marginal, or wrong tend to fade. The literature as a whole
+                  may have a high false-positive rate, but the working knowledge that
+                  scientists actually rely on is a much smaller, much more curated set.
+                </li>
+              </ul>
+              <p className="leading-relaxed mb-4">
+                The picture that emerges is not reassuring in a simple way. Science does not
+                work because each individual finding is verified and true. It works because
+                the system as a whole has enough redundancy, enough feedback loops, and enough
+                competitive pressure that the errors wash out over time&mdash;at least in the
+                domains where the stakes are high enough to force the issue. Veracity at the
+                level of individual claims is less important than the resilience of the
+                overall network.
+              </p>
+              <p className="leading-relaxed mb-4">
+                This has a direct implication for the platform. If science&rsquo;s actual
+                error-correction mechanism is not &ldquo;every result gets replicated&rdquo;
+                but rather &ldquo;converging evidence across methods, filtered by engineering
+                and theoretical coherence,&rdquo; then a conjecture market does not need to
+                guarantee the veracity of any individual claim. It needs to do what science
+                already does, but more efficiently: aggregate evidence from multiple sources,
+                weight claims by their predictive track record, and let the price reflect the
+                current state of convergence. The market is not replacing the
+                error-correction mechanism. It is making it legible.
               </p>
 
               <h3
