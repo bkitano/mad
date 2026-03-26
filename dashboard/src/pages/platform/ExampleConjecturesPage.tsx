@@ -53,7 +53,7 @@ function ExampleCard({ example }: { example: Example }) {
   )
 }
 
-const goodExamples: Example[] = [
+const examples: Example[] = [
   {
     label: 'Good — specific and falsifiable',
     statement:
@@ -88,9 +88,6 @@ const goodExamples: Example[] = [
     market:
       'High volume because nearly all of physics is downstream. Each sub-conjecture (light bending, perihelion precession) trades actively. Eddington\'s 1919 eclipse results move the price sharply. Tight spread — the math is precise enough that participants agree on what counts as confirmation.',
   },
-]
-
-const badExamples: Example[] = [
   {
     label: 'Bad — low predictive capacity (too vague)',
     statement:
@@ -173,9 +170,6 @@ const badExamples: Example[] = [
     market:
       'Price converges to ~0.85 because the correlation genuinely exists in the data. But the conjecture generates no useful downstream conjectures — you can\'t derive policy or predictions from it. Trade volume is low because sophisticated participants recognize it as unactionable. It occupies market space without adding information. Compare to the better version: "National R&D spending as a fraction of GDP is the strongest single predictor of per-capita Nobel laureates" — that version is falsifiable, mechanistic, and actionable.',
   },
-]
-
-const surprisinglyFineExamples: Example[] = [
   {
     label: 'Seems bad, actually fine — provably false',
     statement:
@@ -244,67 +238,11 @@ export default function ExampleConjecturesPage() {
 
         <div className="space-y-12" style={{ fontFamily: 'var(--font-body)', color: 'var(--ink)' }}>
 
-          {/* Good examples */}
-          <section>
-            <h2
-              className="text-xl font-bold mb-6"
-              style={{ fontFamily: 'var(--font-display)' }}
-            >
-              Good conjectures
-            </h2>
-            <p className="leading-relaxed mb-6">
-              Good conjectures are specific, falsifiable, and generative. They say one
-              thing clearly enough that evidence can move the price, and they connect to
-              other questions in ways that make them worth trading.
-            </p>
-            <div className="space-y-4">
-              {goodExamples.map((ex, i) => (
-                <ExampleCard key={i} example={ex} />
-              ))}
-            </div>
-          </section>
-
-          {/* Bad examples */}
-          <section>
-            <h2
-              className="text-xl font-bold mb-6"
-              style={{ fontFamily: 'var(--font-display)' }}
-            >
-              Bad conjectures
-            </h2>
-            <p className="leading-relaxed mb-6">
-              Bad conjectures are ones the market cannot process well. The price signal
-              becomes noisy, the spread widens, volume dies, or participants talk past
-              each other. The failure isn&rsquo;t that the conjecture is wrong&mdash;wrong
-              conjectures are fine. The failure is that the market can&rsquo;t do its job.
-            </p>
-            <div className="space-y-4">
-              {badExamples.map((ex, i) => (
-                <ExampleCard key={i} example={ex} />
-              ))}
-            </div>
-          </section>
-
-          {/* Surprisingly fine */}
-          <section>
-            <h2
-              className="text-xl font-bold mb-6"
-              style={{ fontFamily: 'var(--font-display)' }}
-            >
-              Surprisingly fine conjectures
-            </h2>
-            <p className="leading-relaxed mb-6">
-              Some conjectures seem bad at first glance but are actually handled well by
-              the market. The key distinction: a conjecture is only truly bad if the market
-              can&rsquo;t process it. If the market can price it correctly&mdash;even if the
-              price is boring or the resolution is instant&mdash;the conjecture is fine.
-            </p>
-            <div className="space-y-4">
-              {surprisinglyFineExamples.map((ex, i) => (
-                <ExampleCard key={i} example={ex} />
-              ))}
-            </div>
-          </section>
+          <div className="space-y-4">
+            {examples.map((ex, i) => (
+              <ExampleCard key={i} example={ex} />
+            ))}
+          </div>
 
           {/* Summary */}
           <section>
