@@ -685,3 +685,65 @@ The main non-negotiable design choice is that credence and ownership must stay s
 thing becomes too easy to game.
 
 If you want, I can turn this into a short essay-style note with cleaner prose and a name for the mechanism.
+
+# Discussion: Does veracity even matter in science?
+
+A common objection: people publish preprints to arXiv without peer review, and science seems to work fine. So does veracity actually matter?
+
+## The short answer: veracity matters, but verification is what's broken
+
+The fact that arXiv exists and is enormously useful proves something important—but not what the objection claims. ArXiv shows that *dissemination without verification* is valuable. It does not show that *verification itself* is unnecessary.
+
+What actually happens with arXiv preprints:
+
+1. **Preprints are not the end state.** Most impactful arXiv papers eventually go through peer review, get cited, get reproduced, or get quietly ignored. The arXiv is a *staging area*, not a replacement for evaluation. The community still performs verification—it just does it informally, slowly, and unevenly.
+
+2. **Readers apply their own verification heuristics.** When a researcher reads an arXiv paper, they are not treating all claims as equally credible. They check who wrote it, what institution they're at, whether the proofs look right, whether the experiments are reproducible. This is distributed, informal peer review—it's just not formalized or recorded anywhere.
+
+3. **The failures are real and costly.** Papers that turned out to be wrong have caused real damage: wasted follow-up research, retracted clinical findings, misallocated funding. The reproducibility crisis is not hypothetical—it's estimated that $28 billion per year is spent on irreproducible preclinical research in the US alone (Freedman et al., 2015). ArXiv's lack of gatekeeping makes this worse, not better, when the informal verification layer fails.
+
+## What arXiv actually demonstrates
+
+ArXiv demonstrates that the *speed of dissemination* and the *speed of verification* are separate problems, and that solving the first without the second is already valuable. But it also demonstrates the cost of leaving the second unsolved:
+
+- **No confidence signal.** A preprint on arXiv has no attached credence. Is this a breakthrough or noise? Readers must evaluate from scratch every time. There is no mechanism for aggregating the community's collective assessment.
+- **No incentive for verification.** Nobody gets credit for reading a preprint carefully and saying "this is correct" or "this is wrong." The incentive structure rewards *producing* new work, not *evaluating* existing work.
+- **Thin epistemic liquidity.** Many arXiv papers sit in a kind of limbo—cited by some, ignored by others, never definitively evaluated. The information exists but hasn't been priced.
+
+This is precisely the market failure the conjecture market addresses. The problem is not that scientists don't care about truth—they do. The problem is that the *mechanisms for establishing and communicating credence* are too slow, too informal, and too poorly incentivized.
+
+## Veracity as a spectrum, not a binary
+
+The deeper issue is that the question "does veracity matter?" frames truth as binary: a result is either true or false, verified or unverified. But science doesn't work that way. Most results live on a spectrum of credence:
+
+- A new theoretical prediction with no experimental support might warrant $p = 0.3$.
+- A well-reproduced experimental result might warrant $p = 0.95$.
+- A result that contradicts established theory but has strong data might warrant $p = 0.5$ pending further investigation.
+
+The current system has no way to express this. A paper is either published or not. It's either peer-reviewed or not. These are coarse binary signals in a world that needs continuous ones.
+
+ArXiv preprints are implicitly low-credence publications—everyone knows they haven't been reviewed. But "low credence" is not "no credence needed." The value of a preprint depends entirely on how much you should believe it, and right now there's no efficient mechanism for aggregating that belief.
+
+## The conjecture market reframe
+
+In the conjecture market framework, arXiv's role becomes clear: it is a mechanism for *submitting evidence to the market*. The missing piece is the market itself—the infrastructure that:
+
+1. Attaches a live credence to each claim
+2. Rewards participants for improving that credence (in either direction)
+3. Propagates evidence through the dependency graph of scientific knowledge
+4. Makes verification a compensated activity, not a thankless chore
+
+Veracity doesn't stop mattering because we stopped formally checking it. It means we're flying blind—disseminating claims without pricing them. The conjecture market is an attempt to build the pricing mechanism that arXiv lacks.
+
+## Summary
+
+| Aspect | Current state (arXiv + peer review) | Conjecture market |
+|--------|--------------------------------------|-------------------|
+| Dissemination speed | Fast (arXiv) | Fast |
+| Verification speed | Slow (months to years) | Continuous |
+| Credence signal | Binary (reviewed/not) | Continuous price |
+| Incentive to verify | Weak (no credit) | Strong (stake + residuals) |
+| Null results | Rarely published | Equally valued |
+| Partial confidence | Not expressible | Native to the system |
+
+The question is not whether veracity matters—it's whether we can build systems that establish it faster and more efficiently than the ones we have.
