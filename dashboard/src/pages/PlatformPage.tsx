@@ -17,6 +17,11 @@ const guides = [
     description: 'How to create, price, refine, and manage conjectures in the market.',
   },
   {
+    slug: 'example-conjectures',
+    title: 'Example Conjectures',
+    description: 'A catalog of good, bad, and misleading conjectures — with market analysis for each.',
+  },
+  {
     slug: 'integrations',
     title: 'Integrations',
     description: 'Connecting the conjecture market to arXiv, Google Scholar, and peer-reviewed venues.',
