@@ -12,6 +12,7 @@ import OpenProblemsPage from './pages/platform/OpenProblemsPage'
 import ScoringMetricsPage from './pages/platform/ScoringMetricsPage'
 import ExampleConjecturesPage from './pages/platform/ExampleConjecturesPage'
 import ShortingPage from './pages/platform/ShortingPage'
+import MarketIncentivesPage from './pages/platform/MarketIncentivesPage'
 import PriceDeterminationPage from './pages/platform/PriceDeterminationPage'
 import { mdxComponents } from './components/MDXComponents'
 
@@ -27,6 +28,7 @@ function App() {
         <Route path="/platform/creating-conjectures" element={<Layout><CreatingConjecturesPage /></Layout>} />
         <Route path="/platform/integrations" element={<Layout><IntegrationsPage /></Layout>} />
         <Route path="/platform/example-conjectures" element={<Layout><ExampleConjecturesPage /></Layout>} />
+        <Route path="/platform/market-incentives" element={<Layout><MarketIncentivesPage /></Layout>} />
         <Route path="/platform/shorting" element={<Layout><ShortingPage /></Layout>} />
         <Route path="/platform/price-determination" element={<Layout><PriceDeterminationPage /></Layout>} />
         <Route path="/platform/open-problems" element={<Layout><OpenProblemsPage /></Layout>} />

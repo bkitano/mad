@@ -22,6 +22,11 @@ const guides = [
     description: 'A catalog of good, bad, and misleading conjectures — with market analysis for each.',
   },
   {
+    slug: 'market-incentives',
+    title: 'Market Incentives',
+    description: 'The behaviors we want the market to produce, and what they imply about pricing.',
+  },
+  {
     slug: 'price-determination',
     title: 'Price Determination',
     description: 'How the market computes the price of a conjecture from participant positions.',

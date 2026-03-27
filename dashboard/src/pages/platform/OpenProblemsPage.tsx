@@ -662,22 +662,219 @@ export default function OpenProblemsPage() {
                 <InlineMath math="H(p)" /> directly? Or the log-odds distance
                 from 0.5? The right cost function depends on what behavior you
                 want to incentivize, and different functions produce different
-                market dynamics.
+                market dynamics. See the detailed comparison below.
               </li>
             </ul>
-            <p className="leading-relaxed mt-4">
-              The deeper question is whether the cost of participation should be
-              a function of the market state at all, or whether it should be
-              fixed and let the returns do the work. In the standard LMSR, the
-              cost is fixed per share but the expected return varies with price
-              &mdash; buying at 0.50 has higher expected variance (could go
-              either way) while buying at 0.95 has low expected return (not much
-              room to move). The uncertainty-weighted approach moves this dynamic
-              from the return side to the cost side. Whether that&rsquo;s better
-              depends on which failure mode you&rsquo;re more worried about:
-              trivially-true portfolio accumulation (fixed cost fails) or
-              suppressed dissent on frontier questions (uncertainty-weighted cost
-              fails).
+
+            <h3
+              className="text-lg font-bold mt-8 mb-4"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              Entropy-based cost: price = <InlineMath math="H(p)" />
+            </h3>
+
+            <p className="leading-relaxed mb-4">
+              Instead of the linear{' '}
+              <InlineMath math="|0.5 - p|" />, we could set the cost of a
+              share equal to the binary entropy of the current price:
+            </p>
+
+            <div className="overflow-x-auto">
+              <BlockMath math="\text{cost}(p) = H(p) = -p \log_2 p - (1-p) \log_2 (1-p)" />
+            </div>
+
+            <p className="leading-relaxed mb-4">
+              This produces a very different cost curve from{' '}
+              <InlineMath math="|0.5 - p|" />. Some concrete values:
+            </p>
+
+            <div
+              className="rounded-lg border p-6"
+              style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+            >
+              <h3
+                className="text-sm font-semibold uppercase tracking-widest mb-4"
+                style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+              >
+                Cost comparison at different price levels
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" style={{ fontFamily: 'var(--font-body)' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--paper-deep)' }}>
+                      <th className="text-left py-2 pr-4">Price <InlineMath math="p" /></th>
+                      <th className="text-left py-2 pr-4"><InlineMath math="|0.5 - p|" /></th>
+                      <th className="text-left py-2 pr-4"><InlineMath math="H(p)" /> (bits)</th>
+                      <th className="text-left py-2">Interpretation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid var(--paper-deep)' }}>
+                      <td className="py-2 pr-4">0.50</td>
+                      <td className="py-2 pr-4">0.00 (free)</td>
+                      <td className="py-2 pr-4">1.00 (max cost)</td>
+                      <td className="py-2">Maximum uncertainty</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--paper-deep)' }}>
+                      <td className="py-2 pr-4">0.70</td>
+                      <td className="py-2 pr-4">0.20</td>
+                      <td className="py-2 pr-4">0.88</td>
+                      <td className="py-2">Mild consensus</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--paper-deep)' }}>
+                      <td className="py-2 pr-4">0.90</td>
+                      <td className="py-2 pr-4">0.40</td>
+                      <td className="py-2 pr-4">0.47</td>
+                      <td className="py-2">Strong consensus</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--paper-deep)' }}>
+                      <td className="py-2 pr-4">0.95</td>
+                      <td className="py-2 pr-4">0.45</td>
+                      <td className="py-2 pr-4">0.29</td>
+                      <td className="py-2">Very strong consensus</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--paper-deep)' }}>
+                      <td className="py-2 pr-4">0.99</td>
+                      <td className="py-2 pr-4">0.49</td>
+                      <td className="py-2 pr-4">0.08</td>
+                      <td className="py-2">Near-settled</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 pr-4">1.00</td>
+                      <td className="py-2 pr-4">0.50</td>
+                      <td className="py-2 pr-4">0.00 (free)</td>
+                      <td className="py-2">Fully settled</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <p className="leading-relaxed mt-4 mb-4">
+              The two cost functions agree on the endpoints (free at full
+              certainty, expensive at maximum uncertainty) but diverge
+              dramatically in the middle. The key differences:
+            </p>
+
+            <ul className="space-y-4">
+              <li className="leading-relaxed">
+                <strong><InlineMath math="|0.5 - p|" /> is linear and
+                symmetric.</strong> Moving from 0.50 to 0.70 and from 0.70 to
+                0.90 both reduce cost by the same 0.20. The cost doesn&rsquo;t
+                &ldquo;know&rdquo; that the information-theoretic distance
+                between these two moves is very different.
+              </li>
+              <li className="leading-relaxed">
+                <strong><InlineMath math="H(p)" /> is concave and
+                information-theoretically grounded.</strong> It falls steeply
+                near the extremes and gently near 0.50. Moving from 0.90 to
+                0.95 drops the cost by 0.18 (from 0.47 to 0.29), but moving
+                from 0.50 to 0.55 drops it by only 0.01 (from 1.00 to 0.99).
+                This means the cost curve is very flat near maximum
+                uncertainty &mdash; a wide band of prices around 0.50 are all
+                approximately maximally expensive.
+              </li>
+              <li className="leading-relaxed">
+                <strong>The &ldquo;expensive zone&rdquo; is wider under{' '}
+                <InlineMath math="H(p)" />.</strong> Under{' '}
+                <InlineMath math="|0.5 - p|" />, only a narrow band around
+                0.50 is expensive. Under <InlineMath math="H(p)" />, the
+                cost is above 0.80 for any price between 0.25 and 0.75. This
+                means entropy-based pricing creates a broad &ldquo;uncertainty
+                plateau&rdquo; where participation is costly, not just a
+                spike at 0.50.
+              </li>
+            </ul>
+
+            <p className="leading-relaxed mt-4 mb-4">
+              What the entropy cost function produces in practice:
+            </p>
+
+            <ul className="space-y-4">
+              <li className="leading-relaxed">
+                <strong>The Marshall scenario.</strong> Marshall buys
+                &ldquo;H. pylori causes ulcers&rdquo; at{' '}
+                <InlineMath math="p = 0.10" />. Under entropy pricing,{' '}
+                <InlineMath math="H(0.10) = 0.47" /> &mdash; moderately
+                expensive. As evidence pushes the price to 0.30, the cost
+                rises to <InlineMath math="H(0.30) = 0.88" />. At 0.50
+                (peak uncertainty), the cost hits{' '}
+                <InlineMath math="H(0.50) = 1.00" />. Then as the price
+                continues past 0.50 toward 0.90, the cost drops back to 0.47.
+                The cost profile is a hill that Marshall must climb over: cheap
+                entry as a contrarian, expensive in the zone of maximum
+                contestation, cheap again once consensus builds on his side.
+                Under <InlineMath math="|0.5 - p|" />, the same journey
+                would be 0.40 (cheap) &rarr; 0.20 &rarr; 0.00 (free at 0.50)
+                &rarr; 0.20 &rarr; 0.40 &mdash; a valley, not a hill. The two
+                cost functions produce opposite incentive shapes for contrarian
+                claims.
+              </li>
+              <li className="leading-relaxed">
+                <strong>The settled-knowledge anchor.</strong> &ldquo;Water
+                boils at 100&deg;C&rdquo; sits at{' '}
+                <InlineMath math="p = 0.99" />. Under entropy pricing,{' '}
+                <InlineMath math="H(0.99) = 0.08" /> &mdash; very cheap.
+                Under <InlineMath math="|0.5 - p|" />, the cost is 0.49
+                &mdash; nearly the maximum. These are opposite: entropy says
+                settled knowledge is cheap (almost nothing left to learn),
+                while <InlineMath math="|0.5 - p|" /> says settled knowledge
+                is expensive (you&rsquo;re very far from uncertainty). This is
+                the starkest practical difference. Entropy pricing lets
+                participants cheaply anchor on settled science.{' '}
+                <InlineMath math="|0.5 - p|" /> pricing makes it expensive to
+                state what everyone already knows.
+              </li>
+              <li className="leading-relaxed">
+                <strong>The P&thinsp;&ne;&thinsp;NP scenario.</strong> Price
+                sits at 0.95.{' '}
+                <InlineMath math="H(0.95) = 0.29" /> &mdash; fairly cheap,
+                reflecting that the market has mostly made up its mind. A
+                claimed proof surfaces and the price drops to 0.70.{' '}
+                <InlineMath math="H(0.70) = 0.88" /> &mdash; the cost triples
+                as uncertainty floods back in. This is a natural response: when
+                the market suddenly doesn&rsquo;t know what to believe, it
+                becomes more expensive to claim you do. Under{' '}
+                <InlineMath math="|0.5 - p|" />, the cost would go from 0.45
+                to 0.20 &mdash; the opposite direction, getting{' '}
+                <em>cheaper</em> as uncertainty increases.
+              </li>
+            </ul>
+
+            <p className="leading-relaxed mt-4 mb-4">
+              The entropy cost function has a natural information-theoretic
+              interpretation: <strong>the cost of a share equals the number of
+              bits the market still needs to learn</strong>. You are paying for
+              access to unresolved information. When there is nothing left to
+              learn (<InlineMath math="H \approx 0" />), access is free. When
+              everything is in play (<InlineMath math="H = 1" />), access is
+              maximally expensive.
+            </p>
+
+            <p className="leading-relaxed mb-4">
+              But this interpretation cuts both ways. The most important
+              conjectures &mdash; the ones on the frontier, where the market
+              most needs participation &mdash; are also the most expensive to
+              trade. An entropy-cost market would be very efficient at
+              aggregating beliefs about settled questions and potentially
+              sluggish at resolving uncertain ones. Whether this is a feature
+              (it forces participants to stake real conviction on frontier
+              claims) or a bug (it creates a barrier to entry on the questions
+              that matter most) is the central design trade-off.
+            </p>
+
+            <p className="leading-relaxed">
+              A possible middle ground: use entropy-based cost for the{' '}
+              <em>scoring</em> weight (how much credit you get for holding a
+              position) while keeping the transaction cost flat or LMSR-based.
+              This would mean: it&rsquo;s equally cheap to take any position,
+              but your impact score is weighted by the entropy at the time you
+              took it. Positions taken in high-entropy regimes earn more credit
+              because you were making a claim when the market genuinely
+              didn&rsquo;t know. Positions taken in low-entropy regimes earn
+              less credit because you were just joining the crowd. This decouples
+              the &ldquo;barrier to participation&rdquo; question from the
+              &ldquo;how much does your opinion matter&rdquo; question.
             </p>
           </section>
 
