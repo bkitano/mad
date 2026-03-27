@@ -22,6 +22,16 @@ const guides = [
     description: 'A catalog of good, bad, and misleading conjectures — with market analysis for each.',
   },
   {
+    slug: 'price-determination',
+    title: 'Price Determination',
+    description: 'How the market computes the price of a conjecture from participant positions.',
+  },
+  {
+    slug: 'shorting',
+    title: 'Shorting',
+    description: 'What it means to take a position against a conjecture.',
+  },
+  {
     slug: 'integrations',
     title: 'Integrations',
     description: 'Connecting the conjecture market to arXiv, Google Scholar, and peer-reviewed venues.',

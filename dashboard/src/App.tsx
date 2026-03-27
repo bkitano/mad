@@ -11,6 +11,8 @@ import IntegrationsPage from './pages/platform/IntegrationsPage'
 import OpenProblemsPage from './pages/platform/OpenProblemsPage'
 import ScoringMetricsPage from './pages/platform/ScoringMetricsPage'
 import ExampleConjecturesPage from './pages/platform/ExampleConjecturesPage'
+import ShortingPage from './pages/platform/ShortingPage'
+import PriceDeterminationPage from './pages/platform/PriceDeterminationPage'
 import { mdxComponents } from './components/MDXComponents'
 
 function App() {
@@ -25,6 +27,8 @@ function App() {
         <Route path="/platform/creating-conjectures" element={<Layout><CreatingConjecturesPage /></Layout>} />
         <Route path="/platform/integrations" element={<Layout><IntegrationsPage /></Layout>} />
         <Route path="/platform/example-conjectures" element={<Layout><ExampleConjecturesPage /></Layout>} />
+        <Route path="/platform/shorting" element={<Layout><ShortingPage /></Layout>} />
+        <Route path="/platform/price-determination" element={<Layout><PriceDeterminationPage /></Layout>} />
         <Route path="/platform/open-problems" element={<Layout><OpenProblemsPage /></Layout>} />
         <Route path="/agent/*" element={<Layout><div className="max-w-3xl mx-auto px-4 py-8"><MADDashboard /></div></Layout>} />
       </Routes>

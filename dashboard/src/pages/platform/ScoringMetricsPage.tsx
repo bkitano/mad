@@ -416,6 +416,171 @@ export default function ScoringMetricsPage() {
             work pays upstream dependencies.
           </p>
 
+          {/* --- Conjecture Longevity --- */}
+          <h2
+            className="text-2xl font-bold mt-10"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Conjecture Longevity
+          </h2>
+
+          <p className="leading-relaxed">
+            Not all conjectures sustain productive trading activity for the
+            same duration. Some generate decades of active trading and
+            evidence submission (general relativity&rsquo;s sub-conjectures are
+            still being tested a century later). Others resolve after a single
+            observation and go silent. The market should reward longevity as a
+            signal of the conjecture&rsquo;s value to the knowledge graph.
+          </p>
+
+          <p className="leading-relaxed">
+            Longevity is an artifact of sustained trade volume: a conjecture
+            that people keep trading is one that keeps generating new questions,
+            new evidence, and new predictions. The system tracks several
+            longevity signals:
+          </p>
+
+          <ul className="space-y-3 ml-6 list-disc">
+            <li className="leading-relaxed">
+              <strong>Active trading duration.</strong> How long the conjecture
+              has sustained non-trivial trade volume since its creation.
+              Measured as the span between first and most recent trade with
+              activity above a minimum threshold.
+            </li>
+            <li className="leading-relaxed">
+              <strong>Price sensitivity window.</strong> How long the
+              conjecture&rsquo;s price has remained responsive to new evidence.
+              A conjecture whose price stopped moving years ago has ended its
+              productive life, even if occasional trades still occur.
+            </li>
+            <li className="leading-relaxed">
+              <strong>Downstream activity span.</strong> How long the
+              conjecture&rsquo;s sub-conjectures remain active. A parent
+              conjecture whose children are still generating trades is alive
+              in the knowledge graph even if its own price has stabilized.
+            </li>
+          </ul>
+
+          <p className="leading-relaxed">
+            Longevity weighting in the scoring system means that holding a
+            position in a long-lived, actively traded conjecture contributes
+            more to your veracity consensus than holding a position in a
+            flash-in-the-pan conjecture that resolved immediately. The open
+            question is how to handle conjectures that are resolved after a
+            single observation (e.g., &ldquo;the paper had 12 authors&rdquo;)
+            &mdash; what disincentivizes participants from continuing to buy
+            shares of a dead conjecture? The price itself may be the answer:
+            once a conjecture converges to ~1.0 or ~0.0, the potential return
+            from additional shares is near zero, which should naturally
+            discourage further purchases. But this only works if shares have
+            a meaningful cost. See{' '}
+            <Link
+              to="/platform/open-problems"
+              className="underline"
+              style={{ color: 'var(--accent)' }}
+            >
+              Open Problems
+            </Link>{' '}
+            for more on this tension.
+          </p>
+
+          {/* --- Conjecture Processability --- */}
+          <h2
+            className="text-2xl font-bold mt-10"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Conjecture Processability
+          </h2>
+
+          <p className="leading-relaxed">
+            Not all conjectures are equally useful as market instruments. The
+            system tracks several quality dimensions that measure how well the
+            market can process a given conjecture. These metrics help participants
+            identify dead instruments and focus capital on claims that generate
+            information.
+          </p>
+
+          <ul className="space-y-3 ml-6 list-disc">
+            <li className="leading-relaxed">
+              <strong>Price sensitivity to evidence.</strong> How much does the
+              price move when new evidence is published? A conjecture with zero
+              price sensitivity is untradeable&mdash;no observation changes
+              anyone&rsquo;s beliefs. Tautological and unfalsifiable conjectures
+              score zero on this dimension.
+            </li>
+            <li className="leading-relaxed">
+              <strong>Bid-ask spread width.</strong> A tight spread indicates
+              participants agree on what the conjecture means, even if they
+              disagree on its truth. A wide spread often signals definitional
+              ambiguity rather than genuine uncertainty. Conjectures with
+              ambiguous operationalization produce persistently wide spreads.
+            </li>
+            <li className="leading-relaxed">
+              <strong>Trade volume and participant diversity.</strong> High volume
+              from diverse participants indicates the conjecture has downstream
+              relevance. Low volume or volume concentrated among a few
+              participants suggests the conjecture is isolated from the broader
+              knowledge graph.
+            </li>
+            <li className="leading-relaxed">
+              <strong>Downstream conjecture count.</strong> Conjectures that spawn
+              sub-conjectures are more valuable as market instruments because they
+              generate additional trading surfaces and allow evidence to propagate
+              through the attribution graph. A conjecture with zero downstream
+              connections is a dead end.
+            </li>
+            <li className="leading-relaxed">
+              <strong>Resolution criteria clarity.</strong> Can participants agree
+              on what evidence would move the price to 0.95 or 0.05? If not, the
+              conjecture is likely ambiguous or unfalsifiable. This can be
+              assessed by surveying participants on their resolution criteria and
+              measuring agreement.
+            </li>
+            <li className="leading-relaxed">
+              <strong>Portfolio delta contribution.</strong> How much sensitivity
+              to new evidence does holding this conjecture add to a portfolio? A
+              portfolio full of trivially true conjectures (price ~1.0, zero
+              delta) may look large but generates no information. This metric
+              helps distinguish substantive positions from dead weight.
+            </li>
+          </ul>
+
+          <div
+            className="rounded-lg border p-6 mt-4"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-4"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              Conjecture quality scorecard
+            </h3>
+            <p className="leading-relaxed mb-4">
+              Each conjecture can be scored across these dimensions to produce a
+              processability profile. For example, a tautological conjecture like
+              &ldquo;In efficient markets, all available information is reflected
+              in asset prices&rdquo; would score: price sensitivity 0/10, spread
+              width 9/10 (wide), volume 1/10, downstream count 0, resolution
+              clarity 0/10, portfolio delta 0. A well-formed conjecture like
+              &ldquo;Transformer models with fewer than 1B parameters can achieve
+              &gt;90% accuracy on MATH&rdquo; would score: price sensitivity
+              8/10, spread width 2/10 (tight), volume 7/10, downstream count 4+,
+              resolution clarity 9/10, portfolio delta 7/10.
+            </p>
+            <p className="leading-relaxed">
+              See{' '}
+              <Link
+                to="/platform/example-conjectures"
+                className="underline"
+                style={{ color: 'var(--accent)' }}
+              >
+                Example Conjectures
+              </Link>{' '}
+              for worked examples showing how different conjecture types score on
+              these dimensions.
+            </p>
+          </div>
+
           {/* --- Summary --- */}
           <div
             className="rounded-lg border p-6 mt-10"
@@ -459,6 +624,16 @@ export default function ScoringMetricsPage() {
                 <strong>Conjecture equity</strong> &mdash; your ownership stake in
                 individual conjectures, earned through validated evidence and subject
                 to dilution and slashing.
+              </li>
+              <li className="leading-relaxed">
+                <strong>Conjecture longevity</strong> &mdash; how long a conjecture
+                sustains productive trading activity, used to weight its contribution
+                to your veracity consensus.
+              </li>
+              <li className="leading-relaxed">
+                <strong>Conjecture processability</strong> &mdash; a quality profile
+                measuring price sensitivity, spread width, volume, downstream count,
+                resolution clarity, and portfolio delta contribution.
               </li>
             </ul>
           </div>
