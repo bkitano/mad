@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { InlineMath } from 'react-katex'
+import { InlineMath, BlockMath } from 'react-katex'
 
 export default function MarketIncentivesPage() {
   return (
@@ -26,168 +26,110 @@ export default function MarketIncentivesPage() {
             className="text-lg leading-relaxed"
             style={{ fontFamily: 'var(--font-body)', color: 'var(--ink-muted)' }}
           >
-            The behaviors we want the market to produce, stated explicitly.
-            The pricing mechanism, scoring system, and market structure should
-            be derived from these &mdash; not the other way around.
+            How the market should behave, what it should reflect, and how
+            we get there.
           </p>
         </header>
 
         <div className="space-y-6" style={{ fontFamily: 'var(--font-body)', color: 'var(--ink)' }}>
 
+          {/* ============================================================
+              SECTION 0: FIRST PRINCIPLES
+              ============================================================ */}
           <h2
             className="text-2xl font-bold mt-10"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            Why start here
+            First principles
           </h2>
 
           <p className="leading-relaxed">
-            Most market design starts with a mechanism &mdash; an automated
-            market maker, a scoring rule, a share supply model &mdash; and
-            then asks what behaviors it produces. This is backwards. We should
-            start with the behaviors we want and work backward to the
-            mechanism that produces them. If we can&rsquo;t clearly state what
-            the market should reward and punish, we can&rsquo;t evaluate
-            whether any particular pricing function is correct.
-          </p>
-
-          <p className="leading-relaxed">
-            The question &ldquo;what should the price be?&rdquo; is downstream
-            of &ldquo;what is the price <em>for</em>?&rdquo;
-          </p>
-
-          <h2
-            className="text-2xl font-bold mt-10"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            Does price = credence?
-          </h2>
-
-          <p className="leading-relaxed">
-            In prediction markets, the price of a contract is typically
-            interpreted as the market&rsquo;s credence that the event will
-            occur. A price of 0.70 means &ldquo;the market thinks there is a
-            70% chance.&rdquo; The conjecture market has inherited this
-            assumption so far. But it is worth questioning whether price and
-            credence should be the same number.
-          </p>
-
-          <p className="leading-relaxed">
-            The price is the output of a mechanism &mdash; an AMM, an
-            aggregation function, a market clearing process. The credence is
-            a statement about the community&rsquo;s belief. These are only
-            the same thing if the mechanism is calibrated so that its output
-            can be read as a probability. This is a strong requirement. It
-            means the mechanism must be incentive-compatible (participants
-            are rewarded for honest revelation), well-calibrated (a price of
-            0.70 implies the conjecture is true roughly 70% of the time across
-            many conjectures at that price), and not systematically biased by
-            the cost structure, the participant pool, or the share supply.
-          </p>
-
-          <p className="leading-relaxed">
-            There is a case for separating them. The market could maintain
-            two distinct numbers for each conjecture:
+            What is price? In a traditional market, the price of a share is
+            a single number that simultaneously serves multiple roles. In the
+            conjecture market as it stands, price does at least three things
+            at once:
           </p>
 
           <ul className="space-y-3 ml-6 list-disc">
             <li className="leading-relaxed">
-              <strong>Price:</strong> the cost of a share, determined by the
-              market mechanism. This is what participants pay and what
-              determines returns. It need not be between 0 and 1. It could
-              reflect supply and demand, information density, conjecture
-              quality, or some combination.
+              <strong>Reward.</strong> The price determines returns. If you
+              buy at 0.20 and the price rises to 0.80, the difference is your
+              payoff. Price is the mechanism that compensates participants for
+              being right.
             </li>
             <li className="leading-relaxed">
-              <strong>Credence:</strong> the community&rsquo;s aggregate
-              belief, derived from participants&rsquo; positions but not
-              necessarily identical to the price. This is the number between
-              0 and 1 that communicates &ldquo;how likely is this to be
-              true.&rdquo; It could be a weighted average of participant
-              beliefs, where weights come from stake size, track record, or
-              both.
+              <strong>Barrier to entry.</strong> The price is what you pay to
+              take a position. It determines who participates and how much
+              influence they have. A high price filters out casual opinion; a
+              low price invites it in.
+            </li>
+            <li className="leading-relaxed">
+              <strong>Estimator of consensus.</strong> The price is read as the
+              community&rsquo;s credence. A price of 0.70 is interpreted as
+              &ldquo;the market thinks there is a 70% chance this is
+              true.&rdquo; The price is the public signal.
             </li>
           </ul>
 
           <p className="leading-relaxed">
-            Under this separation, the price could account for things that
-            credence should not: the information value of the conjecture, the
-            cost of participation, the liquidity of the market. And the
-            credence could account for things the price should not: the
-            calibration history of the participants who hold positions, the
-            quality of the evidence submitted, the structure of the
-            attribution graph.
+            The question is: <em>should these be the same number?</em>
           </p>
 
           <p className="leading-relaxed">
-            This is an open design question. Collapsing price and credence
-            into a single number is elegant and legible. Separating them adds
-            complexity but may produce better behavior. The rest of this page
-            discusses the functions of &ldquo;price&rdquo; in the general
-            sense &mdash; the cost and reward of participation &mdash; without
-            assuming it must also be the credence readout.
+            In traditional prediction markets, collapsing all three into a
+            single price is elegant and legible. But it also means that every
+            design decision about one function constrains the others. Making
+            the barrier to entry low (to encourage participation) changes the
+            reward structure. Optimizing the price as a credence estimator
+            (calibration, accuracy) may conflict with its role as an incentive
+            mechanism.
           </p>
 
+          <p className="leading-relaxed">
+            An automated market does not have to couple these tightly. We
+            could maintain separate numbers: a <em>credence</em> that is
+            the public signal, a <em>cost</em> that determines the barrier
+            to entry, and a <em>reward</em> that determines payoffs &mdash;
+            each governed by its own logic, tuned to its own purpose.
+          </p>
+
+          <p className="leading-relaxed">
+            In fact, for the reward function, we don&rsquo;t really care
+            about a portfolio&rsquo;s resting credence value at all. A
+            participant who holds a conjecture at 0.90 when everyone else
+            also holds it at 0.90 has not demonstrated insight. What we care
+            about is whether the portfolio was <em>right before others knew
+            it</em> &mdash; whether the participant took a position when the
+            credence was low and was vindicated by later evidence and
+            community convergence. The reward should track the <em>delta</em>{' '}
+            between when you believed it and when the community caught up,
+            not the final resting price.
+          </p>
+
+          <p className="leading-relaxed">
+            This further argues for decoupling: the credence is a snapshot of
+            where the community is <em>now</em>. The reward is a function of
+            how far ahead of the community you were, and for how long. These
+            are fundamentally different quantities. The rest of this page
+            explores what each should look like.
+          </p>
+
+          {/* ============================================================
+              SECTION 1: WHAT WE WANT PARTICIPANTS TO DO
+              ============================================================ */}
           <h2
             className="text-2xl font-bold mt-10"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            What is price for?
+            What we want participants to do
           </h2>
 
           <p className="leading-relaxed">
-            Price in the conjecture market serves at least three distinct
-            functions, and they may be in tension with each other:
+            The market exists to produce a few specific behaviors from its
+            participants. Everything else &mdash; the mechanism, the pricing
+            function, the scoring rules &mdash; is downstream of this list.
           </p>
 
-          <ul className="space-y-3 ml-6 list-disc">
-            <li className="leading-relaxed">
-              <strong>Signal.</strong> The price communicates the
-              community&rsquo;s current credence. A price of 0.70 tells
-              anyone who looks at it: &ldquo;the people who have thought about
-              this believe there is roughly a 70% chance it is true.&rdquo;
-              For this function, accuracy matters more than anything else.
-            </li>
-            <li className="leading-relaxed">
-              <strong>Incentive.</strong> The price determines the returns
-              from holding a position. If you buy at 0.40 and the price rises
-              to 0.80, you have been rewarded for being right early. For this
-              function, the spread between entry price and eventual price
-              determines who gets rewarded and by how much.
-            </li>
-            <li className="leading-relaxed">
-              <strong>Gate.</strong> The cost of taking a position determines
-              who participates and how much influence they have. If positions
-              are free, everyone piles in and the price is a popularity
-              contest. If positions are expensive, only committed participants
-              shape the price. For this function, cost determines the quality
-              of the signal.
-            </li>
-          </ul>
-
-          <p className="leading-relaxed">
-            These three functions pull in different directions. A pure signal
-            wants the price to move as freely as possible in response to
-            information. A pure incentive wants the price to reward
-            contrarians who are right. A pure gate wants the price to be
-            expensive enough to exclude noise. The design challenge is finding
-            a mechanism where all three functions reinforce each other rather
-            than conflict.
-          </p>
-
-          <h2
-            className="text-2xl font-bold mt-10"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            Desired behaviors
-          </h2>
-
-          <p className="leading-relaxed">
-            The following are behaviors we want the market to produce. Each is
-            stated as a principle, followed by what it implies about pricing.
-          </p>
-
-          {/* --- Behavior 1 --- */}
           <div
             className="rounded-lg border p-6 mt-6"
             style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
@@ -196,47 +138,28 @@ export default function MarketIncentivesPage() {
               className="text-sm font-semibold uppercase tracking-widest mb-3"
               style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
             >
-              1. Agreeing with consensus should be cheap
+              1. Buy conjectures early
             </h3>
             <p className="leading-relaxed mb-3">
-              If a conjecture is at 0.99 and you also believe it is true, you
-              are not adding new information. You are joining a crowd. The
-              market should make this easy and inexpensive, because settled
-              knowledge forms the bedrock of the knowledge graph &mdash; many
-              downstream conjectures depend on it, and participants should be
-              able to declare those dependencies without friction.
-            </p>
-            <p className="leading-relaxed mb-3">
-              <strong>Implication for pricing:</strong> The cost of a position
-              should decrease as the price approaches 0 or 1. When credence
-              is near-certain in either direction, adding your voice to the
-              consensus is low-cost. This is consistent with entropy-based
-              pricing (<InlineMath math="H(p) \to 0" /> as{' '}
-              <InlineMath math="p \to 0" /> or{' '}
-              <InlineMath math="p \to 1" />) and inconsistent with{' '}
-              <InlineMath math="|0.5 - p|" /> pricing (which makes consensus
-              positions the <em>most</em> expensive).
+              If you have genuine insight that a conjecture is true (or false)
+              before the rest of the community does, you should buy shares.
+              The market should reward you for being right early and taking a
+              risk when others hadn&rsquo;t yet recognized the signal. Someone
+              who buys at 0.10 when the price later reaches 0.90 has
+              contributed more than someone who buys at 0.85 after the
+              evidence is already public.
             </p>
             <p className="leading-relaxed">
-              <strong>But note the tension:</strong> if consensus is free, what
-              prevents the{' '}
-              <Link
-                to="/platform/open-problems"
-                className="underline"
-                style={{ color: 'var(--accent)' }}
-              >
-                trivially-true portfolio problem
-              </Link>
-              ? Accumulating thousands of settled conjectures at zero cost
-              would produce an enormous portfolio with no information content.
-              The resolution may be that the <em>cost</em> is low but the{' '}
-              <em>reward</em> is also low &mdash; scoring must discount
-              positions in low-entropy conjectures so that cheap consensus
-              positions don&rsquo;t generate unearned credit.
+              <strong>The access problem:</strong> In the history of science,
+              the people who are right early are often not the people with
+              resources. Marshall was a junior researcher in Perth.
+              Semmelweis was dismissed by the Viennese establishment. The
+              market should not reproduce existing power structures. If being
+              right early is expensive, the market is just academia with extra
+              steps.
             </p>
           </div>
 
-          {/* --- Behavior 2 --- */}
           <div
             className="rounded-lg border p-6 mt-4"
             style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
@@ -245,37 +168,26 @@ export default function MarketIncentivesPage() {
               className="text-sm font-semibold uppercase tracking-widest mb-3"
               style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
             >
-              2. Disagreeing with consensus should be expensive but high-reward
+              2. Publish evidence that updates posteriors
             </h3>
             <p className="leading-relaxed mb-3">
-              If a conjecture is at 0.10 and you believe it should be at 0.80,
-              you are making a strong claim that the community is wrong. The
-              market should make you pay for this claim &mdash; not to punish
-              you, but because the claim is extraordinary and the market needs
-              to distinguish genuine insight from noise. If you are right, the
-              reward should be proportionally large.
-            </p>
-            <p className="leading-relaxed mb-3">
-              <strong>Implication for pricing:</strong> The cost of moving the
-              price away from consensus should scale with the magnitude of the
-              move. This is already a property of LMSR: pushing the price from
-              0.10 to 0.80 costs far more than nudging it from 0.10 to 0.12.
-              The question is whether the cost should also depend on the
-              current entropy (making it additionally expensive to move a
-              contested price) or only on the distance of the move.
+              Participants should be rewarded for submitting evidence &mdash;
+              experimental results, theoretical arguments, data &mdash; that
+              causes Bayesian updates in the community&rsquo;s beliefs. The
+              market should not just reward opinion; it should reward the
+              production of <em>reasons</em> for changing opinions. Publishing
+              a strong result that moves the credence of a conjecture from
+              0.40 to 0.70 is the kind of contribution the market most wants
+              to incentivize.
             </p>
             <p className="leading-relaxed">
-              <strong>Historical test:</strong> Barry Marshall buying
-              &ldquo;H. pylori causes ulcers&rdquo; at 0.10. The cost should
-              be substantial enough that Marshall is putting something real on
-              the line, but not so large that a researcher without institutional
-              backing can&rsquo;t participate. The reward when the price later
-              reaches 0.90 should be life-changing, because the information he
-              contributed was life-changing.
+              The natural workflow: you have research showing B is likely true.
+              You buy B shares. Then you publish. The publication drives the
+              price up. You are rewarded both for being right and for making
+              the community smarter.
             </p>
           </div>
 
-          {/* --- Behavior 3 --- */}
           <div
             className="rounded-lg border p-6 mt-4"
             style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
@@ -284,271 +196,374 @@ export default function MarketIncentivesPage() {
               className="text-sm font-semibold uppercase tracking-widest mb-3"
               style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
             >
-              3. The market should attract participation where uncertainty is highest
+              3. Build the dependency graph through trades
+            </h3>
+            <p className="leading-relaxed mb-3">
+              If you believe B depends on A, your trading behavior should
+              reflect this. You buy A and B together, then publish evidence
+              for B. The publication drives B up, and A should also rise in
+              proportion to how much the community believes B depends on A.
+              This creates an implicit Bayesian network in the trade graph
+              &mdash; not one that anyone declared explicitly, but one that
+              emerges from the pattern of correlated positions and evidence
+              submission.
+            </p>
+            <p className="leading-relaxed">
+              The trades themselves encode the dependency structure. If many
+              participants hold both A and B, and evidence for B consistently
+              moves A&rsquo;s price, the market has learned the conditional
+              relationship <InlineMath math="P(A \mid B)" /> without anyone
+              having to define it.
+            </p>
+          </div>
+
+          <div
+            className="rounded-lg border p-6 mt-4"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-3"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              4. Engage where uncertainty is highest
             </h3>
             <p className="leading-relaxed mb-3">
               The conjectures the market most needs help with are the ones
               where credence is genuinely uncertain &mdash; price around 0.50,
               few participants, high entropy. The market should make it
-              attractive to engage with these conjectures, not prohibitively
-              expensive.
-            </p>
-            <p className="leading-relaxed mb-3">
-              <strong>Implication for pricing:</strong> This creates a direct
-              tension with entropy-based cost. If{' '}
-              <InlineMath math="H(p)" /> is the cost, then maximum-uncertainty
-              conjectures are the most expensive to trade &mdash; exactly the
-              opposite of what this principle demands. The resolution may be
-              to separate cost from reward: make the cost moderate everywhere,
-              but make the <em>scoring credit</em> proportional to entropy.
-              You get more credit for participating in uncertain conjectures,
-              not because it costs more, but because the market values the
-              information more.
+              attractive to engage with these conjectures.
             </p>
             <p className="leading-relaxed">
-              <strong>The attention allocation problem:</strong> If the market
-              succeeds at this, it functions as an attention-allocation
-              mechanism for the scientific community. The conjectures with the
-              most to learn are the ones that draw the most participation.
+              If the market succeeds at this, it functions as an
+              attention-allocation mechanism for the scientific community. The
+              conjectures with the most to learn draw the most participation.
               This is the opposite of how academic incentives currently work,
               where researchers are rewarded for publishing in established
-              areas with clear methodologies, not for wading into maximally
-              uncertain territory.
+              areas, not for wading into maximally uncertain territory.
             </p>
           </div>
 
-          {/* --- Behavior 4 --- */}
-          <div
-            className="rounded-lg border p-6 mt-4"
-            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
-          >
-            <h3
-              className="text-sm font-semibold uppercase tracking-widest mb-3"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
-            >
-              4. Noise should be expensive
-            </h3>
-            <p className="leading-relaxed mb-3">
-              Taking a position without genuine information should cost
-              something. If the market allows unlimited free positions, it
-              will be flooded with low-quality opinions that degrade the
-              signal. The cost of a position is the market&rsquo;s defense
-              against noise.
-            </p>
-            <p className="leading-relaxed mb-3">
-              <strong>Implication for pricing:</strong> There must be some
-              nonzero cost to every position. The &ldquo;one free share for
-              everyone&rdquo; model (see{' '}
-              <Link
-                to="/platform/open-problems"
-                className="underline"
-                style={{ color: 'var(--accent)' }}
-              >
-                Open Problems
-              </Link>
-              ) satisfies Behavior 1 (agreeing is cheap) but violates this
-              one unless the free share has limited price influence. Perhaps
-              the first share is free but has a weight of 1, while
-              additional shares cost more but also carry more weight. The
-              free tier gives everyone a voice; the paid tier determines who
-              shapes the price.
-            </p>
-            <p className="leading-relaxed">
-              <strong>Tension with Behavior 3:</strong> If noise is expensive,
-              genuine participation in uncertain conjectures is also expensive,
-              because the market can&rsquo;t distinguish signal from noise in
-              advance. The cost either blocks both or permits both. The only
-              way to resolve this is through <em>ex post</em> rewards:
-              everyone pays the same cost, but participants who turn out to
-              be right earn more back. The cost is a deposit, not a fee.
-            </p>
-          </div>
-
-          {/* --- Behavior 5 --- */}
-          <div
-            className="rounded-lg border p-6 mt-4"
-            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
-          >
-            <h3
-              className="text-sm font-semibold uppercase tracking-widest mb-3"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
-            >
-              5. Early correct participation should be rewarded more than late correct participation
-            </h3>
-            <p className="leading-relaxed mb-3">
-              Someone who buys at 0.10 when the price later reaches 0.90 has
-              contributed more to the market than someone who buys at 0.85
-              after most of the evidence is already in. The early buyer took a
-              risk, staked a contrarian claim, and was vindicated. The late
-              buyer joined the consensus after it formed.
-            </p>
-            <p className="leading-relaxed mb-3">
-              <strong>Implication for pricing:</strong> This is naturally
-              satisfied by any mechanism where your return is proportional to
-              price movement after your entry. But it also implies that the
-              cost of early participation should not be so high that it
-              discourages contrarians. If the cost of buying at 0.10 is
-              enormous (because you&rsquo;re far from consensus), only
-              well-funded participants can be early. This concentrates the
-              rewards of being right among those who can afford to be right.
-            </p>
-            <p className="leading-relaxed">
-              <strong>The access problem:</strong> In the history of science,
-              the people who are right early are often not the people with the
-              most resources. Marshall was a junior researcher in Perth.
-              Semmelweis was a Hungarian obstetrician dismissed by the Viennese
-              establishment. Darwin worked independently. The market should
-              not reproduce the power structures that the existing scientific
-              establishment already has. If being right early is expensive,
-              the market is just academia with extra steps.
-            </p>
-          </div>
-
-          {/* --- Behavior 6 --- */}
-          <div
-            className="rounded-lg border p-6 mt-4"
-            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
-          >
-            <h3
-              className="text-sm font-semibold uppercase tracking-widest mb-3"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
-            >
-              6. Generative conjectures should be rewarded more than terminal ones
-            </h3>
-            <p className="leading-relaxed mb-3">
-              A conjecture that spawns ten downstream sub-conjectures, each
-              generating its own evidence and trading activity, is more
-              valuable to the knowledge graph than a conjecture that resolves
-              in isolation. The market should recognize and reward this
-              generativity.
-            </p>
-            <p className="leading-relaxed mb-3">
-              <strong>Implication for pricing:</strong> This is less about
-              the cost of a position and more about the reward structure.
-              Upstream royalties (see{' '}
-              <Link
-                to="/platform/scoring-metrics"
-                className="underline"
-                style={{ color: 'var(--accent)' }}
-              >
-                Scoring &amp; Metrics
-              </Link>
-              ) already address this: holders of parent conjectures earn
-              residuals from downstream activity. But the pricing mechanism
-              could reinforce it: perhaps the cost of a position in a
-              conjecture with many active descendants should be higher
-              (reflecting its proven value) while the cost of a new,
-              unconnected conjecture should be lower (encouraging
-              exploration).
-            </p>
-            <p className="leading-relaxed">
-              <strong>Risk:</strong> If the market over-rewards generativity,
-              participants will game it by creating artificial sub-conjecture
-              trees &mdash; splitting one claim into many fragments to
-              inflate downstream counts. The market needs to distinguish
-              genuine generativity (sub-conjectures that are independently
-              testable and trade on their own merits) from artificial
-              fragmentation (splitting a single claim into pieces that
-              aren&rsquo;t independently meaningful).
-            </p>
-          </div>
-
-          {/* --- Behavior 7 --- */}
-          <div
-            className="rounded-lg border p-6 mt-4"
-            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
-          >
-            <h3
-              className="text-sm font-semibold uppercase tracking-widest mb-3"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
-            >
-              7. The price should be hard to manipulate
-            </h3>
-            <p className="leading-relaxed mb-3">
-              No single participant or coordinated group should be able to
-              move the price significantly without committing proportional
-              resources. The cost of manipulation should scale with the size
-              of the desired price movement.
-            </p>
-            <p className="leading-relaxed mb-3">
-              <strong>Implication for pricing:</strong> This is a core
-              property of LMSR and most AMMs: the cost of moving the price
-              from <InlineMath math="p_1" /> to <InlineMath math="p_2" /> is
-              a function of the distance, mediated by the liquidity
-              parameter. Large moves require large stakes. This is
-              non-negotiable &mdash; any mechanism that allows cheap large
-              price moves is vulnerable to manipulation.
-            </p>
-            <p className="leading-relaxed">
-              <strong>Tension with Behavior 5:</strong> If large moves are
-              expensive, then contrarians who are right must pay a lot to
-              express their view. The Marshall who wants to push the price
-              from 0.10 to 0.80 faces the same cost as the manipulator who
-              wants to push the price from 0.50 to 0.90 for strategic
-              reasons. The market can&rsquo;t distinguish them in advance. The
-              only resolution is ex post: both pay the same cost, but the one
-              who was right earns it back (and more), while the one who was
-              wrong loses it.
-            </p>
-          </div>
-
-          {/* --- Summary --- */}
+          {/* ============================================================
+              SECTION 2: WHAT WE WANT THE MARKET TO REFLECT
+              ============================================================ */}
           <h2
             className="text-2xl font-bold mt-10"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            The tensions
+            What we want the market to reflect
           </h2>
 
           <p className="leading-relaxed">
-            Several of these behaviors are in direct conflict:
+            We want the market to produce at least two distinct numbers for
+            each conjecture, and they are not the same thing:
           </p>
 
           <ul className="space-y-3 ml-6 list-disc">
             <li className="leading-relaxed">
-              <strong>1 vs. 4:</strong> Consensus should be cheap, but noise
-              should be expensive. If consensus positions are free, noise
-              participants can accumulate them costlessly.
+              <strong>Credence:</strong> a number between 0 and 1 reflecting
+              the community&rsquo;s aggregate belief in whether the conjecture
+              is true. This number should be <em>publicly visible</em>. Anyone
+              should be able to look at a conjecture and see what the
+              community thinks. This is the market&rsquo;s signal to the world.
             </li>
             <li className="leading-relaxed">
-              <strong>3 vs. 4:</strong> The market should attract
-              participation at maximum uncertainty, but noise should be
-              expensive. At maximum uncertainty, the market can&rsquo;t tell
-              signal from noise.
-            </li>
-            <li className="leading-relaxed">
-              <strong>5 vs. 7:</strong> Early contrarians should be rewarded,
-              but the price should be hard to manipulate. Both early
-              contrarians and manipulators want to make large price moves.
+              <strong>Reward:</strong> a number reflecting how much a
+              participant has been compensated for good scientific intuition.
+              You should be rewarded for buying conjectures early, for
+              publishing evidence that updates posteriors, and for building
+              positions in dependency chains that turn out to be correct. An
+              increase in portfolio value should track good scientific
+              intuition, not just good trading.
             </li>
           </ul>
 
           <p className="leading-relaxed">
-            The common resolution across all three tensions is the same
-            pattern: <strong>separate the cost of entry from the reward for
-            being right.</strong> The cost is a deposit that makes noise and
-            manipulation expensive. The reward is an ex post return that
-            pays back contrarians who were correct and penalizes those who
-            were wrong. Under this model:
+            The credence is the market&rsquo;s public face. The reward is the
+            market&rsquo;s private incentive mechanism. They are related
+            &mdash; rewards flow from changes in credence &mdash; but they are
+            not the same number and should not be conflated.
           </p>
 
-          <ul className="space-y-3 ml-6 list-disc">
-            <li className="leading-relaxed">
-              Consensus positions cost little (Behavior 1) and earn little
-              (no reward for agreeing with what everyone already knows).
-            </li>
-            <li className="leading-relaxed">
-              Frontier positions cost a moderate deposit (Behavior 4) and
-              earn large returns if correct (Behaviors 2, 3, 5) or forfeit
-              the deposit if wrong (Behavior 7).
-            </li>
-            <li className="leading-relaxed">
-              The scoring system, not the pricing mechanism, distinguishes
-              information from noise after the fact (Behavior 6).
-            </li>
-          </ul>
+          <h3
+            className="text-xl font-bold mt-8"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            How LMSR maps shares to credence
+          </h3>
 
           <p className="leading-relaxed">
+            The core mechanism we build on is the Logarithmic Market Scoring
+            Rule (LMSR). The key equation is simple:
+          </p>
+
+          <BlockMath math="P_i = \frac{e^{Q_i / b}}{\sum_j e^{Q_j / b}}" />
+
+          <p className="leading-relaxed">
+            where <InlineMath math="P" /> is the vector of spot prices across
+            all positions (e.g., YES and NO in a prediction market),{' '}
+            <InlineMath math="Q" /> is the vector of outstanding share
+            quantities, and <InlineMath math="b" /> is a liquidity parameter
+            that controls how sensitive prices are to trades. This is just
+            the <strong>softmax</strong> function:
+          </p>
+
+          <BlockMath math="P = \text{softmax}(Q / b)" />
+
+          <p className="leading-relaxed">
+            The principle is this: we need a function that maps a vector of
+            share quantities to a <em>probability simplex</em> &mdash; a
+            vector whose components are non-negative and sum to 1. The
+            softmax function does this. When someone buys YES shares,{' '}
+            <InlineMath math="Q_{\text{YES}}" /> increases, and the softmax
+            pushes <InlineMath math="P_{\text{YES}}" /> up and{' '}
+            <InlineMath math="P_{\text{NO}}" /> down, maintaining the
+            constraint <InlineMath math="P_{\text{YES}} + P_{\text{NO}} = 1" />.
+          </p>
+
+          <p className="leading-relaxed">
+            The liquidity parameter <InlineMath math="b" /> controls the
+            tradeoff between sensitivity and stability. Small{' '}
+            <InlineMath math="b" /> means prices react sharply to each
+            trade &mdash; good for thin markets where every participant
+            matters, but vulnerable to manipulation. Large{' '}
+            <InlineMath math="b" /> means prices are sluggish &mdash; hard
+            to manipulate, but you need many participants to move the price
+            to where it should be.
+          </p>
+
+          <h3
+            className="text-xl font-bold mt-8"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Why softmax? Why not something else?
+          </h3>
+
+          <p className="leading-relaxed">
+            There are many functions that map a vector of quantities to a
+            probability simplex. The softmax (with its exponentials) is the
+            canonical choice, but it is not the only one. For example, a
+            simple <strong>power normalization</strong>:
+          </p>
+
+          <BlockMath math="P_i = \frac{Q_i^{\alpha}}{\sum_j Q_j^{\alpha}}" />
+
+          <p className="leading-relaxed">
+            also maps positive share quantities to a probability simplex.
+            The choice of normalization function determines the <em>shape</em>{' '}
+            of how prices respond to trades. The exponential in softmax means
+            that buying shares has a <em>multiplicative</em> effect on the
+            odds ratio &mdash; each additional share multiplies the odds by a
+            constant factor. A power normalization would give a different
+            price response curve: more linear for low{' '}
+            <InlineMath math="\alpha" />, more winner-take-all for high{' '}
+            <InlineMath math="\alpha" />.
+          </p>
+
+          <p className="leading-relaxed">
+            The nature of the normalization function determines the market&rsquo;s
+            character. LMSR&rsquo;s exponential normalization has nice
+            information-theoretic properties &mdash; the cost function is the
+            log-partition function, the prices are maximum-entropy given the
+            trades, and there are bounded worst-case losses for the market
+            maker. But whether those properties are the <em>right</em> ones
+            for a conjecture market is an open question.
+          </p>
+
+          <h3
+            className="text-xl font-bold mt-8"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Implicit Bayesian networks
+          </h3>
+
+          <p className="leading-relaxed">
+            Some of the numbers the market produces should not be visible as
+            explicit fields on a conjecture, but should emerge from the
+            structure of trading. When participants buy correlated positions
+            across conjectures &mdash; A and B together, because they believe
+            B depends on A &mdash; the trade graph encodes conditional
+            dependencies. If evidence for B consistently moves A&rsquo;s
+            price, the market has implicitly learned{' '}
+            <InlineMath math="P(A \mid B)" />.
+          </p>
+
+          <p className="leading-relaxed">
+            This is a form of decentralized structure learning. No one
+            declares the Bayesian network. It emerges from the overlap of
+            portfolios and the propagation of evidence through prices.
+            Whether this actually works &mdash; whether the implicit
+            conditional dependencies are well-calibrated &mdash; depends on
+            the details of the pricing mechanism and how evidence propagation
+            is handled.
+          </p>
+
+          {/* ============================================================
+              SECTION 3: HOW WE DO IT
+              ============================================================ */}
+          <h2
+            className="text-2xl font-bold mt-10"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            How we do it
+          </h2>
+
+          <p className="leading-relaxed">
+            Producing the behaviors above while reflecting the right numbers
+            requires navigating several design tensions. The principles below
+            are sometimes mutually exclusive &mdash; the mechanism design is
+            a search for the best tradeoff surface.
+          </p>
+
+          <div
+            className="rounded-lg border p-6 mt-6"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-3"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              Reward impactful work
+            </h3>
+            <p className="leading-relaxed mb-3">
+              The market should disproportionately reward conjectures and
+              evidence that have high impact. The open question is how to
+              measure impact. One proxy: conjecture volume &mdash; a
+              conjecture that spawns many downstream sub-conjectures, each
+              generating its own evidence and trading activity, is more
+              valuable to the knowledge graph than one that resolves in
+              isolation. Upstream royalties (holders of parent conjectures
+              earning residuals from downstream activity) are one mechanism
+              for this.
+            </p>
+            <p className="leading-relaxed">
+              <strong>Risk:</strong> If over-rewarded, participants will
+              game generativity by creating artificial sub-conjecture trees.
+              The market needs to distinguish genuine generativity (independently
+              testable sub-conjectures) from artificial fragmentation.
+            </p>
+          </div>
+
+          <div
+            className="rounded-lg border p-6 mt-4"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-3"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              Be hard to abuse
+            </h3>
+            <p className="leading-relaxed mb-3">
+              No single participant or coordinated group should be able to
+              move the price significantly without committing proportional
+              resources. This is a core property of LMSR: the cost of moving
+              the price from <InlineMath math="p_1" /> to{' '}
+              <InlineMath math="p_2" /> is a function of the distance,
+              mediated by the liquidity parameter. Large moves require large
+              stakes.
+            </p>
+            <p className="leading-relaxed">
+              <strong>Tension:</strong> If large moves are expensive, then
+              contrarians who are right face the same cost barrier as
+              manipulators. The market can&rsquo;t distinguish them in
+              advance. The resolution is ex post: both pay the same cost, but
+              the one who was right earns it back (and more), while the wrong
+              one loses it.
+            </p>
+          </div>
+
+          <div
+            className="rounded-lg border p-6 mt-4"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-3"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              Things everyone believes should have low barrier to ownership
+            </h3>
+            <p className="leading-relaxed mb-3">
+              If a conjecture is at 0.99 and you also believe it is true, you
+              are not adding new information. The market should make this easy
+              and inexpensive, because settled knowledge forms the bedrock of
+              the knowledge graph &mdash; many downstream conjectures depend
+              on it. But the reward for late consensus should also be low.
+              The people who should be rewarded are the ones who owned it when
+              fewer people believed it.
+            </p>
+            <p className="leading-relaxed">
+              This is consistent with entropy-based pricing:{' '}
+              <InlineMath math="H(p) \to 0" /> as{' '}
+              <InlineMath math="p \to 0" /> or{' '}
+              <InlineMath math="p \to 1" />, so near-certain positions are
+              cheap. But the <em>reward</em> must also be discounted at
+              low entropy, or else participants accumulate thousands of
+              settled conjectures at zero cost for unearned credit.
+            </p>
+          </div>
+
+          <div
+            className="rounded-lg border p-6 mt-4"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-3"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              Portfolio value should track scientific intuition
+            </h3>
+            <p className="leading-relaxed mb-3">
+              An increase in portfolio value should mean the participant has
+              demonstrated good scientific intuition &mdash; not just good
+              trading instincts. This is the deepest constraint on the
+              mechanism design. If the market can be profited by pure
+              game-theoretic arbitrage with no domain knowledge, it has failed
+              at its purpose.
+            </p>
+            <p className="leading-relaxed">
+              The reward function must be calibrated so that the dominant
+              strategy is: form genuine beliefs based on evidence, take
+              positions reflecting those beliefs, produce evidence that moves
+              the community&rsquo;s beliefs, and get rewarded for the movement.
+              Pure speculation without evidence production should be a losing
+              strategy in expectation.
+            </p>
+          </div>
+
+          <div
+            className="rounded-lg border p-6 mt-4"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-3"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              Separate cost from reward
+            </h3>
+            <p className="leading-relaxed mb-3">
+              Many of the tensions above resolve with the same pattern:
+              <strong> separate the cost of entry from the reward for being
+              right.</strong> The cost is a deposit that makes noise and
+              manipulation expensive. The reward is an ex post return that
+              pays back participants who were correct.
+            </p>
+            <ul className="space-y-2 ml-6 list-disc">
+              <li className="leading-relaxed">
+                Consensus positions cost little and earn little (no reward
+                for agreeing with what everyone already knows).
+              </li>
+              <li className="leading-relaxed">
+                Frontier positions cost a moderate deposit and earn large
+                returns if correct, or forfeit the deposit if wrong.
+              </li>
+              <li className="leading-relaxed">
+                The scoring system, not the pricing mechanism, distinguishes
+                information from noise after the fact.
+              </li>
+            </ul>
+          </div>
+
+          <p className="leading-relaxed mt-6">
             This suggests the pricing mechanism and the scoring mechanism are
             two halves of the same system. The price determines the cost of
             entry. The score determines the reward. Neither alone produces
