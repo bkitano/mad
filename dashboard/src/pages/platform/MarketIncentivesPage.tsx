@@ -299,12 +299,15 @@ export default function MarketIncentivesPage() {
           <BlockMath math="P_i = \frac{e^{Q_i / b}}{\sum_j e^{Q_j / b}}" />
 
           <p className="leading-relaxed">
-            where <InlineMath math="P" /> is the vector of spot prices across
-            all positions (e.g., YES and NO in a prediction market),{' '}
+            where <InlineMath math="P" /> is the vector of <em>credences</em>{' '}
+            across all positions (e.g., YES and NO),{' '}
             <InlineMath math="Q" /> is the vector of outstanding share
             quantities, and <InlineMath math="b" /> is a liquidity parameter
-            that controls how sensitive prices are to trades. This is just
-            the <strong>softmax</strong> function:
+            that controls how sensitive credences are to trades. Crucially,{' '}
+            <InlineMath math="P" /> here is <em>not</em> the price you pay
+            for a share &mdash; as we argued above, price and credence need
+            not be the same number. The softmax gives us a credence
+            estimator:
           </p>
 
           <BlockMath math="P = \text{softmax}(Q / b)" />
@@ -368,6 +371,181 @@ export default function MarketIncentivesPage() {
             maker. But whether those properties are the <em>right</em> ones
             for a conjecture market is an open question.
           </p>
+
+          <h3
+            className="text-xl font-bold mt-8"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            An uncertainty market, not a conjecture market
+          </h3>
+
+          <p className="leading-relaxed">
+            If we take the decoupling argument seriously &mdash; credence is
+            not price, and the thing we reward is being right before others
+            &mdash; then we arrive at a reframing of what the market actually
+            trades. It is not really a conjecture market. It is
+            an <em>uncertainty market</em>.
+          </p>
+
+          <p className="leading-relaxed">
+            Here is the invariant we want: things that people believe are
+            true should have low value. The more people believe in a truth,
+            the cheaper it should be to hold. This sounds paradoxical if you
+            think of the market as trading conjectures, where &ldquo;the
+            market believes X&rdquo; should make X valuable. But it makes
+            perfect sense if you think of the market as trading <em>
+            uncertainty</em>.
+          </p>
+
+          <p className="leading-relaxed">
+            When a conjecture is first proposed, uncertainty is high. There
+            is a lot of entropy &mdash; the community genuinely does not know
+            whether it is true. This uncertainty is the scarce resource. As
+            evidence comes in, uncertainty decreases. The credence moves
+            toward 0 or 1, entropy drops, and the conjecture becomes
+            &ldquo;settled.&rdquo; The uncertainty has been consumed by
+            evidence.
+          </p>
+
+          <p className="leading-relaxed">
+            The market, then, is a mechanism for pricing and allocating
+            uncertainty. Early participants are buying uncertainty when it is
+            abundant and unresolved. They are rewarded when that uncertainty
+            is later resolved &mdash; when evidence collapses the entropy.
+            Late participants are buying into a conjecture whose uncertainty
+            has already been consumed; there is little left for them to
+            contribute, and correspondingly little reward.
+          </p>
+
+          <p className="leading-relaxed">
+            This framing clarifies the pricing question. The <em>cost</em>{' '}
+            of a position should be related to the remaining uncertainty
+            &mdash; something like the entropy{' '}
+            <InlineMath math="H(P)" /> of the current credence distribution.
+            Near the extremes (<InlineMath math="P \approx 0" /> or{' '}
+            <InlineMath math="P \approx 1" />), entropy is low, cost is low,
+            and reward is low. Near maximum uncertainty ({' '}
+            <InlineMath math="P \approx 0.5" />), entropy is high, cost is
+            higher, and the potential reward for resolving that uncertainty is
+            large.
+          </p>
+
+          <p className="leading-relaxed">
+            But entropy alone is not enough. Entropy prices the <em>cost</em>{' '}
+            of participation &mdash; how much uncertainty you are buying into.
+            It is symmetric: at <InlineMath math="P = 0.25" /> and{' '}
+            <InlineMath math="P = 0.75" />, the entropy is the same, and
+            so is the cost of taking a position. But the <em>reward</em>{' '}
+            must be directional. Two participants can buy into the same
+            entropy &mdash; one buying YES, one buying NO &mdash; and only
+            one of them should be rewarded, namely the one whose position
+            the consensus eventually moves toward.
+          </p>
+
+          <p className="leading-relaxed">
+            This gives us a clean separation. The cost function is
+            entropy: you pay for uncertainty regardless of which side you
+            take. The reward function is directional: you earn in proportion
+            to how much entropy you bought <em>times</em> how far the
+            consensus moved toward your position. Buying at high entropy in
+            the direction the world eventually goes is the most rewarded
+            action. Buying at high entropy in the wrong direction is the most
+            penalized. Buying at low entropy in either direction is cheap and
+            earns little, because there was little uncertainty left to resolve.
+          </p>
+
+          <p className="leading-relaxed">
+            What is being traded is not belief. It is the <em>resolution of
+            doubt</em> &mdash; and the direction matters.
+          </p>
+
+          <div
+            className="rounded-lg border p-6 mt-6"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-3"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              Historical example: H. pylori and ulcers
+            </h3>
+            <p className="leading-relaxed mb-3">
+              In 1982, Barry Marshall and Robin Warren proposed that peptic
+              ulcers were caused by the bacterium <em>Helicobacter pylori</em>,
+              not by stress or diet. Suppose the conjecture &ldquo;<em>H. pylori</em>{' '}
+              causes peptic ulcers&rdquo; had been on the market.
+            </p>
+            <p className="leading-relaxed mb-3">
+              <strong>1982 &mdash; conjecture proposed.</strong> No one owns
+              any shares. Credence: <InlineMath math="P = 0.50" /> by default.
+              Entropy is at maximum:{' '}
+              <InlineMath math="H = 1.0" /> bit. The cost of a position is
+              high, because the uncertainty is genuinely unresolved and the
+              market has no information. Marshall buys YES. He is buying{' '}
+              <em>peak uncertainty</em>. But note: someone else might look at
+              this conjecture and buy NO, equally convinced the establishment
+              is right. Both pay the same high cost. The entropy prices
+              uncertainty itself, not direction.
+            </p>
+            <p className="leading-relaxed mb-3">
+              <strong>1983&ndash;1984 &mdash; early evidence.</strong> Marshall
+              cultures the bacterium, then famously drinks a petri dish of it
+              and develops gastritis. A handful of researchers take notice,
+              but most of the establishment doubles down on the stress
+              hypothesis. Credence shifts to{' '}
+              <InlineMath math="P \approx 0.25" /> &mdash; more people are
+              actively buying NO than YES. Entropy drops slightly:{' '}
+              <InlineMath math="H \approx 0.81" /> bits. The cost of a
+              position has come down, but only slightly &mdash; there is
+              still plenty of unresolved uncertainty.
+            </p>
+            <p className="leading-relaxed mb-3">
+              Here is where directionality matters. The NO buyers at{' '}
+              <InlineMath math="P = 0.25" /> paid into real uncertainty, but
+              they bought in the direction the consensus would eventually move{' '}
+              <em>away from</em>. Their shares should lose value as the
+              credence later swings toward YES. The reward is not just
+              &ldquo;you bought at high entropy&rdquo; &mdash; it is
+              &ldquo;you bought at high entropy <em>and</em> the consensus
+              moved toward your position.&rdquo; Buying uncertainty in the
+              wrong direction is a losing trade.
+            </p>
+            <p className="leading-relaxed mb-3">
+              <strong>1990s &mdash; accumulating trials.</strong> Randomized
+              controlled trials show that antibiotic treatment cures ulcers.
+              The evidence is hard to deny. Credence climbs:{' '}
+              <InlineMath math="P \approx 0.75" />. Entropy:{' '}
+              <InlineMath math="H \approx 0.81" /> bits. New participants can
+              still buy YES, but the entropy is symmetric around 0.50
+              &mdash; a credence of 0.75 has the same entropy as 0.25. The
+              difference is that Marshall&rsquo;s YES shares, bought when the
+              consensus was against him, have been gaining value the entire
+              way. A new YES buyer at 0.75 is joining an emerging consensus;
+              their potential upside is the remaining distance
+              to <InlineMath math="P = 1" />, not the full journey from 0.50.
+            </p>
+            <p className="leading-relaxed mb-3">
+              <strong>2005 &mdash; Nobel Prize.</strong> Marshall and Warren
+              receive the Nobel Prize in Physiology or Medicine. Credence:{' '}
+              <InlineMath math="P \approx 0.99" />. Entropy:{' '}
+              <InlineMath math="H \approx 0.08" /> bits. The conjecture is
+              settled. A YES position now costs almost nothing and earns
+              almost nothing &mdash; there is no uncertainty left to resolve.
+              The NO holders from 1984 have long since lost their stakes.
+            </p>
+            <p className="leading-relaxed">
+              The lesson: entropy determines the <em>cost</em> of participation
+              &mdash; how much uncertainty you are buying into. But the{' '}
+              <em>reward</em> is directional: you are rewarded in proportion to
+              how much entropy you bought <em>times</em> how far the consensus
+              moved toward your position. Marshall at{' '}
+              <InlineMath math="H = 1.0" /> buying YES earned the most,
+              because he bore maximum uncertainty in the direction that
+              turned out to be right. The establishment doctors who bought NO
+              at the same entropy earned nothing &mdash; they bore the same
+              uncertainty but the world moved the other way.
+            </p>
+          </div>
 
           <h3
             className="text-xl font-bold mt-8"
