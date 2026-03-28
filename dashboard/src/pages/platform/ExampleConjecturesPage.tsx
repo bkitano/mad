@@ -388,6 +388,80 @@ export default function ExampleConjecturesPage() {
             </p>
           </section>
 
+          <section>
+            <h2
+              className="text-xl font-bold mb-4"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              Informal quality scorecard
+            </h2>
+            <p className="leading-relaxed mb-4">
+              The following scorecard is not enforced or calculated by the
+              system. It is an informal heuristic &mdash; a way for
+              participants to quickly assess whether a conjecture is likely
+              to be useful as a market instrument before they invest time or
+              capital. Think of it as a checklist, not a formula.
+            </p>
+            <ul className="space-y-3 ml-6 list-disc">
+              <li className="leading-relaxed">
+                <strong>Entropy sensitivity to evidence.</strong> Does new
+                evidence move the credence? Tautological and unfalsifiable
+                conjectures score zero.
+              </li>
+              <li className="leading-relaxed">
+                <strong>Spread width.</strong> Tight means participants
+                agree on what the conjecture means. Wide often signals
+                definitional ambiguity, not genuine uncertainty.
+              </li>
+              <li className="leading-relaxed">
+                <strong>Volume and diversity.</strong> High volume from
+                diverse participants means downstream relevance. Low or
+                concentrated volume means isolation.
+              </li>
+              <li className="leading-relaxed">
+                <strong>Downstream conjecture count.</strong> Does it spawn
+                sub-conjectures? Zero downstream connections means a dead
+                end.
+              </li>
+              <li className="leading-relaxed">
+                <strong>Resolution criteria clarity.</strong> Can
+                participants agree on what evidence would move the credence
+                to 0.95 or 0.05?
+              </li>
+              <li className="leading-relaxed">
+                <strong>Entropy contribution to portfolio.</strong> Does
+                holding this add remaining uncertainty to your portfolio, or
+                is it dead weight?
+              </li>
+            </ul>
+            <div
+              className="rounded-lg border p-6 mt-6"
+              style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+            >
+              <h3
+                className="text-sm font-semibold uppercase tracking-widest mb-4"
+                style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+              >
+                Worked examples
+              </h3>
+              <p className="leading-relaxed mb-4">
+                <strong>&ldquo;In efficient markets, all available
+                information is reflected in asset prices.&rdquo;</strong>{' '}
+                Entropy sensitivity 0/10, spread 9/10 (wide), volume 1/10,
+                downstream 0, resolution clarity 0/10, entropy contribution
+                0. A tautology with no market value.
+              </p>
+              <p className="leading-relaxed">
+                <strong>&ldquo;Transformer models with fewer than 1B
+                parameters can achieve &gt;90% accuracy on
+                MATH.&rdquo;</strong>{' '}
+                Entropy sensitivity 8/10, spread 2/10 (tight), volume 7/10,
+                downstream 4+, resolution clarity 9/10, entropy contribution
+                7/10. A well-formed conjecture that the market can process.
+              </p>
+            </div>
+          </section>
+
         </div>
       </div>
     </div>

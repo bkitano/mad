@@ -73,11 +73,178 @@ export default function HelloWorldPage() {
           </div>
 
           <p className="leading-relaxed">
-            This is the fundamental unit of participation: you hold conjectures, and your
-            portfolio value tracks how well your scientific judgment aligns with the evidence
-            as it unfolds. We call this your <strong>portfolio veracity
-            consensus</strong>&mdash;a single time series that captures, in aggregate, how
-            good your bets on the truth have been.
+            This is the fundamental unit of participation: you hold
+            conjectures, and your portfolio value tracks how well your
+            scientific judgment aligns with the evidence as it unfolds.
+          </p>
+
+          <h2
+            className="text-2xl font-bold mt-10"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Making a trade
+          </h2>
+
+          <p className="leading-relaxed">
+            When you buy or sell a conjecture, you are making a <strong>
+            trade</strong>. A trade has two optional attachments:
+          </p>
+
+          <ul className="space-y-3 ml-6 list-disc">
+            <li className="leading-relaxed">
+              <strong>Evidence.</strong> You can attach the reasoning or
+              data that motivated your trade &mdash; a paper, a dataset,
+              an argument, a link to an experimental result. This is not
+              required. You can trade on pure intuition. But attaching
+              evidence is how the market learns <em>why</em> credences
+              should move, not just that someone thinks they should.
+            </li>
+            <li className="leading-relaxed">
+              <strong>Visibility.</strong> Both your trade and your evidence
+              can independently be set to <strong>public</strong> or{' '}
+              <strong>private</strong>. This creates four combinations:
+            </li>
+          </ul>
+
+          <div
+            className="rounded-lg border p-6 mt-4"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <ul className="space-y-3">
+              <li className="leading-relaxed">
+                <strong>Public trade, public evidence.</strong> Everyone can
+                see that you bought the conjecture and why. This is the most
+                informative signal to the market &mdash; it moves credence
+                and gives the community a reason to update. This is what you
+                do when you want to convince people.
+              </li>
+              <li className="leading-relaxed">
+                <strong>Public trade, private evidence.</strong> Everyone can
+                see you took a position, but not why. The market knows
+                someone with skin in the game believes something, but
+                can&rsquo;t evaluate the reasoning. This is useful when your
+                evidence is proprietary or pre-publication and you want to
+                establish priority without revealing the details.
+              </li>
+              <li className="leading-relaxed">
+                <strong>Private trade, public evidence.</strong> You publish
+                evidence that should move the credence, but no one knows
+                you&rsquo;re positioned to benefit. This separates the
+                intellectual contribution from the financial position. The
+                evidence stands on its own merits.
+              </li>
+              <li className="leading-relaxed">
+                <strong>Private trade, private evidence.</strong> A silent
+                position. The market registers the trade&rsquo;s effect on
+                credence (if it uses an AMM, the credence still moves), but
+                no one knows who traded or why. This is the default for
+                participants who want to accumulate positions without
+                signaling.
+              </li>
+            </ul>
+          </div>
+
+          <p className="leading-relaxed mt-4">
+            The visibility choices create different incentive dynamics.
+            Public evidence with a public trade is the strongest signal and
+            typically moves the credence the most, because the community can
+            evaluate both the claim and the reasoning. A private trade with
+            no evidence still affects the credence through the pricing
+            mechanism, but gives the community nothing to update on beyond
+            the price movement itself.
+          </p>
+
+          <h2
+            className="text-2xl font-bold mt-10"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Bundles
+          </h2>
+
+          <p className="leading-relaxed">
+            When you buy a conjecture, you rarely believe it in isolation.
+            If you believe &ldquo;AlphaFold-class models generalize to
+            disordered proteins,&rdquo; you probably also believe a set of
+            upstream conjectures that make it plausible: &ldquo;attention
+            mechanisms can capture long-range residue interactions,&rdquo;
+            &ldquo;disordered proteins have learnable structural
+            regularities,&rdquo; and so on. These beliefs are implicit in
+            your purchase of the original conjecture.
+          </p>
+
+          <p className="leading-relaxed">
+            The market makes this explicit through <strong>bundles</strong>.
+            When you buy a conjecture, you also buy all the conjectures you
+            believe as a consequence &mdash; the upstream dependencies that
+            make your target conjecture coherent. This is not optional
+            metadata; it is the core mechanism by which the market learns
+            what depends on what.
+          </p>
+
+          <div
+            className="rounded-lg border p-6"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-4"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              Example
+            </h3>
+            <p className="leading-relaxed mb-4">
+              You believe conjecture B: &ldquo;CRISPR base editing achieves
+              &gt;90% efficiency in primary human T cells.&rdquo; When you
+              buy B, you also buy conjecture A: &ldquo;Cas9 variants can
+              be engineered for higher fidelity&rdquo; &mdash; because
+              if A is false, B is much less likely. Your bundle is {'{'}A,
+              B{'}'}.
+            </p>
+            <p className="leading-relaxed mb-4">
+              Another participant buys B but bundles it with C: &ldquo;Lipid
+              nanoparticle delivery achieves sufficient nuclear
+              uptake.&rdquo; Their bundle is {'{'}B, C{'}'}. A third
+              participant buys A, B, and C together.
+            </p>
+            <p className="leading-relaxed">
+              The market now has three bundles. The overlap tells it
+              something: A and B are correlated (two out of three bundles
+              contain both), B and C are correlated (two out of three), and
+              A and C are weakly correlated (one out of three &mdash; only
+              through the third participant). As more participants trade and
+              more bundles accumulate, the co-occurrence matrix becomes a
+              richer and richer signal of which conjectures the community
+              believes are logically connected.
+            </p>
+          </div>
+
+          <p className="leading-relaxed">
+            Bundles serve two purposes simultaneously. First, they ensure
+            that when you take a position, you are expressing your full
+            belief structure &mdash; not just an isolated opinion on one
+            claim, but the web of claims you think must be true for that
+            one claim to hold. Second, the aggregate pattern of bundles
+            across all participants is the raw data from which the market
+            infers its dependency graph (see{' '}
+            <Link
+              to="/platform/bayesian-networks"
+              className="underline"
+              style={{ color: 'var(--accent)' }}
+            >
+              Bayesian Networks
+            </Link>
+            ). No one declares the graph. It emerges from the overlapping
+            structure of what people buy together.
+          </p>
+
+          <p className="leading-relaxed">
+            This also means your reward is not just about one conjecture.
+            When evidence validates B and drives its credence up, your
+            position in A also benefits &mdash; because you bundled them
+            together, expressing a belief that they are linked. If the
+            market agrees (because many other bundles also link A and B),
+            the credence update propagates. You are rewarded not just for
+            being right about B, but for correctly identifying that A and B
+            are connected.
           </p>
 
           <div

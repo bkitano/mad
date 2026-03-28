@@ -26,11 +26,38 @@ export default function ScoringMetricsPage() {
             className="text-lg leading-relaxed"
             style={{ fontFamily: 'var(--font-body)', color: 'var(--ink-muted)' }}
           >
-            How the conjecture market measures performance: portfolio value, attribution graphs, trade history, and conjecture impact.
+            How the conjecture market measures performance: portfolio value,
+            attribution graphs, trade history, and conjecture impact.
           </p>
         </header>
 
         <div className="space-y-6" style={{ fontFamily: 'var(--font-body)', color: 'var(--ink)' }}>
+
+          {/* --- Credence, Cost, Reward --- */}
+          <h2
+            className="text-2xl font-bold mt-10"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Three numbers, not one
+          </h2>
+
+          <p className="leading-relaxed">
+            The scoring system rests on the separation described in{' '}
+            <Link
+              to="/platform/market-incentives"
+              className="underline"
+              style={{ color: 'var(--accent)' }}
+            >
+              Market Incentives
+            </Link>
+            : each conjecture carries a <strong>credence</strong> (the
+            community&rsquo;s aggregate belief, between 0 and 1), each
+            position has an entropy-derived <strong>cost</strong> (what you
+            paid to enter), and each participant earns a directional{' '}
+            <strong>reward</strong> (how much the consensus moved toward
+            their position after entry). These are not the same number.
+            The scoring system is built on the reward, not the credence.
+          </p>
 
           {/* --- Portfolio Value --- */}
           <h2
@@ -41,30 +68,51 @@ export default function ScoringMetricsPage() {
           </h2>
 
           <p className="leading-relaxed">
-            Your portfolio value is the primary measure of how well your scientific
-            judgment tracks with the evolving evidence. It is computed as the sum of
-            your positions, each weighted by the current market credence of the
-            conjecture:
+            Your portfolio value measures how well your scientific judgment
+            has tracked with the evolving evidence. It is <em>not</em> simply
+            shares times current credence &mdash; that would reward anyone
+            who accumulates cheap consensus positions. Instead, portfolio
+            value is a function of <em>when</em> you entered each position,{' '}
+            <em>how much uncertainty you bore</em>, and <em>how far the
+            consensus moved toward you</em>.
+          </p>
+
+          <p className="leading-relaxed">
+            For each position, the contribution to portfolio value depends on
+            three quantities: the entropy at entry{' '}
+            <InlineMath math="H(P_{t_0})" />, the credence at entry{' '}
+            <InlineMath math="P_{t_0}(A)" />, and the current credence{' '}
+            <InlineMath math="P_t(A)" />. The directional reward for a YES
+            position is:
           </p>
 
           <div className="overflow-x-auto">
-            <BlockMath math="V_t = \sum_{A \in \text{Portfolio}} n_i(A) \cdot p_t(A)" />
+            <BlockMath math="r_i(A, t) = H(P_{t_0}) \cdot \big(P_t(A) - P_{t_0}(A)\big)" />
           </div>
 
           <p className="leading-relaxed">
-            where <InlineMath math="n_i(A)" /> is your share count in conjecture{' '}
-            <InlineMath math="A" /> and <InlineMath math="p_t(A)" /> is the
-            community&rsquo;s current credence&mdash;a number between 0 and 1.
-            As new evidence is published and the community updates its beliefs,
-            prices move and your portfolio value moves with them.
+            The entropy term <InlineMath math="H(P_{t_0})" /> weights by
+            how much uncertainty you bought into. The directional
+            term <InlineMath math="P_t(A) - P_{t_0}(A)" /> captures whether
+            the consensus moved toward your position (positive) or away from
+            it (negative). A NO position uses{' '}
+            <InlineMath math="P_{t_0}(A) - P_t(A)" /> instead. Total
+            portfolio value is:
           </p>
 
+          <div className="overflow-x-auto">
+            <BlockMath math="V_t = \sum_{A \in \text{Portfolio}} n_i(A) \cdot r_i(A, t)" />
+          </div>
+
           <p className="leading-relaxed">
-            Unlike traditional prediction markets that settle on binary outcomes,
-            portfolio value in the conjecture market is <strong>continuously
-            evaluated</strong>. There is no final resolution date. Instead, your
-            portfolio appreciates or depreciates as the community&rsquo;s beliefs
-            shift over time.
+            This means two participants holding the same number of shares of
+            the same conjecture at the same current credence can have very
+            different portfolio values, because they entered at different
+            times under different levels of uncertainty. The participant who
+            bought at <InlineMath math="H = 1.0" /> and rode the credence
+            from 0.50 to 0.90 has a far more valuable position than one who
+            bought at <InlineMath math="H = 0.08" /> when the credence was
+            already 0.95.
           </p>
 
           <div
@@ -78,163 +126,25 @@ export default function ScoringMetricsPage() {
               Example
             </h3>
             <p className="leading-relaxed mb-4">
-              You hold 50 shares of &ldquo;CRISPR base editing achieves &gt;90%
-              efficiency in primary human T cells&rdquo; at a current credence of
-              0.40, and 30 shares of &ldquo;Long-context transformers scale
-              sub-quadratically&rdquo; at 0.65.
+              You hold 50 YES shares of &ldquo;CRISPR base editing achieves
+              &gt;90% efficiency in primary human T cells&rdquo; bought when
+              credence was 0.30 (<InlineMath math="H \approx 0.88" /> bits).
+              Current credence is 0.55. You also hold 30 YES shares of
+              &ldquo;Long-context transformers scale sub-quadratically&rdquo;
+              bought when credence was 0.60 (<InlineMath math="H \approx 0.97" />{' '}
+              bits). Current credence is 0.65.
             </p>
             <p className="leading-relaxed">
               Your portfolio value is{' '}
-              <InlineMath math="50 \times 0.40 + 30 \times 0.65 = 39.50" />. If new
-              experimental results push the CRISPR conjecture to 0.55, your portfolio
-              rises to{' '}
-              <InlineMath math="50 \times 0.55 + 30 \times 0.65 = 47.00" />&mdash;a
-              gain driven entirely by evidence, not by trading.
-            </p>
-          </div>
-
-          {/* --- Portfolio Veracity Consensus --- */}
-          <h2
-            className="text-2xl font-bold mt-10"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            Portfolio Veracity Consensus
-          </h2>
-
-          <p className="leading-relaxed">
-            Your <strong>portfolio veracity consensus</strong> is the time series of
-            your portfolio value. It captures, in aggregate, how well your bets on
-            the truth have held up over time. A consistently rising portfolio
-            veracity consensus signals that you have been positioning ahead of the
-            evidence&mdash;identifying which conjectures the community would come to
-            believe before the evidence arrived.
-          </p>
-
-          <p className="leading-relaxed">
-            This single curve replaces blunt proxies like h-index or citation count.
-            It is visible, verifiable, and independent of institutional affiliation
-            or publication venue.
-          </p>
-
-          {/* --- Rolling Scores --- */}
-          <h2
-            className="text-2xl font-bold mt-10"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            Rolling Scores
-          </h2>
-
-          <p className="leading-relaxed">
-            Because conjectures rarely admit final resolution, the market does not
-            pay out on binary settlement. Instead, contributors are scored on how
-            much their updates improve future predictive performance. When you move
-            the market from <InlineMath math="p_t(A)" /> to{' '}
-            <InlineMath math="p_t'(A)" />, your reward depends on whether that move
-            is later validated by evidence.
-          </p>
-
-          <p className="leading-relaxed">
-            Each conjecture <InlineMath math="A" /> carries a set of observable
-            implications <InlineMath math="Y_A = \{y_1, \dots, y_n\}" />, each with
-            a forecast horizon. Your update is scored against later observations
-            using a proper scoring rule:
-          </p>
-
-          <div className="overflow-x-auto">
-            <BlockMath math="\text{Reward}_i(A) = \sum_{y \in Y_A} w_y \left[ S\!\left(p^{(i)}_t(y),\, o_y\right) - S\!\left(p^{(-i)}_t(y),\, o_y\right) \right]" />
-          </div>
-
-          <p className="leading-relaxed">
-            where <InlineMath math="S" /> is a proper scoring rule such as log
-            score, <InlineMath math="p^{(i)}_t(y)" /> is the forecast path with
-            your update, and <InlineMath math="p^{(-i)}_t(y)" /> is the
-            counterfactual without it. This means you are rewarded for{' '}
-            <strong>marginal improvement in calibrated future prediction</strong>,
-            not for claiming certainty about <InlineMath math="A" /> itself.
-          </p>
-
-          <div
-            className="rounded-lg border p-6"
-            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
-          >
-            <h3
-              className="text-sm font-semibold uppercase tracking-widest mb-4"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
-            >
-              Delayed vesting
-            </h3>
-            <p className="leading-relaxed mb-4">
-              To prevent noise from being permanently capitalized, rewards vest over
-              multiple horizons:
-            </p>
-            <div className="overflow-x-auto">
-              <BlockMath math="\text{Payout}_i(t) = \sum_{\Delta \in H} \alpha_\Delta \, \text{Reward}_i^{(t+\Delta)}" />
-            </div>
-            <p className="leading-relaxed">
-              with horizons <InlineMath math="H" /> like 3 months, 1 year, and 3
-              years. This makes rewards provisional and continuously revised. If
-              later evidence reverses your contribution, your payout decreases.
-            </p>
-          </div>
-
-          {/* --- Attribution Graphs --- */}
-          <h2
-            className="text-2xl font-bold mt-10"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            Attribution Graphs
-          </h2>
-
-          <p className="leading-relaxed">
-            Science is not a flat list of independent claims. Conjectures depend on
-            other conjectures. The market represents these relationships as a
-            directed graph where edges carry <strong>diagnostic weights</strong>&mdash;how
-            much evidence for one conjecture tells you about another.
-          </p>
-
-          <p className="leading-relaxed">
-            If conjecture <InlineMath math="B" /> depends on{' '}
-            <InlineMath math="A" /> and other conjectures{' '}
-            <InlineMath math="X" />, the system tracks:
-          </p>
-
-          <div className="overflow-x-auto">
-            <BlockMath math="\text{Information contributed to } A \text{ by update on } B \;\propto\; \log \frac{P(B \mid A, X)}{P(B \mid \neg A, X)}" />
-          </div>
-
-          <p className="leading-relaxed">
-            This likelihood ratio determines how much evidence flows upstream
-            through the graph. If <InlineMath math="B" /> would have been likely
-            regardless of whether <InlineMath math="A" /> is true, then observing{' '}
-            <InlineMath math="B" /> tells you nothing about{' '}
-            <InlineMath math="A" />. But if <InlineMath math="B" /> heavily depends
-            on <InlineMath math="A" />, then confirming <InlineMath math="B" />{' '}
-            provides strong evidence for <InlineMath math="A" />.
-          </p>
-
-          <div
-            className="rounded-lg border p-6"
-            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
-          >
-            <h3
-              className="text-sm font-semibold uppercase tracking-widest mb-4"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
-            >
-              Upstream royalties
-            </h3>
-            <p className="leading-relaxed mb-4">
-              When someone submits evidence on a downstream conjecture{' '}
-              <InlineMath math="B" />, a portion of their submission fee flows
-              upstream to the ancestors of <InlineMath math="B" /> with geometric
-              decay:
-            </p>
-            <div className="overflow-x-auto">
-              <BlockMath math="w_u(B) = \frac{\lambda^{d(u,B)}}{\sum_{v \in \mathrm{Anc}(B)} \lambda^{d(v,B)}}, \qquad 0 < \lambda < 1" />
-            </div>
-            <p className="leading-relaxed">
-              where <InlineMath math="d(u,B)" /> is the graph distance. Holders of
-              upstream conjectures earn residuals from downstream activity&mdash;founders
-              of genuinely useful ideas are rewarded as the research tree grows.
+              <InlineMath math="50 \times 0.88 \times (0.55 - 0.30) + 30 \times 0.97 \times (0.65 - 0.60) = 11.0 + 1.46 = 12.46" />.
+              The CRISPR position dominates because you entered at higher
+              entropy and the consensus has moved further toward you. The
+              transformer position is worth less despite high entry entropy,
+              because the credence has only moved 0.05 in your direction. If
+              new results push the CRISPR conjecture to 0.70, that position
+              alone rises to{' '}
+              <InlineMath math="50 \times 0.88 \times 0.40 = 17.6" />{' '}
+              &mdash; a gain driven by evidence confirming your early conviction.
             </p>
           </div>
 
@@ -247,37 +157,27 @@ export default function ScoringMetricsPage() {
           </h2>
 
           <p className="leading-relaxed">
-            Every position change is recorded as a trade. Your trade history is the
-            complete log of when you bought or sold positions, at what price, and
+            Every position change is recorded as a trade. Your trade history
+            is the complete log of when you bought or sold positions, the
+            entropy at the time of entry, the direction of your position, and
             what evidence you attached. This record serves several purposes:
           </p>
 
           <ul className="space-y-3 ml-6 list-disc">
             <li className="leading-relaxed">
-              <strong>Calibration tracking.</strong> Over many trades, the market can
-              assess whether you are well-calibrated&mdash;when you buy at 0.70, are
-              the conjectures later confirmed roughly 70% of the time? Long-run
-              calibration determines your trust weight in the system.
+              <strong>Calibration tracking.</strong> Over many trades, the
+              market can assess whether you are well-calibrated &mdash; do
+              your directional bets track with where the consensus eventually
+              moves? Long-run calibration determines your trust weight in
+              the system.
             </li>
             <li className="leading-relaxed">
-              <strong>Timing signal.</strong> Buying early&mdash;before the evidence
-              is widely available&mdash;is worth more than buying late. Your trade
-              timestamps establish priority.
-            </li>
-            <li className="leading-relaxed">
-              <strong>Staking and evidence.</strong> Each trade that proposes a price
-              update requires a stake and attached evidence. The stake limits the
-              magnitude of the price move you can propose:
+              <strong>Entropy at entry.</strong> The timestamp and the
+              credence distribution at the time of each trade determine the
+              entropy you bought into. This is the core input to the reward
+              function and cannot be reconstructed without the trade record.
             </li>
           </ul>
-
-          <div className="overflow-x-auto ml-6">
-            <BlockMath math="\left|\operatorname{logit}\, p_t'(A) - \operatorname{logit}\, p_t(A)\right| \le c \log(1 + s_j)" />
-          </div>
-
-          <p className="leading-relaxed ml-6">
-            Large claims require large stakes, making manipulation expensive.
-          </p>
 
           <div
             className="rounded-lg border p-6"
@@ -290,21 +190,38 @@ export default function ScoringMetricsPage() {
               Historical example: Helicobacter pylori
             </h3>
             <p className="leading-relaxed mb-4">
-              In 1982, Barry Marshall and Robin Warren proposed that stomach ulcers
-              were caused by the bacterium <em>Helicobacter pylori</em>, not by
-              stress or diet. This was dismissed by nearly all gastroenterologists.
-              A conjecture like &ldquo;most gastric ulcers are caused by bacterial
-              infection&rdquo; would have been priced near 0.05.
+              In 1982, Barry Marshall and Robin Warren proposed that stomach
+              ulcers were caused by the bacterium <em>Helicobacter
+              pylori</em>, not by stress or diet. Suppose the conjecture had
+              been on the market.
+            </p>
+            <p className="leading-relaxed mb-4">
+              At proposal, no one owns shares. Credence:{' '}
+              <InlineMath math="P = 0.50" />. Entropy:{' '}
+              <InlineMath math="H = 1.0" /> bit. Marshall buys YES at peak
+              uncertainty. His entry cost is high &mdash; he is buying into
+              maximum entropy. Simultaneously, establishment
+              gastroenterologists buy NO, equally convinced. Both sides pay
+              the same entropy-derived cost.
+            </p>
+            <p className="leading-relaxed mb-4">
+              Marshall submits evidence: he cultures the bacterium, drinks a
+              petri dish of it, develops gastritis. The credence shifts, but
+              slowly &mdash; most of the community doubles down on the
+              stress hypothesis. The NO holders are paying into real
+              uncertainty, but their position is directionally wrong. As
+              RCTs accumulate through the 1990s and credence climbs toward
+              0.90, Marshall&rsquo;s reward grows:{' '}
+              <InlineMath math="H(P_{t_0}) \cdot (P_t - P_{t_0}) = 1.0 \times (0.90 - 0.50) = 0.40" />{' '}
+              per share. The NO holders&rsquo; positions lose value by
+              the same logic: they bore entropy in the wrong direction.
             </p>
             <p className="leading-relaxed">
-              Marshall famously drank a petri dish of the bacteria to prove his
-              point. In the conjecture market, his early trade&mdash;buying at
-              0.05&mdash;and his subsequent evidence submission would be recorded
-              with exact timestamps. As antibiotic treatment protocols confirmed the
-              link through the late 1980s and 1990s, the price would have risen
-              steadily. His trade history would show conviction at the right time,
-              backed by evidence that moved the market in a direction later validated
-              by the entire field.
+              His trade history shows conviction at peak entropy, evidence
+              submission that moved the credence, and directional reward
+              that accumulated as the field caught up. The establishment
+              doctors who bought NO at the same entropy have the opposite
+              record &mdash; same cost, opposite return.
             </p>
           </div>
 
@@ -317,103 +234,196 @@ export default function ScoringMetricsPage() {
           </h2>
 
           <p className="leading-relaxed">
-            Total conjecture impact measures the cumulative effect of your
-            contributions across the entire conjecture graph. It combines two
-            components: the direct score improvement from your evidence submissions,
-            and the indirect value that flows through the attribution graph as
-            downstream conjectures build on your work.
+            Impact is bidirectional. It flows <em>upstream</em>: when your
+            evidence for conjecture B improves the posterior on conjecture A
+            (because B depends on A), that improvement to A counts as your
+            impact. And it flows <em>downstream</em>: when future
+            conjectures are created that depend on your conjecture A, and
+            evidence on those downstream conjectures generates trading
+            activity and credence updates, the value that propagates back up
+            to A is also your impact. You earn impact in both directions
+            &mdash; for the conjectures you build on, and for the
+            conjectures that build on you.
           </p>
 
-          <div className="overflow-x-auto">
-            <BlockMath math="\text{Impact}_i = \sum_{t,\, y} \alpha_t \, w_y \left[ S\!\left(p^{(i)}_t(y),\, o_y\right) - S\!\left(p^{(-i)}_t(y),\, o_y\right) \right]" />
-          </div>
+          <h3
+            className="text-xl font-bold mt-8"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            The counterfactual
+          </h3>
 
           <p className="leading-relaxed">
-            This is a Shapley-style attribution: your impact is the difference
-            between the world with your contributions and the counterfactual world
-            without them, measured across all affected predictions and time
-            horizons. In practice, the system approximates this via sequential
-            log-score decomposition.
+            The core idea is simple: we compare the world where you
+            contributed to the world where you didn&rsquo;t. The hard part
+            is constructing that second world. Let&rsquo;s walk through it
+            step by step.
           </p>
 
           <div
-            className="rounded-lg border p-6"
+            className="rounded-lg border p-6 mt-6"
             style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
           >
             <h3
               className="text-sm font-semibold uppercase tracking-widest mb-4"
               style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
             >
-              What high impact looks like
+              Example: CRISPR efficiency
             </h3>
-            <ul className="space-y-3">
-              <li className="leading-relaxed">
-                <strong>Direct evidence.</strong> You submit a replication or
-                counter-evidence that significantly moves a conjecture&rsquo;s price,
-                and the move is later validated.
-              </li>
-              <li className="leading-relaxed">
-                <strong>Foundational conjectures.</strong> You create a conjecture
-                that spawns many downstream conjectures, each generating trade volume
-                and evidence. Upstream royalties accrue to you as the tree grows.
-              </li>
-              <li className="leading-relaxed">
-                <strong>Cross-domain connections.</strong> You link conjectures from
-                different fields, creating new diagnostic edges in the attribution
-                graph that improve predictive performance for both communities.
-              </li>
-            </ul>
+
+            <p className="leading-relaxed mb-4">
+              Consider the conjecture B: &ldquo;CRISPR base editing achieves
+              &gt;90% efficiency in primary human T cells.&rdquo; It depends
+              on conjecture A: &ldquo;Cas9 variants can be engineered for
+              higher fidelity.&rdquo; B has one key observable
+              implication <InlineMath math="y" />: the next published
+              efficiency benchmark for base editing in T cells.
+            </p>
+
+            <p className="leading-relaxed mb-4">
+              <strong>Step 1: Snapshot the market before you act.</strong>{' '}
+              The credence on B is <InlineMath math="P = 0.30" /> (entropy{' '}
+              <InlineMath math="H \approx 0.88" /> bits). The credence on A
+              is <InlineMath math="P = 0.50" />. This is the state of the
+              world without your contribution. We record this as the
+              counterfactual forecast:{' '}
+              <InlineMath math="p^{(-i)}_t(y) = 0.30" /> &mdash; in the
+              world without you, the market thinks there is a 30% chance the
+              next benchmark exceeds 90%.
+            </p>
+
+            <p className="leading-relaxed mb-4">
+              <strong>Step 2: You contribute.</strong> You submit a paper
+              showing a new Cas9 variant with dramatically higher fidelity.
+              The market reads the evidence and updates B to{' '}
+              <InlineMath math="P(B) = 0.55" />. The gap between 0.55
+              and 0.30 is your claimed marginal improvement. But a claim is
+              not impact &mdash; the question is whether the community
+              eventually converges toward your update or away from it.
+            </p>
+
+            <p className="leading-relaxed mb-4">
+              <strong>Step 3: Downstream evidence validates you.</strong>{' '}
+              Six months later, an independent lab creates conjecture D:
+              &ldquo;Lab X achieved 93% base editing efficiency in primary
+              human T cells using protocol Y.&rdquo; This is a specific,
+              verifiable claim. If the community finds D credible &mdash;
+              the protocol is reproducible, the data is clean &mdash; then
+              D trivially updates the posterior on B. Not causally (D
+              didn&rsquo;t make B true), but syllogistically: if D is true,
+              then B is very likely true, because D is an instance of the
+              general claim B makes.
+            </p>
+
+            <p className="leading-relaxed mb-4">
+              There is no oracle that declares &ldquo;reality.&rdquo; What
+              happens is that new conjectures and evidence enter the market,
+              and the community updates on them. D drives B&rsquo;s
+              credence from 0.55 toward 0.95. The market&rsquo;s credence
+              on B has now moved substantially in the direction your
+              evidence predicted. We can score both worlds: the world where
+              your evidence had moved B to 0.55 before D arrived (so the
+              market was already most of the way there), versus the world
+              where B was still at 0.30 when D arrived (so D had to do all
+              the work). Using log score &mdash;{' '}
+              <InlineMath math="S(p, o) = o \ln(p) + (1 - o) \ln(1 - p)" />{' '}
+              &mdash; the market that had your evidence was in a better
+              position to absorb D:{' '}
+              <InlineMath math="S(0.55, 1) \approx -0.60" /> vs.{' '}
+              <InlineMath math="S(0.30, 1) \approx -1.20" />. Your marginal
+              improvement: 0.60 log-score units.
+            </p>
+
+            <p className="leading-relaxed mb-4">
+              <strong>Step 4: Entropy weighting.</strong> You contributed
+              when B&rsquo;s entropy was 0.88 bits. Your direct impact on
+              B: <InlineMath math="0.88 \times 0.60 = 0.53" />.
+            </p>
+
+            <p className="leading-relaxed mb-4">
+              <strong>Step 5: Upstream impact.</strong> Your evidence for B
+              also moved the credence on A, because the market believes B
+              depends on A. Before your paper, A was at 0.50. After, A
+              moved to 0.60 &mdash; the market infers that if a high-fidelity
+              Cas9 variant works this well, the general conjecture that Cas9
+              can be engineered for higher fidelity is more likely. The
+              impact on A is calculated the same way: what did the market
+              forecast for A&rsquo;s implications before your evidence vs.
+              after, scored against what eventually happens? You get credit
+              for the upstream improvement too, discounted by the graph
+              distance between B and A.
+            </p>
+
+            <p className="leading-relaxed">
+              <strong>Step 6: Downstream impact (over time).</strong> Later,
+              someone creates conjecture C: &ldquo;Base-edited T cells show
+              durable engraftment in vivo,&rdquo; which depends on B. When
+              evidence for C arrives and propagates back to B, improving
+              B&rsquo;s prediction track record, you earn additional impact
+              &mdash; because your earlier contribution to B made the whole
+              downstream branch of the graph possible. This is the
+              downstream direction: future work that builds on your
+              conjecture generates impact that flows back to you.
+            </p>
           </div>
 
-          {/* --- Conjecture Equity --- */}
-          <h2
-            className="text-2xl font-bold mt-10"
+          <h3
+            className="text-xl font-bold mt-8"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            Conjecture Equity
-          </h2>
+            How the counterfactual is constructed
+          </h3>
 
           <p className="leading-relaxed">
-            Each conjecture maintains a cap table separate from its credence.
-            Credence <InlineMath math="p_t(A)" /> reflects the community&rsquo;s
-            belief; equity <InlineMath math="\theta_i^t(A)" /> reflects who has
-            contributed value. This separation is important&mdash;if the same token
-            both sets belief and captures royalties, the system is too easy to game.
+            The counterfactual &mdash; the world without you &mdash; is the
+            credence the market would have had if your evidence had never
+            been submitted. In the simplest case, this is just the snapshot
+            of credences immediately before your contribution. The market was
+            at 0.30, you moved it to 0.55, so the counterfactual is 0.30.
           </p>
 
           <p className="leading-relaxed">
-            When you submit evidence that improves a conjecture&rsquo;s rolling
-            score, you are minted new shares proportional to the validated
-            information gain:
+            This gets more complicated when multiple contributions interact.
+            If three people submit evidence on the same day, each moving the
+            credence, the ordering matters: the first contributor moved it
+            from 0.30 to 0.40, the second from 0.40 to 0.50, the third from
+            0.50 to 0.55. Each person&rsquo;s counterfactual is the state
+            just before their contribution, so the first contributor gets
+            credit for the 0.30-to-0.40 move, the second for 0.40-to-0.50,
+            and the third for 0.50-to-0.55. The first contributor moved the
+            market the most, but from a higher-entropy starting point. The
+            third contributed the least marginal movement.
           </p>
 
-          <div className="overflow-x-auto">
-            <BlockMath math="m_j(A) = \kappa \max(\Delta S_j(A),\, 0)" />
-          </div>
-
           <p className="leading-relaxed">
-            Existing holders are diluted, just as early investors in a company are
-            diluted when new investors add value:
-          </p>
-
-          <div className="overflow-x-auto">
-            <BlockMath math="\theta_i^{t+1}(A) = \frac{n_i^t(A) + m_i^{\text{vest}}(A)}{N_t(A) + \sum_k m_k^{\text{vest}}(A)}" />
-          </div>
-
-          <p className="leading-relaxed">
-            If your evidence later degrades predictive performance, shares do not
-            vest and some of your stake can be slashed:
-          </p>
-
-          <div className="overflow-x-auto">
-            <BlockMath math="\text{slash}_j = \mu \max(-\Delta S_j(A),\, 0)" />
-          </div>
-
-          <p className="leading-relaxed">
-            This creates a system where knowledge works like equity plus
-            royalties&mdash;founders of useful conjectures earn ongoing residuals,
-            evidence contributors buy in through demonstrated value, and downstream
-            work pays upstream dependencies.
+            For upstream and downstream impact, the key mechanism
+            is <strong>bundling</strong>. When you buy a conjecture, you
+            don&rsquo;t just buy that one conjecture &mdash; you
+            simultaneously buy all the conjectures you implicitly believe
+            as a consequence (see{' '}
+            <Link
+              to="/platform/hello-world"
+              className="underline"
+              style={{ color: 'var(--accent)' }}
+            >
+              Hello World: Bundles
+            </Link>
+            ). If you buy B and your bundle includes A (because you believe
+            B depends on A), then when evidence later validates B, the
+            counterfactual for A is clear: without your bundle purchase,
+            A would not have received that correlated position. The bundle
+            is the mechanism by which your beliefs about dependencies become
+            visible to the market, and the aggregate pattern of bundles
+            across all participants is what allows the market to infer
+            the dependency graph (see{' '}
+            <Link
+              to="/platform/bayesian-networks"
+              className="underline"
+              style={{ color: 'var(--accent)' }}
+            >
+              Bayesian Networks
+            </Link>
+            ).
           </p>
 
           {/* --- Conjecture Longevity --- */}
@@ -427,53 +437,54 @@ export default function ScoringMetricsPage() {
           <p className="leading-relaxed">
             Not all conjectures sustain productive trading activity for the
             same duration. Some generate decades of active trading and
-            evidence submission (general relativity&rsquo;s sub-conjectures are
-            still being tested a century later). Others resolve after a single
-            observation and go silent. The market should reward longevity as a
-            signal of the conjecture&rsquo;s value to the knowledge graph.
+            evidence submission (general relativity&rsquo;s sub-conjectures
+            are still being tested a century later). Others resolve after a
+            single observation and go silent. The market should reward
+            longevity as a signal of the conjecture&rsquo;s value to the
+            knowledge graph.
           </p>
 
           <p className="leading-relaxed">
             Longevity is an artifact of sustained trade volume: a conjecture
-            that people keep trading is one that keeps generating new questions,
-            new evidence, and new predictions. The system tracks several
-            longevity signals:
+            that people keep trading is one that keeps generating new
+            questions, new evidence, and new predictions. The system tracks
+            several longevity signals:
           </p>
 
           <ul className="space-y-3 ml-6 list-disc">
             <li className="leading-relaxed">
-              <strong>Active trading duration.</strong> How long the conjecture
-              has sustained non-trivial trade volume since its creation.
-              Measured as the span between first and most recent trade with
-              activity above a minimum threshold.
+              <strong>Active trading duration.</strong> How long the
+              conjecture has sustained non-trivial trade volume since its
+              creation. Measured as the span between first and most recent
+              trade with activity above a minimum threshold.
             </li>
             <li className="leading-relaxed">
-              <strong>Price sensitivity window.</strong> How long the
-              conjecture&rsquo;s price has remained responsive to new evidence.
-              A conjecture whose price stopped moving years ago has ended its
-              productive life, even if occasional trades still occur.
+              <strong>Entropy decay rate.</strong> How quickly the
+              conjecture&rsquo;s entropy has declined. A conjecture whose
+              entropy collapses rapidly was resolved by a single decisive
+              piece of evidence. One whose entropy declines slowly is
+              sustaining genuine uncertainty over time &mdash; a richer
+              source of market activity and information.
             </li>
             <li className="leading-relaxed">
               <strong>Downstream activity span.</strong> How long the
               conjecture&rsquo;s sub-conjectures remain active. A parent
               conjecture whose children are still generating trades is alive
-              in the knowledge graph even if its own price has stabilized.
+              in the knowledge graph even if its own entropy has reached
+              near-zero.
             </li>
           </ul>
 
           <p className="leading-relaxed">
             Longevity weighting in the scoring system means that holding a
             position in a long-lived, actively traded conjecture contributes
-            more to your veracity consensus than holding a position in a
-            flash-in-the-pan conjecture that resolved immediately. The open
-            question is how to handle conjectures that are resolved after a
-            single observation (e.g., &ldquo;the paper had 12 authors&rdquo;)
-            &mdash; what disincentivizes participants from continuing to buy
-            shares of a dead conjecture? The price itself may be the answer:
-            once a conjecture converges to ~1.0 or ~0.0, the potential return
-            from additional shares is near zero, which should naturally
-            discourage further purchases. But this only works if shares have
-            a meaningful cost. See{' '}
+            more to your portfolio value than holding a position in a
+            flash-in-the-pan conjecture that resolved immediately. Under
+            entropy pricing, dead conjectures naturally stop generating
+            reward: once entropy approaches zero, there is no uncertainty
+            left to resolve, and new positions earn negligible directional
+            return. The cost of entry is near-zero but so is the potential
+            upside, which should naturally discourage further purchases. See{' '}
             <Link
               to="/platform/open-problems"
               className="underline"
@@ -494,19 +505,19 @@ export default function ScoringMetricsPage() {
 
           <p className="leading-relaxed">
             Not all conjectures are equally useful as market instruments. The
-            system tracks several quality dimensions that measure how well the
-            market can process a given conjecture. These metrics help participants
-            identify dead instruments and focus capital on claims that generate
-            information.
+            system tracks several quality dimensions that measure how well
+            the market can process a given conjecture. These metrics help
+            participants identify dead instruments and focus capital on
+            claims that generate information.
           </p>
 
           <ul className="space-y-3 ml-6 list-disc">
             <li className="leading-relaxed">
-              <strong>Price sensitivity to evidence.</strong> How much does the
-              price move when new evidence is published? A conjecture with zero
-              price sensitivity is untradeable&mdash;no observation changes
-              anyone&rsquo;s beliefs. Tautological and unfalsifiable conjectures
-              score zero on this dimension.
+              <strong>Entropy sensitivity to evidence.</strong> How much does
+              the entropy change when new evidence is published? A conjecture
+              whose entropy never moves is untradeable &mdash; no observation
+              changes anyone&rsquo;s beliefs. Tautological and unfalsifiable
+              conjectures score zero on this dimension.
             </li>
             <li className="leading-relaxed">
               <strong>Bid-ask spread width.</strong> A tight spread indicates
@@ -516,70 +527,35 @@ export default function ScoringMetricsPage() {
               ambiguous operationalization produce persistently wide spreads.
             </li>
             <li className="leading-relaxed">
-              <strong>Trade volume and participant diversity.</strong> High volume
-              from diverse participants indicates the conjecture has downstream
-              relevance. Low volume or volume concentrated among a few
-              participants suggests the conjecture is isolated from the broader
-              knowledge graph.
+              <strong>Trade volume and participant diversity.</strong> High
+              volume from diverse participants indicates the conjecture has
+              downstream relevance. Low volume or volume concentrated among
+              a few participants suggests the conjecture is isolated from the
+              broader knowledge graph.
             </li>
             <li className="leading-relaxed">
-              <strong>Downstream conjecture count.</strong> Conjectures that spawn
-              sub-conjectures are more valuable as market instruments because they
-              generate additional trading surfaces and allow evidence to propagate
-              through the attribution graph. A conjecture with zero downstream
-              connections is a dead end.
+              <strong>Downstream conjecture count.</strong> Conjectures that
+              spawn sub-conjectures are more valuable as market instruments
+              because they generate additional trading surfaces and allow
+              evidence to propagate through the attribution graph. A
+              conjecture with zero downstream connections is a dead end.
             </li>
             <li className="leading-relaxed">
-              <strong>Resolution criteria clarity.</strong> Can participants agree
-              on what evidence would move the price to 0.95 or 0.05? If not, the
-              conjecture is likely ambiguous or unfalsifiable. This can be
-              assessed by surveying participants on their resolution criteria and
-              measuring agreement.
+              <strong>Resolution criteria clarity.</strong> Can participants
+              agree on what evidence would move the credence to 0.95 or
+              0.05? If not, the conjecture is likely ambiguous or
+              unfalsifiable. This can be assessed by surveying participants
+              on their resolution criteria and measuring agreement.
             </li>
             <li className="leading-relaxed">
-              <strong>Portfolio delta contribution.</strong> How much sensitivity
-              to new evidence does holding this conjecture add to a portfolio? A
-              portfolio full of trivially true conjectures (price ~1.0, zero
-              delta) may look large but generates no information. This metric
-              helps distinguish substantive positions from dead weight.
+              <strong>Entropy contribution to portfolio.</strong> How much
+              remaining uncertainty does holding this conjecture add to a
+              portfolio? A portfolio full of near-zero-entropy conjectures
+              may have many positions but generates no directional reward.
+              This metric helps distinguish substantive positions from dead
+              weight.
             </li>
           </ul>
-
-          <div
-            className="rounded-lg border p-6 mt-4"
-            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
-          >
-            <h3
-              className="text-sm font-semibold uppercase tracking-widest mb-4"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
-            >
-              Conjecture quality scorecard
-            </h3>
-            <p className="leading-relaxed mb-4">
-              Each conjecture can be scored across these dimensions to produce a
-              processability profile. For example, a tautological conjecture like
-              &ldquo;In efficient markets, all available information is reflected
-              in asset prices&rdquo; would score: price sensitivity 0/10, spread
-              width 9/10 (wide), volume 1/10, downstream count 0, resolution
-              clarity 0/10, portfolio delta 0. A well-formed conjecture like
-              &ldquo;Transformer models with fewer than 1B parameters can achieve
-              &gt;90% accuracy on MATH&rdquo; would score: price sensitivity
-              8/10, spread width 2/10 (tight), volume 7/10, downstream count 4+,
-              resolution clarity 9/10, portfolio delta 7/10.
-            </p>
-            <p className="leading-relaxed">
-              See{' '}
-              <Link
-                to="/platform/example-conjectures"
-                className="underline"
-                style={{ color: 'var(--accent)' }}
-              >
-                Example Conjectures
-              </Link>{' '}
-              for worked examples showing how different conjecture types score on
-              these dimensions.
-            </p>
-          </div>
 
           {/* --- Summary --- */}
           <div
@@ -594,46 +570,45 @@ export default function ScoringMetricsPage() {
             </h3>
             <ul className="space-y-3">
               <li className="leading-relaxed">
-                <strong>Portfolio value</strong> &mdash; the mark-to-market worth of
-                all your positions, updated continuously as credences shift.
+                <strong>Portfolio value</strong> &mdash; the
+                entropy-weighted directional return across all your
+                positions, reflecting how far the consensus has moved toward
+                you since entry.
               </li>
               <li className="leading-relaxed">
-                <strong>Portfolio veracity consensus</strong> &mdash; the time series
-                of your portfolio value, revealing your track record of scientific
-                judgment.
+                <strong>Attribution graph position</strong> &mdash; the
+                upstream royalties you earn as downstream conjectures build
+                on your work. See{' '}
+                <Link
+                  to="/platform/bayesian-networks"
+                  className="underline"
+                  style={{ color: 'var(--accent)' }}
+                >
+                  Bayesian Networks
+                </Link>{' '}
+                for how the dependency graph is learned from trades.
               </li>
               <li className="leading-relaxed">
-                <strong>Rolling score</strong> &mdash; your marginal contribution to
-                predictive accuracy, measured against proper scoring rules with
-                delayed vesting.
+                <strong>Calibration</strong> &mdash; your long-run
+                directional accuracy across all trades, determining your
+                trust weight in the system.
               </li>
               <li className="leading-relaxed">
-                <strong>Attribution graph position</strong> &mdash; the upstream
-                royalties you earn as downstream conjectures build on your work.
+                <strong>Total conjecture impact</strong> &mdash; the
+                cumulative entropy-weighted Shapley-style measure of your
+                contributions across the entire conjecture graph.
               </li>
               <li className="leading-relaxed">
-                <strong>Calibration</strong> &mdash; your long-run forecast accuracy
-                across all trades, determining your trust weight in the system.
+                <strong>Conjecture longevity</strong> &mdash; how long a
+                conjecture sustains productive trading activity and entropy
+                above zero, used to weight its contribution to your veracity
+                consensus.
               </li>
               <li className="leading-relaxed">
-                <strong>Total conjecture impact</strong> &mdash; the cumulative
-                Shapley-style measure of your contributions across the entire
-                conjecture graph.
-              </li>
-              <li className="leading-relaxed">
-                <strong>Conjecture equity</strong> &mdash; your ownership stake in
-                individual conjectures, earned through validated evidence and subject
-                to dilution and slashing.
-              </li>
-              <li className="leading-relaxed">
-                <strong>Conjecture longevity</strong> &mdash; how long a conjecture
-                sustains productive trading activity, used to weight its contribution
-                to your veracity consensus.
-              </li>
-              <li className="leading-relaxed">
-                <strong>Conjecture processability</strong> &mdash; a quality profile
-                measuring price sensitivity, spread width, volume, downstream count,
-                resolution clarity, and portfolio delta contribution.
+                <strong>Conjecture processability</strong> &mdash; a quality
+                profile measuring entropy sensitivity, spread width, volume,
+                downstream count, resolution clarity, and entropy
+                contribution to portfolio.
               </li>
             </ul>
           </div>

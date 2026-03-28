@@ -42,6 +42,11 @@ const guides = [
     description: 'Connecting the conjecture market to arXiv, Google Scholar, and peer-reviewed venues.',
   },
   {
+    slug: 'bayesian-networks',
+    title: 'Bayesian Networks',
+    description: 'How conjecture dependencies emerge from correlated trades, and the challenge of extracting causal structure from market behavior.',
+  },
+  {
     slug: 'open-problems',
     title: 'Open Problems in Market Incentives and Alignment',
     description: 'Unsolved design questions: rewarding predictive capacity, not just specificity.',

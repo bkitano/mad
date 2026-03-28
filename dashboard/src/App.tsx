@@ -14,6 +14,7 @@ import ExampleConjecturesPage from './pages/platform/ExampleConjecturesPage'
 import ShortingPage from './pages/platform/ShortingPage'
 import MarketIncentivesPage from './pages/platform/MarketIncentivesPage'
 import PriceDeterminationPage from './pages/platform/PriceDeterminationPage'
+import BayesianNetworksPage from './pages/platform/BayesianNetworksPage'
 import { mdxComponents } from './components/MDXComponents'
 
 function App() {
@@ -31,6 +32,7 @@ function App() {
         <Route path="/platform/market-incentives" element={<Layout><MarketIncentivesPage /></Layout>} />
         <Route path="/platform/shorting" element={<Layout><ShortingPage /></Layout>} />
         <Route path="/platform/price-determination" element={<Layout><PriceDeterminationPage /></Layout>} />
+        <Route path="/platform/bayesian-networks" element={<Layout><BayesianNetworksPage /></Layout>} />
         <Route path="/platform/open-problems" element={<Layout><OpenProblemsPage /></Layout>} />
         <Route path="/agent/*" element={<Layout><div className="max-w-3xl mx-auto px-4 py-8"><MADDashboard /></div></Layout>} />
       </Routes>

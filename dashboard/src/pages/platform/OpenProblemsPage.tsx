@@ -878,6 +878,220 @@ export default function OpenProblemsPage() {
             </p>
           </section>
 
+          <section>
+            <h2
+              className="text-xl font-bold mb-4"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              Staking as a manipulation defense
+            </h2>
+            <p className="leading-relaxed mb-4">
+              One proposed mechanism for limiting manipulation is
+              staking: each trade that proposes a credence update requires a
+              stake, and the stake limits the magnitude of the credence move
+              you can propose:
+            </p>
+            <div className="overflow-x-auto">
+              <BlockMath math="\left|\operatorname{logit}\, P_t'(A) - \operatorname{logit}\, P_t(A)\right| \le c \log(1 + s_j)" />
+            </div>
+            <p className="leading-relaxed mb-4">
+              The idea is that large claims require large stakes, making
+              manipulation expensive. But it is not clear this is the right
+              mechanism, or that it is even necessary under entropy pricing.
+            </p>
+            <p className="leading-relaxed mb-4">
+              <strong>Arguments for staking:</strong> Without some cost to
+              moving the credence, a single participant could push the price
+              arbitrarily far with no skin in the game. Staking ties the
+              magnitude of your claim to the magnitude of your commitment.
+              It is a natural defense against spam and manipulation.
+            </p>
+            <p className="leading-relaxed mb-4">
+              <strong>Arguments against:</strong> Under entropy pricing, the
+              cost of a position already scales with the uncertainty you are
+              buying into. If the cost function is doing its job, staking may
+              be redundant &mdash; you are already paying to participate, and
+              the directional reward function already penalizes you if you
+              are wrong. Adding a separate staking requirement on top of
+              entropy-derived cost creates two overlapping barriers to entry,
+              which may over-penalize genuine contrarians (exactly the
+              participants the market most wants to attract).
+            </p>
+            <p className="leading-relaxed mb-4">
+              <strong>The logit bound specifically:</strong> The formula above
+              bounds the credence move in logit space proportional to the log
+              of the stake. This has some nice properties (it is harder to
+              move credences near 0 or 1, which are already high-conviction)
+              but the functional form is somewhat arbitrary. Why logit? Why
+              logarithmic in the stake? These choices determine who can
+              participate and how much influence they have, and they are not
+              obviously derived from first principles.
+            </p>
+            <p className="leading-relaxed">
+              The open question: is staking necessary if the cost and reward
+              functions are well-designed, or is it a patch for problems that
+              should be solved at the mechanism level? If entropy pricing
+              already makes manipulation expensive and the directional reward
+              already punishes wrong-direction bets, what additional work is
+              staking doing?
+            </p>
+          </section>
+
+          <section>
+            <h2
+              className="text-xl font-bold mb-4"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              Conjecture equity: a cap table for knowledge
+            </h2>
+            <p className="leading-relaxed mb-4">
+              One proposal is that each conjecture maintains a <strong>cap
+              table</strong> separate from its credence. Credence{' '}
+              <InlineMath math="P_t(A)" /> reflects the community&rsquo;s
+              belief; equity <InlineMath math="\theta_i^t(A)" /> reflects
+              who has contributed value. The separation matters &mdash; if
+              the same token both sets belief and captures royalties, the
+              system is too easy to game.
+            </p>
+            <p className="leading-relaxed mb-4">
+              Under this model, when you submit evidence that improves a
+              conjecture&rsquo;s predictive performance, you are minted new
+              equity proportional to the validated information gain, weighted
+              by the entropy at the time of your contribution:
+            </p>
+            <div className="overflow-x-auto">
+              <BlockMath math="m_j(A) = \kappa \, H(P_t) \, \max(\Delta S_j(A),\, 0)" />
+            </div>
+            <p className="leading-relaxed mb-4">
+              Existing holders are diluted, just as early investors in a
+              company are diluted when new investors add value:
+            </p>
+            <div className="overflow-x-auto">
+              <BlockMath math="\theta_i^{t+1}(A) = \frac{n_i^t(A) + m_i^{\text{vest}}(A)}{N_t(A) + \sum_k m_k^{\text{vest}}(A)}" />
+            </div>
+            <p className="leading-relaxed mb-4">
+              If your evidence later degrades predictive performance, shares
+              do not vest and some of your stake can be slashed:
+            </p>
+            <div className="overflow-x-auto">
+              <BlockMath math="\text{slash}_j = \mu \max(-\Delta S_j(A),\, 0)" />
+            </div>
+            <p className="leading-relaxed mb-4">
+              The idea is appealing: knowledge works like equity plus
+              royalties. Founders of useful conjectures earn ongoing
+              residuals, evidence contributors buy in through demonstrated
+              value, and downstream work pays upstream dependencies. The
+              entropy weighting ensures the biggest equity stakes go to those
+              who contributed the most when the conjecture needed it most.
+            </p>
+            <p className="leading-relaxed mb-4">
+              <strong>Open questions:</strong> It is unclear whether equity
+              is necessary on top of the existing reward mechanism. The
+              directional entropy-weighted portfolio value already rewards
+              early contributors and evidence producers. Adding a separate
+              equity layer creates additional complexity: who gets equity
+              for what? How does dilution interact with the reward function?
+              If you hold both shares (from trading) and equity (from
+              evidence), are you double-counting?
+            </p>
+            <p className="leading-relaxed">
+              There is also a question about the slashing mechanism.
+              Penalizing evidence that later turns out to degrade performance
+              is reasonable in principle, but the feedback loop is long
+              &mdash; it may take years to know whether a contribution
+              helped or hurt. In the meantime, the equity holders have
+              already used their position in ways that affect upstream
+              royalties and voting. The mechanism may be correct in theory
+              but impractical in the timescales science actually operates on.
+            </p>
+          </section>
+
+          <section>
+            <h2
+              className="text-xl font-bold mb-4"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              Bayesian discounts: cheaper to buy in a bundle
+            </h2>
+            <p className="leading-relaxed mb-4">
+              The price of a conjecture bought in isolation should be higher
+              than the price of the same conjecture bought as part of a
+              bundle. The intuition: when you bundle conjecture B with its
+              dependencies A and C, you are providing the market with
+              conditional information &mdash; you are saying not just
+              &ldquo;I believe B&rdquo; but &ldquo;I believe B <em>given</em>{' '}
+              A and C.&rdquo; Conditioning reduces posterior entropy. The
+              market should reward this by giving you a discount.
+            </p>
+            <p className="leading-relaxed mb-4">
+              Concretely: the cost of buying B in isolation is proportional
+              to the marginal entropy{' '}
+              <InlineMath math="H(B)" />. But the cost of buying B as part
+              of a bundle that includes A is proportional to the conditional
+              entropy <InlineMath math="H(B \mid A)" />, which is always{' '}
+              <InlineMath math="\leq H(B)" />. The more you condition on,
+              the lower the posterior entropy, and the cheaper your purchase.
+              You are telling the market <em>more</em> about the structure
+              of your beliefs, and the market compensates you for that
+              information.
+            </p>
+            <p className="leading-relaxed mb-4">
+              This creates a direct incentive to build out the causal graph.
+              Every dependency you include in your bundle reduces your cost.
+              A participant who buys B alone pays full entropy price. A
+              participant who bundles B with A, C, and D &mdash; correctly
+              identifying the dependency chain &mdash; pays less for B
+              because the conditional entropy{' '}
+              <InlineMath math="H(B \mid A, C, D)" /> is lower. The
+              discount is the market&rsquo;s way of saying: &ldquo;thank you
+              for telling us what B depends on.&rdquo;
+            </p>
+            <p className="leading-relaxed mb-4">
+              <strong>The key asymmetry:</strong> the discount applies to
+              your <em>cost</em>, but your <em>reward</em> is still
+              calculated against the public marginal entropy{' '}
+              <InlineMath math="H(B)" />. You paid the conditional price
+              but you earn the marginal reward. This means bundling is
+              strictly better than buying in isolation &mdash; you get the
+              same upside for less cost. The spread between{' '}
+              <InlineMath math="H(B)" /> and{' '}
+              <InlineMath math="H(B \mid \text{bundle})" /> is your bonus
+              for contributing structural information to the graph.
+            </p>
+            <p className="leading-relaxed mb-4">
+              <strong>Open questions:</strong> How does the market estimate
+              the conditional entropy{' '}
+              <InlineMath math="H(B \mid A)" />? It needs a model of the
+              dependency between A and B, which is exactly the thing bundles
+              are supposed to help the market learn. There is a
+              bootstrapping problem: the discount depends on the inferred
+              graph, but the graph depends on the bundles, which are
+              influenced by the discount. Whether this feedback loop
+              converges to a stable and accurate graph is unclear.
+            </p>
+            <p className="leading-relaxed mb-4">
+              There is also a gaming concern. If the discount is large,
+              participants are incentivized to include as many conjectures in
+              their bundle as possible &mdash; even ones they don&rsquo;t
+              genuinely believe are dependencies &mdash; to minimize cost.
+              This would inject noise into the bundle data that the Bayesian
+              network inference relies on. The discount must be calibrated so
+              that adding a false dependency to your bundle doesn&rsquo;t
+              actually reduce your cost (because the market&rsquo;s estimate
+              of <InlineMath math="H(B \mid \text{false dep})" /> should
+              be close to <InlineMath math="H(B)" /> if there is no real
+              conditional relationship).
+            </p>
+            <p className="leading-relaxed">
+              If this works, it is elegant: the same mechanism that
+              incentivizes graph construction (bundle discounts) also
+              provides the data for graph inference (bundle co-occurrence),
+              and the reward asymmetry (pay conditional, earn marginal)
+              ensures that building the graph is always positive-EV for
+              participants who correctly identify dependencies.
+            </p>
+          </section>
+
         </div>
       </div>
     </div>
