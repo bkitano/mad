@@ -31,17 +31,40 @@ export default function HelloWorldPage() {
 
         <div className="space-y-6" style={{ fontFamily: 'var(--font-body)', color: 'var(--ink)' }}>
           <p className="leading-relaxed">
-            Every participant in the conjecture market has a <strong>portfolio</strong>: a
-            collection of positions in conjectures they have bought or sold. Each conjecture
-            has a price reflecting the community&rsquo;s current credence in it&mdash;a number
-            between 0 and 1 representing how likely the community believes it is to be true.
+            Every participant in the conjecture market has a{' '}
+            <strong>portfolio</strong>: a collection of positions in
+            conjectures they have bought or sold. Each conjecture has a{' '}
+            <strong>credence</strong> &mdash; a number between 0 and 1
+            reflecting the community&rsquo;s aggregate belief in whether it
+            is true.
           </p>
 
           <p className="leading-relaxed">
-            Your portfolio value is the sum of your positions, each weighted by the current
-            price of the conjecture. As the community&rsquo;s beliefs shift&mdash;new evidence
-            is published, results are reproduced or refuted&mdash;prices move, and your
-            portfolio value moves with them.
+            The <strong>price</strong> of taking a position is not the
+            credence itself. It is related to the conjecture&rsquo;s
+            current <strong>entropy</strong> &mdash; a measure of how
+            uncertain the market is. When the credence is near 0.50
+            (maximum uncertainty), entropy is high and positions are
+            expensive: you are buying into genuine unresolved doubt. When
+            the credence is near 0 or 1 (the community has largely made up
+            its mind), entropy is low and positions are cheap: there is
+            little uncertainty left to trade.
+          </p>
+
+          <p className="leading-relaxed">
+            Your portfolio value tracks how well your scientific judgment
+            aligns with the evidence as it unfolds. It is not simply shares
+            times credence &mdash; it depends on <em>when</em> you entered
+            (the entropy at the time of your purchase) and <em>whether the
+            consensus moved toward your position</em>. See{' '}
+            <Link
+              to="/platform/market-incentives"
+              className="underline"
+              style={{ color: 'var(--accent)' }}
+            >
+              Market Incentives
+            </Link>{' '}
+            for the full framework.
           </p>
 
           <div
@@ -55,20 +78,25 @@ export default function HelloWorldPage() {
               Example
             </h3>
             <p className="leading-relaxed mb-4">
-              Suppose you are a researcher studying protein folding. You believe that a
-              recent conjecture&mdash;&ldquo;AlphaFold-class models generalize to
-              disordered proteins&rdquo;&mdash;is underpriced at 0.35. You buy a position.
+              Suppose you are a researcher studying protein folding. The
+              conjecture &ldquo;AlphaFold-class models generalize to
+              disordered proteins&rdquo; has a credence of 0.35. Entropy is
+              fairly high &mdash; the community is uncertain. You buy a YES
+              position, paying an entropy-derived cost.
             </p>
             <p className="leading-relaxed mb-4">
-              Over the next few months, two independent groups publish results showing
-              strong performance on disordered protein benchmarks. The price rises to 0.62.
-              Your portfolio reflects that gain.
+              Over the next few months, two independent groups publish
+              results showing strong performance on disordered protein
+              benchmarks. The credence rises to 0.62. Your portfolio value
+              increases &mdash; you entered at high entropy and the
+              consensus moved toward your position.
             </p>
             <p className="leading-relaxed">
-              Conversely, if a replication attempt fails and the price drops to 0.20, your
-              portfolio reflects that loss. The market doesn&rsquo;t care about your
-              credentials or your intent&mdash;only whether the community&rsquo;s evolving
-              consensus moves in the direction you positioned for.
+              Conversely, if a replication attempt fails and the credence
+              drops to 0.20, your position loses value: the consensus moved
+              away from you. The market doesn&rsquo;t care about your
+              credentials or intent &mdash; only whether you bore
+              uncertainty in the direction the evidence eventually supported.
             </p>
           </div>
 

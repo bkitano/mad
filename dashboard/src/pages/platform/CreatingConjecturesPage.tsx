@@ -132,12 +132,13 @@ export default function CreatingConjecturesPage() {
                 citation counts accumulate slowly and are easy to game.
               </li>
               <li className="leading-relaxed">
-                <strong>Price sensitivity to evidence.</strong> A good conjecture moves
-                when relevant evidence is published. If a conjecture&rsquo;s price is
-                stable not because the question is settled but because no one can figure
-                out what evidence would be relevant, the conjecture is probably too vague.
-                Conjectures whose prices respond crisply to new results are well-scoped
-                by definition.
+                <strong>Entropy sensitivity to evidence.</strong> A good conjecture&rsquo;s
+                credence moves when relevant evidence is published, which means its
+                entropy changes. If a conjecture&rsquo;s entropy is stable not because
+                the question is settled but because no one can figure out what evidence
+                would be relevant, the conjecture is probably too vague. Conjectures
+                whose credences respond crisply to new results are well-scoped by
+                definition.
               </li>
               <li className="leading-relaxed">
                 <strong>Downstream conjecture generation.</strong> The best conjectures
@@ -172,49 +173,64 @@ export default function CreatingConjecturesPage() {
                 elementary particles via spontaneous symmetry breaking&rdquo; (Higgs, 1964)
                 would have exhibited all four properties. It would have had enormous trade
                 volume: virtually every particle physicist had work downstream of
-                it. Its price would have been sensitive to evidence from each generation of
-                colliders. It generated many downstream conjectures about the boson&rsquo;s
-                mass, decay channels, and coupling constants. And the spread would have
-                been tight, because the claim was precise enough that the community agreed
-                on what would count as confirmation.
+                it. Its entropy would have been sensitive to evidence from each generation
+                of colliders &mdash; each new result either resolving or deepening the
+                uncertainty. It generated many downstream conjectures about the
+                boson&rsquo;s mass, decay channels, and coupling constants. And the spread
+                would have been tight, because the claim was precise enough that the
+                community agreed on what would count as confirmation.
               </p>
               <p className="leading-relaxed">
                 Compare this to a vague conjecture like &ldquo;there are undiscovered
                 fundamental particles.&rdquo; This is almost certainly true, but it would
-                have low trade volume (what would you do with a position in it?), low price
-                sensitivity (what evidence would move it?), few downstream conjectures
-                (it&rsquo;s too vague to derive specific predictions from), and a wide
-                spread (participants would disagree on what counts).
+                have low trade volume (what would you do with a position in it?), low
+                entropy sensitivity (what evidence would move the credence?), few
+                downstream conjectures (it&rsquo;s too vague to derive specific
+                predictions from), and a wide spread (participants would disagree on
+                what counts).
               </p>
             </div>
           </section>
 
-          {/* How conjectures are initially priced */}
+          {/* How new conjectures enter the market */}
           <section>
             <h2
               className="text-xl font-bold mb-4"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              How conjectures are initially priced
+              How new conjectures enter the market
             </h2>
             <p className="leading-relaxed mb-4">
-              When you create a conjecture, you set its initial price by taking the first
-              position yourself. This initial price is your stated credence&mdash;your
-              belief in the likelihood that the conjecture is true. By putting capital
-              behind it, you are making that belief concrete.
+              When you create a conjecture, it enters the market with no
+              shares outstanding. Credence starts at 0.50 &mdash; the
+              market has no information, so uncertainty is at maximum.
+              Entropy is at its peak, which means the cost of taking a
+              position is at its highest. You are buying into pure,
+              unresolved doubt.
             </p>
             <p className="leading-relaxed mb-4">
-              The initial price serves as an anchor for the market. If you price a
-              conjecture at 0.70, you are saying: &ldquo;I believe this is more likely true
-              than not, and I&rsquo;m willing to risk capital on that belief.&rdquo; Other
-              participants can then buy or sell based on whether they think your price is
-              too high or too low, and the market moves toward the community&rsquo;s
+              The creator typically takes the first position, buying YES or
+              NO to express their belief. This first trade moves the
+              credence away from 0.50 and begins to reduce entropy. Other
+              participants can then trade based on whether they agree or
+              disagree, and the credence moves toward the community&rsquo;s
               collective estimate.
             </p>
             <p className="leading-relaxed mb-4">
-              A conjecture with no initial position is just a statement. The act of pricing
-              it&mdash;of committing capital&mdash;is what turns it into a tradeable claim
-              that the community can engage with.
+              Because the cost of a position is entropy-derived, early
+              participation in a new conjecture is expensive &mdash; you
+              are paying for maximum uncertainty. But the potential reward
+              is also highest: if the credence eventually moves far in your
+              direction, you bought at peak entropy and rode the full
+              directional movement. This is the market&rsquo;s way of
+              rewarding people who engage with new ideas when nobody else
+              has.
+            </p>
+            <p className="leading-relaxed mb-4">
+              A conjecture with no positions is just a statement. The act
+              of taking the first position &mdash; of paying the entropy
+              cost &mdash; is what turns it into a live instrument that the
+              community can engage with.
             </p>
 
             <div
@@ -228,22 +244,24 @@ export default function CreatingConjecturesPage() {
                 Historical example: Helicobacter pylori
               </h3>
               <p className="leading-relaxed mb-4">
-                In 1982, Barry Marshall and Robin Warren proposed that stomach ulcers were
-                caused by a bacterium, not stress or diet. The medical establishment was
-                deeply skeptical. If Marshall had created a conjecture&mdash;&ldquo;the
+                In 1982, Barry Marshall and Robin Warren proposed that
+                stomach ulcers were caused by a bacterium, not stress or
+                diet. If Marshall had created the conjecture &ldquo;the
                 majority of gastric ulcers are caused by H. pylori
-                infection&rdquo;&mdash;he might have priced it at 0.80, reflecting his
-                strong conviction from his own culture results.
+                infection,&rdquo; it would have entered at credence 0.50
+                with maximum entropy. Marshall buys YES &mdash; paying the
+                highest possible cost, because uncertainty is total.
               </p>
               <p className="leading-relaxed">
-                The rest of the market would have sold it down to perhaps 0.10, reflecting
-                the overwhelming consensus that ulcers were a lifestyle disease. That gap
-                between Marshall&rsquo;s price and the market&rsquo;s price is exactly the
-                opportunity: when he famously drank a petri dish of H. pylori and developed
-                gastritis, and when subsequent clinical trials confirmed antibiotic cures,
-                the price would have climbed steadily toward 0.95. The initial price was
-                wrong by the market&rsquo;s lights&mdash;but Marshall was right, and the
-                market eventually reflected that.
+                The establishment disagrees and buys NO, pushing the
+                credence down toward 0.25. Both sides paid high entropy
+                costs. As Marshall submits evidence (culturing the
+                bacterium, the self-experimentation, clinical trials), the
+                credence climbs toward 0.95. Marshall&rsquo;s reward is
+                large: he entered at peak entropy and the consensus moved
+                far toward his position. The establishment doctors who
+                bought NO at the same high entropy lose their stake &mdash;
+                they bore the same uncertainty in the wrong direction.
               </p>
             </div>
           </section>
@@ -263,11 +281,12 @@ export default function CreatingConjecturesPage() {
               be avoided&mdash;it is information.
             </p>
             <p className="leading-relaxed mb-4">
-              When two conjectures are very similar, their prices should be correlated.
+              When two conjectures are very similar, their credences should be correlated.
               If they diverge, that divergence is a signal: either the market sees a
               meaningful distinction between them, or one is mispriced. Participants who
               notice the discrepancy can arbitrage it by buying the underpriced one and
-              selling the overpriced one, which pushes the prices back toward consistency.
+              selling the overpriced one, which pushes the credences back toward
+              consistency.
             </p>
             <p className="leading-relaxed mb-4">
               Over time, the market naturally consolidates around the most precisely stated
@@ -296,10 +315,12 @@ export default function CreatingConjecturesPage() {
               <p className="leading-relaxed">
                 But then the photoelectric effect (1905) and quantum mechanics showed that
                 both were partially right. The market would have reflected this: both
-                conjectures would have settled at moderate prices, while a new, more precise
-                conjecture&mdash;&ldquo;light exhibits wave-particle duality, behaving as
-                a wave in propagation and as a particle in interaction with
-                matter&rdquo;&mdash;would have attracted the liquidity. The old conjectures
+                conjectures would have settled at moderate credences with low remaining
+                entropy, while a new, more precise conjecture &mdash; &ldquo;light exhibits
+                wave-particle duality, behaving as a wave in propagation and as a particle
+                in interaction with matter&rdquo; &mdash; would have attracted the
+                liquidity. The new conjecture&rsquo;s high entropy (genuinely unresolved
+                uncertainty) is where the reward potential lives. The old conjectures
                 wouldn&rsquo;t disappear, but the capital would flow to the sharper one.
               </p>
             </div>
@@ -353,11 +374,13 @@ export default function CreatingConjecturesPage() {
             </div>
 
             <p className="leading-relaxed mb-4">
-              Refinement creates value because precise conjectures are more liquid&mdash;they
-              are easier to evaluate, which means evidence moves their price more efficiently.
-              A participant who creates a well-scoped refinement of a vague conjecture is
-              providing the market with a better instrument for expressing and aggregating
-              belief.
+              Refinement creates value because precise conjectures are more
+              liquid &mdash; they are easier to evaluate, which means
+              evidence moves their credence more efficiently and their
+              entropy responds crisply to new results. A participant who
+              creates a well-scoped refinement of a vague conjecture is
+              providing the market with a better instrument for expressing
+              and aggregating belief.
             </p>
           </section>
 
@@ -372,16 +395,18 @@ export default function CreatingConjecturesPage() {
             <p className="leading-relaxed mb-4">
               If you hold a position in a broad conjecture and discover that a more precise
               version exists, you should consider migrating your position. The refined
-              conjecture will be more responsive to evidence&mdash;its price will move more
-              cleanly when relevant results are published, because the claim is specific
-              enough for the market to interpret the evidence clearly.
+              conjecture will be more responsive to evidence &mdash; its credence will move
+              more cleanly when relevant results are published, and its entropy will change
+              more meaningfully, because the claim is specific enough for the market to
+              interpret the evidence clearly.
             </p>
             <p className="leading-relaxed mb-4">
               In practice, this means selling your position in the broad conjecture and
-              buying into the refined one. You are not abandoning your belief&mdash;you are
-              expressing the same belief through a sharper instrument. If you were right
-              about the broad claim, you should be right about the specific one too, and you
-              will capture the price movement more directly.
+              buying into the refined one. You are not abandoning your belief &mdash; you are
+              expressing the same belief through a sharper instrument. If the refined
+              conjecture still has high entropy (it is new and unresolved), you are entering
+              at a cost that reflects genuine uncertainty, with the full potential for
+              directional reward if the credence moves your way.
             </p>
             <p className="leading-relaxed mb-4">
               The exception is when you hold a broad conjecture precisely because you believe
@@ -412,10 +437,11 @@ export default function CreatingConjecturesPage() {
               <p className="leading-relaxed">
                 At each stage, the smart move would have been to migrate from the broad
                 conjecture to the refined one. The broad claim &ldquo;matter is made of
-                atoms&rdquo; stayed true, but its price was already near 1.0&mdash;there
-                was no upside left. The refined conjectures were where the action was:
-                their prices were volatile, responsive to new experiments, and offered
-                real returns for participants who positioned correctly.
+                atoms&rdquo; stayed true, but its credence was already near 1.0 and its
+                entropy near zero &mdash; positions were cheap but there was no directional
+                reward left. The refined conjectures were where the action was: high
+                entropy, responsive to new experiments, and offering real returns for
+                participants who bore that uncertainty in the right direction.
               </p>
             </div>
           </section>
