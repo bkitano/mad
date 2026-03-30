@@ -187,6 +187,111 @@ export default function PriceDeterminationPage() {
           </div>
 
           <p className="leading-relaxed">
+            The conjecture market modifies this with{' '}
+            <strong>direction-weighted entropy pricing</strong>. The cost of
+            a position depends not only on how uncertain the conjecture is,
+            but also on which side you are taking:
+          </p>
+
+          <div className="overflow-x-auto">
+            <BlockMath math="\text{cost}_{\text{YES}} = P(A) \cdot H(P)" />
+          </div>
+          <div className="overflow-x-auto">
+            <BlockMath math="\text{cost}_{\text{NO}} = (1 - P(A)) \cdot H(P)" />
+          </div>
+
+          <p className="leading-relaxed">
+            where <InlineMath math="P(A)" /> is the current credence
+            and <InlineMath math="H(P)" /> is the Shannon entropy of the
+            credence distribution. The intuition is best understood as a
+            2&times;2 grid:
+          </p>
+
+          <div
+            className="rounded-lg border p-6 mt-4"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-4"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              Cost intuition: 2&times;2 grid
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" style={{ fontFamily: 'var(--font-body)' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--paper-deep)' }}>
+                    <th className="text-left py-2 pr-4"></th>
+                    <th className="text-left py-2 pr-4">High uncertainty (<InlineMath math="H \approx 1.0" />)</th>
+                    <th className="text-left py-2">Low uncertainty (<InlineMath math="H \approx 0.3" />)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid var(--paper-deep)' }}>
+                    <td className="py-3 pr-4 font-semibold">High credence (<InlineMath math="P = 0.8" />)</td>
+                    <td className="py-3 pr-4">
+                      YES costs <InlineMath math="0.8 \times 1.0 = 0.80" />
+                      <br />
+                      NO costs <InlineMath math="0.2 \times 1.0 = 0.20" />
+                      <br />
+                      <span style={{ color: 'var(--ink-muted)' }}>
+                        Disagreement is rampant but most lean YES.
+                        Contrarian NO position is cheap &mdash; high
+                        reward if you turn out to be right.
+                      </span>
+                    </td>
+                    <td className="py-3">
+                      YES costs <InlineMath math="0.8 \times 0.3 = 0.24" />
+                      <br />
+                      NO costs <InlineMath math="0.2 \times 0.3 = 0.06" />
+                      <br />
+                      <span style={{ color: 'var(--ink-muted)' }}>
+                        Emerging consensus. Everything is cheap because
+                        most uncertainty is resolved. Piling on YES adds
+                        little value.
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 pr-4 font-semibold">Low credence (<InlineMath math="P = 0.2" />)</td>
+                    <td className="py-3 pr-4">
+                      YES costs <InlineMath math="0.2 \times 1.0 = 0.20" />
+                      <br />
+                      NO costs <InlineMath math="0.8 \times 1.0 = 0.80" />
+                      <br />
+                      <span style={{ color: 'var(--ink-muted)' }}>
+                        Most people think it&rsquo;s false. Betting YES
+                        is cheap &mdash; a contrarian flier. This is how
+                        Marshall bets on H.&nbsp;pylori.
+                      </span>
+                    </td>
+                    <td className="py-3">
+                      YES costs <InlineMath math="0.2 \times 0.3 = 0.06" />
+                      <br />
+                      NO costs <InlineMath math="0.8 \times 0.3 = 0.24" />
+                      <br />
+                      <span style={{ color: 'var(--ink-muted)' }}>
+                        Near-settled as false. Pennies to take a flier
+                        on YES. Almost no one is buying.
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="leading-relaxed mt-4">
+              The entropy term <InlineMath math="H(P)" /> scales the overall
+              cost by how much uncertainty remains. The credence
+              term <InlineMath math="P" /> or <InlineMath math="(1-P)" />{' '}
+              makes it cheaper to go against the grain. Contrarian positions
+              are always cheaper than consensus-direction positions &mdash;
+              which is exactly the incentive structure science needs: it
+              should be cheap to challenge the orthodoxy, and expensive to
+              pile on to what everyone already believes.
+            </p>
+          </div>
+
+          <p className="leading-relaxed mt-6">
             The cost is denominated in whatever units the market uses as its
             medium of exchange. In the conjecture market, the question of what
             these units are &mdash; dollars, reputation points, staked

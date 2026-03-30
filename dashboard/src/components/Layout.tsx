@@ -7,6 +7,7 @@ interface LayoutProps {
 
 const navItems = [
   { to: '/platform', label: 'Platform' },
+  { to: '/engineering', label: 'Engineering' },
   { to: '/agent', label: 'MAD Agent' },
   { to: '/thesis', label: 'Thesis' },
 ]

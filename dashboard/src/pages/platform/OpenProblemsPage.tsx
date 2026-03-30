@@ -670,7 +670,7 @@ export default function OpenProblemsPage() {
               className="text-lg font-bold mt-8 mb-4"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Entropy-based cost: price = <InlineMath math="H(p)" />
+              Entropy-based cost: price = <InlineMath math="p_{\text{dir}} \cdot H(p)" />
             </h3>
 
             <p className="leading-relaxed mb-4">
@@ -680,7 +680,8 @@ export default function OpenProblemsPage() {
             </p>
 
             <div className="overflow-x-auto">
-              <BlockMath math="\text{cost}(p) = H(p) = -p \log_2 p - (1-p) \log_2 (1-p)" />
+              <BlockMath math="\text{cost}_{\text{YES}}(p) = p \cdot H(p), \quad \text{cost}_{\text{NO}}(p) = (1-p) \cdot H(p)" />
+              <BlockMath math="\text{where } H(p) = -p \log_2 p - (1-p) \log_2 (1-p)" />
             </div>
 
             <p className="leading-relaxed mb-4">

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { InlineMath } from 'react-katex'
 
 export default function HelloWorldPage() {
   return (
@@ -82,7 +83,8 @@ export default function HelloWorldPage() {
               conjecture &ldquo;AlphaFold-class models generalize to
               disordered proteins&rdquo; has a credence of 0.35. Entropy is
               fairly high &mdash; the community is uncertain. You buy a YES
-              position, paying an entropy-derived cost.
+              position, paying a direction-weighted entropy
+              cost: <InlineMath math="P(A) \cdot H(P) = 0.35 \times 0.93 \approx 0.33" />.
             </p>
             <p className="leading-relaxed mb-4">
               Over the next few months, two independent groups publish

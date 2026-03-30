@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { InlineMath } from 'react-katex'
 
 export default function CreatingConjecturesPage() {
   return (
@@ -217,9 +218,11 @@ export default function CreatingConjecturesPage() {
               collective estimate.
             </p>
             <p className="leading-relaxed mb-4">
-              Because the cost of a position is entropy-derived, early
-              participation in a new conjecture is expensive &mdash; you
-              are paying for maximum uncertainty. But the potential reward
+              Because the cost of a position is{' '}
+              <InlineMath math="p_{\text{dir}} \cdot H(P)" />, early
+              participation in a new conjecture is expensive &mdash; at{' '}
+              <InlineMath math="P = 0.50" />, both sides
+              cost <InlineMath math="0.50 \times 1.0 = 0.50" />. But the potential reward
               is also highest: if the credence eventually moves far in your
               direction, you bought at peak entropy and rode the full
               directional movement. This is the market&rsquo;s way of

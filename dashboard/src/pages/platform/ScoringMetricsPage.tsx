@@ -52,8 +52,10 @@ export default function ScoringMetricsPage() {
             </Link>
             : each conjecture carries a <strong>credence</strong> (the
             community&rsquo;s aggregate belief, between 0 and 1), each
-            position has an entropy-derived <strong>cost</strong> (what you
-            paid to enter), and each participant earns a directional{' '}
+            position has a direction-weighted entropy <strong>cost</strong>{' '}
+            (<InlineMath math="P \cdot H" /> for YES,{' '}
+            <InlineMath math="(1-P) \cdot H" /> for NO), and each
+            participant earns a directional{' '}
             <strong>reward</strong> (how much the consensus moved toward
             their position after entry). These are not the same number.
             The scoring system is built on the reward, not the credence.
@@ -202,7 +204,8 @@ export default function ScoringMetricsPage() {
               uncertainty. His entry cost is high &mdash; he is buying into
               maximum entropy. Simultaneously, establishment
               gastroenterologists buy NO, equally convinced. Both sides pay
-              the same entropy-derived cost.
+              the same direction-weighted entropy cost (since at{' '}
+              <InlineMath math="P = 0.50" />, both sides are symmetric).
             </p>
             <p className="leading-relaxed mb-4">
               Marshall submits evidence: he cultures the bacterium, drinks a
@@ -556,6 +559,207 @@ export default function ScoringMetricsPage() {
               weight.
             </li>
           </ul>
+
+          {/* --- Agent Benchmarks --- */}
+          <h2
+            className="text-2xl font-bold mt-10"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Agent Benchmarks
+          </h2>
+
+          <p className="leading-relaxed">
+            The scoring system above measures <em>participants</em> within
+            the market. The benchmarks below measure <em>agents</em> trained
+            to operate in the market &mdash; how well an AI agent makes
+            scientific bets when presented with evidence over time. The
+            headline metric is portfolio return on held-out conjectures; the
+            diagnostic metrics decompose that return into the skills that
+            produce it.
+          </p>
+
+          {/* Calibration benchmark */}
+          <div
+            className="rounded-lg border p-6 mt-6"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-3"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              1. Calibration
+            </h3>
+            <p className="leading-relaxed mb-3">
+              Given a conjecture and all evidence available up to time{' '}
+              <InlineMath math="T" />, the agent assigns a credence. Scored
+              against eventual resolution.
+            </p>
+            <p className="leading-relaxed mb-3">
+              <strong>Metric:</strong> Brier score &mdash;{' '}
+              <InlineMath math="\text{BS} = \frac{1}{N}\sum_{i=1}^{N}(p_i - o_i)^2" />,
+              where <InlineMath math="p_i" /> is the agent&rsquo;s predicted
+              probability and <InlineMath math="o_i" /> is the binary
+              outcome. Lower is better. A perfectly calibrated agent that
+              says &ldquo;70% likely&rdquo; is right 70% of the time.
+            </p>
+            <p className="leading-relaxed">
+              <strong>Why it matters:</strong> Calibration is the foundation
+              of trustworthy scientific judgment. Every downstream benchmark
+              depends on it. This is directly comparable across agents, LLMs,
+              and human baselines.
+            </p>
+          </div>
+
+          {/* Early discovery benchmark */}
+          <div
+            className="rounded-lg border p-6 mt-4"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-3"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              2. Early Discovery
+            </h3>
+            <p className="leading-relaxed mb-3">
+              The agent takes a position on a conjecture <em>before</em>{' '}
+              consensus forms. We measure how far ahead of the crowd it was.
+            </p>
+            <p className="leading-relaxed mb-3">
+              <strong>Metric:</strong> Average time-to-position before the
+              credence crosses a resolution threshold (e.g., 0.9 or 0.1),
+              weighted by the confidence of the position. This is the
+              &ldquo;alpha&rdquo; metric &mdash; borrowed from finance.
+            </p>
+            <p className="leading-relaxed">
+              <strong>Why it matters:</strong> This measures genuine
+              scientific reasoning, not just aggregation. An agent that reads
+              an early paper and correctly concludes &ldquo;this changes
+              everything&rdquo; before the citation count reflects it is
+              doing something that goes beyond pattern matching on consensus.
+            </p>
+          </div>
+
+          {/* Evidence discrimination benchmark */}
+          <div
+            className="rounded-lg border p-6 mt-4"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-3"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              3. Evidence Discrimination
+            </h3>
+            <p className="leading-relaxed mb-3">
+              Show the agent two pieces of evidence about the same
+              conjecture &mdash; one that turns out to be robust and one that
+              turns out to be misleading (retracted, failed replication,
+              methodological flaw). Does the agent weigh them correctly?
+            </p>
+            <p className="leading-relaxed mb-3">
+              <strong>Metric:</strong> Accuracy on forced-choice pairs.
+              &ldquo;Which of these two papers should move your credence
+              more?&rdquo;
+            </p>
+            <p className="leading-relaxed">
+              <strong>Why it matters:</strong> This is the scientific
+              reasoning benchmark that does not yet exist. Existing
+              benchmarks test factual recall. This tests <em>judgment about
+              evidence quality</em> &mdash; a harder and more valuable
+              capability.
+            </p>
+          </div>
+
+          {/* Portfolio return benchmark */}
+          <div
+            className="rounded-lg border p-6 mt-4"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-3"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              4. Portfolio Return (Headline)
+            </h3>
+            <p className="leading-relaxed mb-3">
+              Give the agent a budget and a set of open conjectures. It
+              allocates across positions. Score by terminal portfolio value
+              when conjectures resolve.
+            </p>
+            <p className="leading-relaxed mb-3">
+              <strong>Metrics:</strong> Total return, Sharpe ratio
+              (return / volatility of return), maximum drawdown.
+            </p>
+            <p className="leading-relaxed">
+              <strong>Why it matters:</strong> This is the integrative
+              benchmark &mdash; it requires calibration, timing, evidence
+              reading, and capital allocation all at once. It is the RL
+              training signal: if RL-trained agents beat prompting-only
+              agents on portfolio return, the market structure adds value
+              beyond what the base LLM provides.
+            </p>
+          </div>
+
+          {/* Dependency graph recovery benchmark */}
+          <div
+            className="rounded-lg border p-6 mt-4"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-3"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              5. Dependency Graph Recovery
+            </h3>
+            <p className="leading-relaxed mb-3">
+              Given a set of conjectures that are logically connected (the
+              agent does not know the connections), can the agent recover the
+              dependency structure from the evidence flow?
+            </p>
+            <p className="leading-relaxed mb-3">
+              <strong>Metric:</strong> Precision/recall against a
+              ground-truth dependency graph (extracted from citation networks
+              or expert annotation). F1 score.
+            </p>
+            <p className="leading-relaxed">
+              <strong>Why it matters:</strong> This measures structural
+              scientific reasoning &mdash; &ldquo;if A is true then B must
+              be false&rdquo; &mdash; which separates memorization from
+              understanding. It is also directly useful for knowledge graph
+              construction.
+            </p>
+          </div>
+
+          {/* Budget-constrained inquiry benchmark */}
+          <div
+            className="rounded-lg border p-6 mt-4"
+            style={{ borderColor: 'var(--paper-deep)', backgroundColor: 'var(--paper)' }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-widest mb-3"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--ink-muted)' }}
+            >
+              6. Budget-Constrained Inquiry
+            </h3>
+            <p className="leading-relaxed mb-3">
+              The agent can <em>request</em> experiments (from a simulator or
+              historical lookup), but each one costs from a fixed budget.
+              Maximize information gained per unit spent.
+            </p>
+            <p className="leading-relaxed mb-3">
+              <strong>Metric:</strong> Final calibration score divided by
+              total budget consumed. Information per dollar.
+            </p>
+            <p className="leading-relaxed">
+              <strong>Why it matters:</strong> This is the actual skill of
+              running a research program &mdash; not &ldquo;can you read
+              papers&rdquo; but &ldquo;given a fixed budget, which
+              experiments should you fund?&rdquo; Directly valuable to
+              pharma R&amp;D, government funding agencies, and corporate
+              research labs.
+            </p>
+          </div>
 
           {/* --- Summary --- */}
           <div

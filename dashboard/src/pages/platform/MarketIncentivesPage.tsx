@@ -484,8 +484,14 @@ export default function MarketIncentivesPage() {
               market has no information. Marshall buys YES. He is buying{' '}
               <em>peak uncertainty</em>. But note: someone else might look at
               this conjecture and buy NO, equally convinced the establishment
-              is right. Both pay the same high cost. The entropy prices
-              uncertainty itself, not direction.
+              is right. But they do not pay the same cost. Marshall&rsquo;s
+              YES position costs{' '}
+              <InlineMath math="P(A) \cdot H(P) = 0.50 \times 1.0 = 0.50" />,
+              and the NO buyer pays the same{' '}
+              <InlineMath math="(1 - P(A)) \cdot H(P) = 0.50 \times 1.0 = 0.50" />{' '}
+              &mdash; because at <InlineMath math="P = 0.50" /> the two
+              sides are symmetric. As credence shifts, the contrarian side
+              becomes cheaper.
             </p>
             <p className="leading-relaxed mb-3">
               <strong>1983&ndash;1984 &mdash; early evidence.</strong> Marshall
@@ -529,8 +535,10 @@ export default function MarketIncentivesPage() {
               receive the Nobel Prize in Physiology or Medicine. Credence:{' '}
               <InlineMath math="P \approx 0.99" />. Entropy:{' '}
               <InlineMath math="H \approx 0.08" /> bits. The conjecture is
-              settled. A YES position now costs almost nothing and earns
-              almost nothing &mdash; there is no uncertainty left to resolve.
+              settled. A YES position now costs{' '}
+              <InlineMath math="0.99 \times 0.08 \approx 0.08" /> &mdash;
+              almost nothing &mdash; and earns almost nothing, because there
+              is no uncertainty left to resolve.
               The NO holders from 1984 have long since lost their stakes.
             </p>
             <p className="leading-relaxed">
@@ -670,13 +678,14 @@ export default function MarketIncentivesPage() {
               fewer people believed it.
             </p>
             <p className="leading-relaxed">
-              This is consistent with entropy-based pricing:{' '}
-              <InlineMath math="H(p) \to 0" /> as{' '}
-              <InlineMath math="p \to 0" /> or{' '}
-              <InlineMath math="p \to 1" />, so near-certain positions are
-              cheap. But the <em>reward</em> must also be discounted at
-              low entropy, or else participants accumulate thousands of
-              settled conjectures at zero cost for unearned credit.
+              This is consistent with direction-weighted entropy
+              pricing: <InlineMath math="P(A) \cdot H(P) \to 0" /> as{' '}
+              <InlineMath math="P \to 1" /> and{' '}
+              <InlineMath math="H \to 0" />, so consensus-direction
+              positions on settled conjectures are very cheap. But the{' '}
+              <em>reward</em> must also be discounted at low entropy, or
+              else participants accumulate thousands of settled conjectures
+              at zero cost for unearned credit.
             </p>
           </div>
 
@@ -727,12 +736,15 @@ export default function MarketIncentivesPage() {
             </p>
             <ul className="space-y-2 ml-6 list-disc">
               <li className="leading-relaxed">
-                Consensus positions cost little and earn little (no reward
-                for agreeing with what everyone already knows).
+                Consensus-direction positions cost{' '}
+                <InlineMath math="P \cdot H" /> (high credence times low
+                entropy = cheap) and earn little.
               </li>
               <li className="leading-relaxed">
-                Frontier positions cost a moderate deposit and earn large
-                returns if correct, or forfeit the deposit if wrong.
+                Contrarian positions cost{' '}
+                <InlineMath math="(1 - P) \cdot H" /> &mdash; cheap when
+                going against the crowd, expensive at peak uncertainty
+                &mdash; and earn large returns if correct.
               </li>
               <li className="leading-relaxed">
                 The scoring system, not the pricing mechanism, distinguishes

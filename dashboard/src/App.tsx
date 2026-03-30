@@ -14,6 +14,9 @@ import ExampleConjecturesPage from './pages/platform/ExampleConjecturesPage'
 import ShortingPage from './pages/platform/ShortingPage'
 import MarketIncentivesPage from './pages/platform/MarketIncentivesPage'
 import PriceDeterminationPage from './pages/platform/PriceDeterminationPage'
+import EngineeringPage from './pages/EngineeringPage'
+import BacktestingPage from './pages/engineering/BacktestingPage'
+import MarketMakingPage from './pages/engineering/MarketMakingPage'
 import BayesianNetworksPage from './pages/platform/BayesianNetworksPage'
 import { mdxComponents } from './components/MDXComponents'
 
@@ -34,6 +37,9 @@ function App() {
         <Route path="/platform/price-determination" element={<Layout><PriceDeterminationPage /></Layout>} />
         <Route path="/platform/bayesian-networks" element={<Layout><BayesianNetworksPage /></Layout>} />
         <Route path="/platform/open-problems" element={<Layout><OpenProblemsPage /></Layout>} />
+        <Route path="/engineering" element={<Layout><EngineeringPage /></Layout>} />
+        <Route path="/engineering/backtesting" element={<Layout><BacktestingPage /></Layout>} />
+        <Route path="/engineering/market-making" element={<Layout><MarketMakingPage /></Layout>} />
         <Route path="/agent/*" element={<Layout><div className="max-w-3xl mx-auto px-4 py-8"><MADDashboard /></div></Layout>} />
       </Routes>
     </MDXProvider>
