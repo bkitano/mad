@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HEAL@CHI'26 Poster — Managing Multi-Agent Research Systems</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  @page {
+    size: 420mm 594mm;
+    margin: 0;
+  }
+
+  :root {
+    --bg: #ffffff;
+    --text: #1a1a2e;
+    --accent: #0f766e;
+    --accent-light: #e0f2f1;
+    --accent-dark: #0d5c56;
+    --muted: #64748b;
+    --border: #e2e8f0;
+    --card-bg: #f8fafc;
+    --highlight: #fef3c7;
+    --red: #ef4444;
+    --green: #22c55e;
+    --blue: #3b82f6;
+    --terminal-bg: #111827;
+    --terminal-text: #d1d5db;
+    --header-bg: #0f172a;
+  }
+
+  html {
+    font-size: 14pt;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    width: 420mm;
+    height: 594mm;
+    padding: 10mm;
+    display: flex;
+    flex-direction: column;
+    gap: 6mm;
+    line-height: 1.45;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: var(--header-bg);
+    color: #fff;
+    border-radius: 4mm;
+    padding: 6mm 8mm;
+    display: flex;
+    align-items: center;
+    gap: 6mm;
+  }
+
+  .header-text { flex: 1; }
+
+  .header h1 {
+    font-size: 22pt;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    margin-bottom: 2mm;
+  }
+
+  .header h1 span {
+    color: #5eead4;
+  }
+
+  .header .subtitle {
+    font-size: 11pt;
+    color: #94a3b8;
+    font-weight: 500;
+  }
+
+  .authors {
+    display: flex;
+    gap: 6mm;
+    margin-top: 4mm;
+    flex-wrap: wrap;
+  }
+
+  .author {
+    font-size: 10pt;
+  }
+
+  .author .name {
+    font-weight: 700;
+    color: #e2e8f0;
+  }
+
+  .author .affil {
+    font-size: 8.5pt;
+    color: #94a3b8;
+  }
+
+  .conf-badge {
+    background: #5eead4;
+    color: var(--header-bg);
+    font-weight: 800;
+    font-size: 11pt;
+    padding: 4mm 5mm;
+    border-radius: 3mm;
+    text-align: center;
+    line-height: 1.3;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .conf-badge .venue {
+    font-size: 8.5pt;
+    font-weight: 600;
+  }
+
+  /* ── Columns ── */
+  .columns {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1.25fr 1fr;
+    gap: 5mm;
+    align-content: start;
+  }
+
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 4mm;
+  }
+
+  /* ── Sections ── */
+  section {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 3mm;
+    padding: 4mm;
+    flex-shrink: 0;
+  }
+
+  section.grow { flex: 1; min-height: 0; }
+
+  section h2 {
+    font-size: 12pt;
+    font-weight: 800;
+    color: var(--accent-dark);
+    margin-bottom: 2.5mm;
+    padding-bottom: 1.5mm;
+    border-bottom: 0.6mm solid var(--accent);
+    letter-spacing: -0.01em;
+  }
+
+  section h3 {
+    font-size: 10pt;
+    font-weight: 700;
+    color: var(--text);
+    margin-top: 2mm;
+    margin-bottom: 1mm;
+  }
+
+  section p, section li {
+    font-size: 9.5pt;
+    color: #334155;
+  }
+
+  section ul {
+    padding-left: 4mm;
+    margin-top: 1mm;
+  }
+
+  section li {
+    margin-bottom: 1mm;
+  }
+
+  section li::marker {
+    color: var(--accent);
+  }
+
+  .highlight-box {
+    background: var(--accent-light);
+    border-left: 1mm solid var(--accent);
+    padding: 2.5mm 3mm;
+    border-radius: 0 2mm 2mm 0;
+    margin: 2mm 0;
+    font-size: 9.5pt;
+  }
+
+  .highlight-box strong { color: var(--accent-dark); }
+
+  /* ── Design implication cards ── */
+  .di-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 2mm;
+    padding: 3mm 3.5mm;
+    margin-bottom: 2.5mm;
+    border-left: 1mm solid var(--accent);
+  }
+
+  .di-card .di-num {
+    font-size: 8pt;
+    font-weight: 800;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .di-card .di-title {
+    font-size: 9.5pt;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0.5mm 0;
+  }
+
+  .di-card .di-body {
+    font-size: 8.5pt;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  /* ── Stats row ── */
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 3mm;
+    margin: 2mm 0;
+  }
+
+  .stat {
+    text-align: center;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 2mm;
+    padding: 2.5mm 2mm;
+  }
+
+  .stat .num {
+    font-size: 16pt;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .stat .label {
+    font-size: 7.5pt;
+    color: var(--muted);
+    margin-top: 0.5mm;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-weight: 600;
+  }
+
+  /* ── Agent role badges ── */
+  .agent-role {
+    display: flex;
+    gap: 2mm;
+    align-items: flex-start;
+    margin-bottom: 2mm;
+  }
+
+  .agent-icon {
+    width: 7mm;
+    height: 7mm;
+    border-radius: 1.5mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10pt;
+    flex-shrink: 0;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .agent-icon.search { background: #8b5cf6; }
+  .agent-icon.proposal { background: #3b82f6; }
+  .agent-icon.experiment { background: #f59e0b; }
+
+  .agent-info { flex: 1; }
+
+  .agent-info .agent-name {
+    font-size: 9.5pt;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .agent-info .agent-desc {
+    font-size: 8.5pt;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+
+  /* ── Figure section (no bg card) ── */
+  .figure-section {
+    background: transparent;
+    border: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2mm;
+  }
+
+  .figure-section h2 {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 3mm 3mm 0 0;
+    padding: 3mm 5mm;
+    margin-bottom: 0;
+    border-bottom: none;
+  }
+
+  .figure-caption {
+    font-size: 8.5pt;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 1.5mm;
+    font-style: italic;
+  }
+
+  /* ── Contribution list ── */
+  .contrib-item {
+    display: flex;
+    gap: 2mm;
+    align-items: flex-start;
+    margin-bottom: 2mm;
+  }
+
+  .contrib-bullet {
+    width: 5mm;
+    height: 5mm;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+    margin-top: 0.5mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .contrib-bullet svg {
+    width: 3mm;
+    height: 3mm;
+    fill: #fff;
+  }
+
+  .contrib-text {
+    font-size: 9pt;
+    color: #334155;
+    line-height: 1.4;
+  }
+
+  .contrib-text strong {
+    color: var(--text);
+  }
+
+  /* ── References ── */
+  .refs {
+    font-size: 7.5pt;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  .refs p {
+    margin-bottom: 0.8mm;
+    font-size: 7.5pt;
+    padding-left: 3mm;
+    text-indent: -3mm;
+  }
+
+  /* ── Architecture diagram ── */
+  .arch-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2mm;
+    margin: 3mm 0;
+    flex-wrap: nowrap;
+  }
+
+  .arch-node {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 2mm;
+    padding: 2mm 3mm;
+    font-size: 7.5pt;
+    font-weight: 600;
+    text-align: center;
+    color: var(--text);
+    min-width: 18mm;
+  }
+
+  .arch-node.bus {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    min-width: 22mm;
+  }
+
+  .arch-arrow {
+    color: var(--accent);
+    font-size: 10pt;
+    font-weight: 700;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 8pt;
+    color: var(--muted);
+    padding-top: 2mm;
+    border-top: 0.5mm solid var(--border);
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════ HEADER ════════════ -->
+<div class="header">
+  <div class="header-text">
+    <h1>Managing Multi-Agent Research Systems:<br>
+    <span>A Dashboard for Human Oversight</span> of Coordinating AI&nbsp;Agents</h1>
+    <div class="authors">
+      <div class="author"><span class="name">Brian Kitano</span><br><span class="affil">Miravoice, Silon</span></div>
+      <div class="author"><span class="name">Evan Carlson</span><br><span class="affil">Silon</span></div>
+      <div class="author"><span class="name">Bryan Russett</span><br><span class="affil">Empathic</span></div>
+      <div class="author"><span class="name">Alex Kesling</span><br><span class="affil">Empathic</span></div>
+    </div>
+  </div>
+  <div class="conf-badge">
+    HEAL<br>@CHI'26
+    <div class="venue">Barcelona, Spain</div>
+  </div>
+</div>
+
+<!-- ════════════ BODY COLUMNS ════════════ -->
+<div class="columns">
+
+  <!-- ──── LEFT COLUMN ──── -->
+  <div class="col">
+
+    <section>
+      <h2>Motivation</h2>
+      <p>LLMs can generate research ideas rated as novel by human experts (Si et al. 2024), but evaluations stop at the proposal stage&mdash;they do not run the experiments. <strong>Execution is where human oversight becomes most critical:</strong> bugs, numerical instabilities, and unexpected results require judgment that idea-level evaluation cannot capture.</p>
+      <div class="highlight-box">
+        We report a <strong>six-week reflective deployment</strong> of a multi-agent research system that generated and executed <strong>200+ proposals and experiments</strong>.
+      </div>
+    </section>
+
+    <section>
+      <h2>Key Challenges Observed</h2>
+      <ul>
+        <li><strong>Volume:</strong> Agents run 24/7 producing overwhelming information</li>
+        <li><strong>Parallelism:</strong> Multiple agents amplify the oversight burden</li>
+        <li><strong>Micro vs. macro:</strong> Steering one agent on one task differs from standardizing exchangeable artifacts</li>
+        <li><strong>Post-completion review:</strong> Lifting the human-review bottleneck requires dedicated affordances</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>System Architecture</h2>
+      <h3>Agent Roles</h3>
+      <div class="agent-role">
+        <div class="agent-icon search">T</div>
+        <div class="agent-info">
+          <div class="agent-name">Trick Search Agent</div>
+          <div class="agent-desc">Parses literature, extracts computational primitives (matrix factorizations, parallelization schemes, algebraic structures) as structured "trick cards."</div>
+        </div>
+      </div>
+      <div class="agent-role">
+        <div class="agent-icon proposal">P</div>
+        <div class="agent-info">
+          <div class="agent-name">Proposal Agent</div>
+          <div class="agent-desc">Synthesizes tricks into experiment proposals with hypothesis, formulation, MVE design, and success criteria.</div>
+        </div>
+      </div>
+      <div class="agent-role">
+        <div class="agent-icon experiment">E</div>
+        <div class="agent-info">
+          <div class="agent-name">Experiment Agent</div>
+          <div class="agent-desc">Claims proposals, implements MVEs, runs experiments on GPU infrastructure, reports results. Runs in parallel.</div>
+        </div>
+      </div>
+
+      <h3>Coordination via Event Bus</h3>
+      <!-- Architecture diagram SVG -->
+      <svg viewBox="0 0 340 220" xmlns="http://www.w3.org/2000/svg" style="width:100%; margin:2mm 0;" font-family="Inter, system-ui, sans-serif">
+        <rect width="340" height="220" fill="#f8fafc" rx="4"/>
+
+        <!-- Human operator -->
+        <rect x="120" y="8" width="100" height="28" rx="14" fill="#0f172a"/>
+        <text x="170" y="26" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">Human Operator</text>
+
+        <!-- Arrow down from human -->
+        <line x1="170" y1="36" x2="170" y2="52" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+
+        <!-- Dashboard box -->
+        <rect x="105" y="52" width="130" height="24" rx="4" fill="#e0f2f1" stroke="#0f766e" stroke-width="1"/>
+        <text x="170" y="68" fill="#0f766e" font-size="8.5" font-weight="700" text-anchor="middle">Dashboard</text>
+
+        <!-- Arrows from dashboard down to event bus -->
+        <line x1="170" y1="76" x2="170" y2="92" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+
+        <!-- Event Bus (wide bar) -->
+        <rect x="30" y="92" width="280" height="26" rx="4" fill="#0f766e"/>
+        <text x="170" y="109" fill="#fff" font-size="9" font-weight="700" text-anchor="middle">Unified Event Bus</text>
+
+        <!-- Arrows down to agents -->
+        <line x1="75" y1="118" x2="75" y2="138" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+        <line x1="170" y1="118" x2="170" y2="138" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+        <line x1="265" y1="118" x2="265" y2="138" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+
+        <!-- Agent boxes -->
+        <rect x="30" y="138" width="90" height="34" rx="4" fill="#8b5cf6" opacity="0.9"/>
+        <text x="75" y="153" fill="#fff" font-size="7.5" font-weight="700" text-anchor="middle">Trick Search</text>
+        <text x="75" y="164" fill="#e0d4fc" font-size="6.5" text-anchor="middle">381 tricks</text>
+
+        <rect x="125" y="138" width="90" height="34" rx="4" fill="#3b82f6" opacity="0.9"/>
+        <text x="170" y="153" fill="#fff" font-size="7.5" font-weight="700" text-anchor="middle">Proposal</text>
+        <text x="170" y="164" fill="#bfdbfe" font-size="6.5" text-anchor="middle">~200 proposals</text>
+
+        <rect x="220" y="138" width="90" height="34" rx="4" fill="#f59e0b" opacity="0.9"/>
+        <text x="265" y="153" fill="#fff" font-size="7.5" font-weight="700" text-anchor="middle">Experiment</text>
+        <text x="265" y="164" fill="#fef3c7" font-size="6.5" text-anchor="middle">GPU workers</text>
+
+        <!-- Shared artifacts row -->
+        <line x1="75" y1="172" x2="75" y2="188" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="170" y1="172" x2="170" y2="188" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="265" y1="172" x2="265" y2="188" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3,2"/>
+
+        <rect x="30" y="188" width="280" height="22" rx="4" fill="#f1f5f9" stroke="#e2e8f0" stroke-width="1"/>
+        <text x="170" y="203" fill="#64748b" font-size="7.5" font-weight="600" text-anchor="middle">Shared Artifacts: Trick Catalog &middot; Proposal Queue &middot; Experiment Logs</text>
+
+        <!-- Arrow markers -->
+        <defs>
+          <marker id="arrowGray" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L8,3 L0,6 Z" fill="#94a3b8"/>
+          </marker>
+        </defs>
+      </svg>
+    </section>
+
+    <section>
+      <h2>Deployment Statistics</h2>
+      <div class="stats">
+        <div class="stat"><div class="num">200+</div><div class="label">Experiments</div></div>
+        <div class="stat"><div class="num">381</div><div class="label">Tricks Found</div></div>
+        <div class="stat"><div class="num">6</div><div class="label">Weeks</div></div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ──── CENTER COLUMN ──── -->
+  <div class="col">
+
+    <!-- Figure 1: Dashboard SVG -->
+    <section style="display:flex; flex-direction:column; padding:0; overflow:hidden;">
+      <h2 style="padding:4mm 5mm; margin:0; border-radius: 3mm 3mm 0 0; border-bottom: 0.6mm solid var(--accent);">Figure 1: Dashboard Overview</h2>
+      <div style="padding: 3mm; display:flex; flex-direction:column; gap:2mm;">
+
+        <!-- Dashboard SVG recreation -->
+        <svg viewBox="0 0 520 620" xmlns="http://www.w3.org/2000/svg" style="width:100%; border-radius:2mm; border:1px solid #e2e8f0;" font-family="Inter, system-ui, sans-serif">
+          <!-- Background -->
+          <rect width="520" height="620" fill="#f9fafb" rx="4"/>
+
+          <!-- Top nav bar -->
+          <rect x="0" y="0" width="520" height="36" fill="#1e293b" rx="4"/>
+          <rect x="0" y="28" width="520" height="8" fill="#1e293b"/>
+          <text x="14" y="23" fill="#94a3b8" font-size="10" font-weight="500">&larr; Back to proposals list</text>
+
+          <!-- Run Experiment button + success toast -->
+          <rect x="12" y="44" width="100" height="26" rx="4" fill="#ef4444"/>
+          <text x="62" y="61" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">Run Experiment</text>
+          <rect x="120" y="44" width="130" height="26" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.5"/>
+          <text x="185" y="61" fill="#166534" font-size="8.5" font-weight="500" text-anchor="middle">Experiment 002 created</text>
+
+          <!-- Tabs -->
+          <rect x="12" y="80" width="64" height="24" rx="3" fill="#1e293b"/>
+          <text x="44" y="96" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">Proposal</text>
+          <rect x="80" y="80" width="90" height="24" rx="3" fill="#f1f5f9" stroke="#e2e8f0" stroke-width="0.5"/>
+          <text x="125" y="96" fill="#64748b" font-size="9" font-weight="500" text-anchor="middle">Experiments (1)</text>
+
+          <!-- Experiment table header -->
+          <rect x="12" y="114" width="496" height="20" fill="#f1f5f9" rx="2"/>
+          <text x="20" y="128" fill="#64748b" font-size="7" font-weight="700">ID</text>
+          <text x="70" y="128" fill="#64748b" font-size="7" font-weight="700">RUN</text>
+          <text x="110" y="128" fill="#64748b" font-size="7" font-weight="700">STATUS</text>
+          <text x="175" y="128" fill="#64748b" font-size="7" font-weight="700">WORKER</text>
+          <text x="260" y="128" fill="#64748b" font-size="7" font-weight="700">CREATED</text>
+          <text x="380" y="128" fill="#64748b" font-size="7" font-weight="700">COMPLETED</text>
+          <text x="455" y="128" fill="#64748b" font-size="7" font-weight="700">COST</text>
+
+          <!-- Experiment row -->
+          <rect x="12" y="134" width="496" height="22" fill="#fff" stroke="#e2e8f0" stroke-width="0.5" rx="1"/>
+          <circle cx="22" cy="145" r="3" fill="#f59e0b"/>
+          <text x="30" y="149" fill="#1e293b" font-size="8" font-weight="600">002</text>
+          <text x="70" y="149" fill="#64748b" font-size="8">#1</text>
+          <rect x="105" y="138" width="52" height="14" rx="3" fill="#fef3c7"/>
+          <text x="131" y="149" fill="#92400e" font-size="7" font-weight="500" text-anchor="middle">submitted</text>
+          <text x="175" y="149" fill="#64748b" font-size="8" font-family="'JetBrains Mono', monospace">exp-002</text>
+          <text x="260" y="149" fill="#64748b" font-size="7.5">3/21/2026, 12:17:15 AM</text>
+          <text x="395" y="149" fill="#94a3b8" font-size="8">&mdash;</text>
+          <text x="462" y="149" fill="#94a3b8" font-size="8">&mdash;</text>
+
+          <!-- Log section header -->
+          <rect x="12" y="168" width="496" height="22" fill="#1e293b" rx="3"/>
+          <text x="20" y="183" fill="#e2e8f0" font-size="9" font-weight="600">Logs for experiment 002</text>
+          <rect x="428" y="173" width="32" height="13" rx="2" fill="#22c55e"/>
+          <text x="444" y="183" fill="#fff" font-size="7" font-weight="600" text-anchor="middle">Live</text>
+          <text x="418" y="183" fill="#94a3b8" font-size="7" text-anchor="end">216 events</text>
+
+          <!-- Terminal log area -->
+          <rect x="12" y="190" width="496" height="420" fill="#111827" rx="0 0 3 3"/>
+
+          <!-- Log lines -->
+          <g font-family="'JetBrains Mono', monospace" font-size="7" fill="#9ca3af">
+            <text x="18" y="208"><tspan fill="#6b7280">3/21/2026, 12:31:14 AM</tspan>  <tspan fill="#60a5fa">|message_part_updated|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> message_part_updated</text>
+            <text x="18" y="222"><tspan fill="#6b7280">3/21/2026, 12:36:07 AM</tspan>  <tspan fill="#60a5fa">|message_part_updated|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> edit (pending)</text>
+            <text x="18" y="236"><tspan fill="#6b7280">3/21/2026, 12:36:07 AM</tspan>  <tspan fill="#60a5fa">|message_part_updated|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> edit (running)</text>
+            <text x="18" y="250"><tspan fill="#6b7280">3/21/2026, 12:36:08 AM</tspan>  <tspan fill="#fbbf24">|file_edited|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> file_edited</text>
+            <text x="18" y="264"><tspan fill="#6b7280">3/21/2026, 12:36:08 AM</tspan>  <tspan fill="#fbbf24">|file_watcher_updated|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> file_watcher_updated</text>
+            <text x="18" y="278"><tspan fill="#6b7280">3/21/2026, 12:36:09 AM</tspan>  <tspan fill="#60a5fa">|message_part_updated|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> edit (running)</text>
+            <text x="18" y="292"><tspan fill="#6b7280">3/21/2026, 12:36:10 AM</tspan>  <tspan fill="#60a5fa">|message_part_updated|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> message_part_updated</text>
+
+            <text x="18" y="316"><tspan fill="#6b7280">3/21/2026, 12:36:10 AM</tspan>  <tspan fill="#60a5fa">|message_part_updated|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> Let me start by focusing on getting</text>
+            <text x="18" y="330" fill="#d1d5db">   the DT transform to exactly match the naive. The issue is the state update formula. Let me fix</text>
+            <text x="18" y="344" fill="#d1d5db">   the implementation...</text>
+
+            <text x="18" y="368"><tspan fill="#6b7280">3/21/2026, 12:36:11 AM</tspan>  <tspan fill="#34d399">|lsp_client_diagnostics|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> lsp_client_diagnostics</text>
+            <text x="18" y="382"><tspan fill="#6b7280">3/21/2026, 12:36:12 AM</tspan>  <tspan fill="#60a5fa">|message_part_updated|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> edit (completed)</text>
+            <text x="18" y="396"><tspan fill="#6b7280">3/21/2026, 12:36:12 AM</tspan>  <tspan fill="#60a5fa">|message_part_updated|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> message_part_updated</text>
+            <text x="18" y="410"><tspan fill="#6b7280">3/21/2026, 12:36:13 AM</tspan>  <tspan fill="#60a5fa">|message_updated|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> message_updated</text>
+            <text x="18" y="424"><tspan fill="#6b7280">3/21/2026, 12:36:13 AM</tspan>  <tspan fill="#60a5fa">|message_updated|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> message_updated</text>
+            <text x="18" y="438"><tspan fill="#6b7280">3/21/2026, 12:36:14 AM</tspan>  <tspan fill="#fbbf24">|session_status|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> session_status</text>
+            <text x="18" y="452"><tspan fill="#6b7280">3/21/2026, 12:36:15 AM</tspan>  <tspan fill="#60a5fa">|session_updated|</tspan> <tspan fill="#a78bfa">[exp-001]</tspan> session_updated</text>
+            <text x="18" y="466"><tspan fill="#6b7280">3/21/2026, 12:36:15 AM</tspan>  <tspan fill="#60a5fa">|message_updated|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> message_updated</text>
+            <text x="18" y="480"><tspan fill="#6b7280">3/21/2026, 12:36:26 AM</tspan>  <tspan fill="#60a5fa">|message_updated|</tspan> <tspan fill="#a78bfa">[exp-002]</tspan> message_updated</text>
+
+            <!-- Scrollbar hint -->
+            <rect x="500" y="195" width="4" height="60" rx="2" fill="#374151" opacity="0.6"/>
+          </g>
+
+          <!-- Subtle overlay gradient at bottom of terminal -->
+          <defs>
+            <linearGradient id="termFade" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#111827" stop-opacity="0"/>
+              <stop offset="100%" stop-color="#111827" stop-opacity="0.8"/>
+            </linearGradient>
+          </defs>
+          <rect x="12" y="570" width="496" height="40" fill="url(#termFade)" rx="0 0 3 3"/>
+        </svg>
+
+        <p style="font-size:8pt; color:var(--muted); text-align:center; font-style:italic;">
+          Figure 1: Experiment overview with real-time event stream, color-coded by type.
+        </p>
+      </div>
+    </section>
+
+    <!-- Figure 2: Results View SVG -->
+    <section style="display:flex; flex-direction:column; padding:0; overflow:hidden;">
+      <h2 style="padding:4mm 5mm; margin:0; border-radius: 3mm 3mm 0 0; border-bottom: 0.6mm solid var(--accent);">Figure 2: Experiment Results View</h2>
+      <div style="padding: 3mm; display:flex; flex-direction:column; gap:2mm;">
+        <svg viewBox="0 0 520 380" xmlns="http://www.w3.org/2000/svg" style="width:100%; border-radius:2mm; border:1px solid #e2e8f0;" font-family="Inter, system-ui, sans-serif">
+          <rect width="520" height="380" fill="#f9fafb" rx="4"/>
+
+          <!-- Code panel (left side) -->
+          <rect x="8" y="8" width="200" height="364" fill="#1e293b" rx="4"/>
+          <rect x="8" y="8" width="200" height="26" fill="#334155" rx="4 4 0 0"/>
+          <text x="18" y="25" fill="#94a3b8" font-size="8" font-weight="600">Code: 002 (002)</text>
+          <rect x="196" y="14" width="8" height="8" rx="1" fill="#94a3b8" opacity="0.5"/>
+
+          <!-- File tree -->
+          <text x="18" y="50" fill="#fbbf24" font-size="7.5" font-weight="600"># 002</text>
+          <text x="26" y="63" fill="#60a5fa" font-size="7">ssd_deltanet_mve.py</text>
+          <rect x="150" y="55" width="30" height="12" rx="2" fill="#374151"/>
+          <text x="165" y="64" fill="#94a3b8" font-size="6" text-anchor="middle">code</text>
+          <text x="26" y="78" fill="#60a5fa" font-size="7">ssd_deltanet_mve_test.py</text>
+          <rect x="150" y="70" width="30" height="12" rx="2" fill="#374151"/>
+          <text x="165" y="79" fill="#94a3b8" font-size="6" text-anchor="middle">tests</text>
+
+          <!-- Code preview area -->
+          <rect x="16" y="92" width="184" height="270" fill="#0f172a" rx="2"/>
+          <g font-family="'JetBrains Mono', monospace" font-size="6" fill="#94a3b8">
+            <text x="22" y="106"><tspan fill="#c084fc">import</tspan> torch</text>
+            <text x="22" y="117"><tspan fill="#c084fc">import</tspan> torch.nn <tspan fill="#c084fc">as</tspan> nn</text>
+            <text x="22" y="128"></text>
+            <text x="22" y="139"><tspan fill="#c084fc">class</tspan> <tspan fill="#fbbf24">SSDDeltaNet</tspan>(nn.Module):</text>
+            <text x="22" y="150">    <tspan fill="#c084fc">def</tspan> <tspan fill="#60a5fa">__init__</tspan>(self, d, n):</text>
+            <text x="22" y="161">        super().__init__()</text>
+            <text x="22" y="172">        self.W_q = nn.Linear(d, n)</text>
+            <text x="22" y="183">        self.W_k = nn.Linear(d, n)</text>
+            <text x="22" y="194">        self.W_v = nn.Linear(d, n)</text>
+            <text x="22" y="205"></text>
+            <text x="22" y="216">    <tspan fill="#c084fc">def</tspan> <tspan fill="#60a5fa">forward</tspan>(self, x):</text>
+            <text x="22" y="227">        q = self.W_q(x)</text>
+            <text x="22" y="238">        k = self.W_k(x)</text>
+            <text x="22" y="249">        v = self.W_v(x)</text>
+            <text x="22" y="260">        <tspan fill="#6b7280"># Block-sparse update</tspan></text>
+            <text x="22" y="271">        S = torch.zeros(B,n,n)</text>
+            <text x="22" y="282">        <tspan fill="#c084fc">for</tspan> t <tspan fill="#c084fc">in</tspan> range(T):</text>
+            <text x="22" y="293">            S = S + torch.outer(</text>
+            <text x="22" y="304">                k[:,t], v[:,t])</text>
+            <text x="22" y="315">            y[:,t] = q[:,t] @ S</text>
+            <text x="22" y="326">        <tspan fill="#c084fc">return</tspan> y</text>
+          </g>
+
+          <!-- Results panel (right side) -->
+          <rect x="216" y="8" width="296" height="364" fill="#fff" rx="4" stroke="#e2e8f0" stroke-width="1"/>
+
+          <!-- Results header -->
+          <text x="226" y="28" fill="#1e293b" font-size="9" font-weight="700">SSD-DeltaNet: Experiment002 Results</text>
+
+          <!-- Summary section -->
+          <rect x="226" y="36" width="276" height="1" fill="#e2e8f0"/>
+          <text x="226" y="50" fill="#0f766e" font-size="7.5" font-weight="700">Summary</text>
+          <text x="226" y="62" fill="#475569" font-size="6.5">Hypothesis: The WY representation of DeltaNet's state matrix</text>
+          <text x="226" y="72" fill="#475569" font-size="6.5">can be reformulated as a block-semiseparable matrix, enabling</text>
+          <text x="226" y="82" fill="#475569" font-size="6.5">the SSD algorithm to accelerate DeltaNet training by 1.4x.</text>
+
+          <!-- Results section -->
+          <text x="226" y="100" fill="#0f766e" font-size="7.5" font-weight="700">MVE Results</text>
+
+          <!-- Metric bars -->
+          <text x="226" y="114" fill="#475569" font-size="6">Speedup</text>
+          <rect x="280" y="107" width="140" height="10" fill="#f1f5f9" rx="2"/>
+          <rect x="280" y="107" width="100" height="10" fill="#0f766e" rx="2"/>
+          <text x="390" y="115" fill="#0f766e" font-size="6" font-weight="600">1.37x</text>
+
+          <text x="226" y="130" fill="#475569" font-size="6">Numerical Error</text>
+          <rect x="310" y="123" width="110" height="10" fill="#f1f5f9" rx="2"/>
+          <rect x="310" y="123" width="15" height="10" fill="#22c55e" rx="2"/>
+          <text x="335" y="131" fill="#22c55e" font-size="6" font-weight="600">&lt;1e-6</text>
+
+          <text x="226" y="146" fill="#475569" font-size="6">Internal Fraction</text>
+          <rect x="310" y="139" width="110" height="10" fill="#f1f5f9" rx="2"/>
+          <rect x="310" y="139" width="66" height="10" fill="#3b82f6" rx="2"/>
+          <text x="386" y="147" fill="#3b82f6" font-size="6" font-weight="600">60%</text>
+
+          <!-- Status badges -->
+          <g transform="translate(226, 160)">
+            <rect x="0" y="0" width="42" height="14" rx="3" fill="#dcfce7"/>
+            <text x="21" y="10" fill="#166534" font-size="6" font-weight="600" text-anchor="middle">PASS</text>
+            <rect x="48" y="0" width="55" height="14" rx="3" fill="#dcfce7"/>
+            <text x="75" y="10" fill="#166534" font-size="6" font-weight="600" text-anchor="middle">Speedup</text>
+            <rect x="109" y="0" width="65" height="14" rx="3" fill="#dcfce7"/>
+            <text x="141" y="10" fill="#166534" font-size="6" font-weight="600" text-anchor="middle">Numerical</text>
+            <rect x="180" y="0" width="42" height="14" rx="3" fill="#fef3c7"/>
+            <text x="201" y="10" fill="#92400e" font-size="6" font-weight="600" text-anchor="middle">FAIL</text>
+          </g>
+
+          <!-- Timing details -->
+          <text x="226" y="196" fill="#0f766e" font-size="7.5" font-weight="700">Timing Details</text>
+          <rect x="226" y="202" width="276" height="50" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.5" rx="2"/>
+          <g font-size="6" fill="#475569">
+            <text x="232" y="214">BATCH=1, seq_len=512, d=64, chunks=64</text>
+            <text x="232" y="226">Naive WY (chunked): 0.68 ± 0.09s (baseline)</text>
+            <text x="232" y="238">Block SSD: 0.50 ± 0.04s  (<tspan fill="#0f766e" font-weight="600">1.37x faster</tspan>)</text>
+            <text x="232" y="250">DeltaNet fwd: 0.83 ± 0.02s</text>
+          </g>
+
+          <!-- Analysis section -->
+          <text x="226" y="272" fill="#0f766e" font-size="7.5" font-weight="700">Analysis</text>
+          <text x="226" y="284" fill="#475569" font-size="6.5" font-weight="600">Speedup Achievement</text>
+          <text x="226" y="296" fill="#475569" font-size="6">The O(1) baseline computation provides significant speedup.</text>
+          <text x="226" y="308" fill="#475569" font-size="6">The core WY implementation uses the same decomposition:</text>
+          <text x="232" y="320" fill="#64748b" font-size="5.5" font-family="'JetBrains Mono', monospace">S += outer(k, v) followed by y = q @ S</text>
+
+          <text x="226" y="338" fill="#475569" font-size="6.5" font-weight="600">Numerical Discrepancy</text>
+          <text x="226" y="350" fill="#475569" font-size="6">Forward compositions S @ K, T @ K, and T @ V</text>
+          <text x="226" y="362" fill="#475569" font-size="6">all map directly to known rank-1 updates on matrices.</text>
+        </svg>
+
+        <p style="font-size:8pt; color:var(--muted); text-align:center; font-style:italic;">
+          Figure 2: Results view — code, metrics, and artifacts designed for rapid human verification.
+        </p>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ──── RIGHT COLUMN ──── -->
+  <div class="col">
+
+    <section>
+      <h2>Dashboard Affordances</h2>
+
+      <h3>Asynchronous Review</h3>
+      <p>Timeline surfaces what happened while the user was away: tricks discovered, proposals generated, experiments completed or failed. Filter by time, agent, or event type for rapid triage.</p>
+
+      <h3>Infrastructure vs. Agent Monitoring</h3>
+      <p>Separating "is it running?" (OOM crashes, network timeouts) from "is it doing the right thing?" (proposal drift, off-topic work) reduced false diagnoses in debugging sessions.</p>
+
+      <h3>Manual Interventions</h3>
+      <p>Users can kick off experiments, bypass the proposal queue ("queue-jumping"), and add ad-hoc tricks or proposals. Preserves operator agency alongside autonomous operation.</p>
+
+      <h3>Feedback Throughout Lifecycle</h3>
+      <p>Human input at any point: approving tricks, editing proposals, retrieving artifacts, asking workers for follow-up tasks. Artifacts packaged for inspection of code, traces, and outputs.</p>
+    </section>
+
+    <section>
+      <h2>Design Implications</h2>
+      <div class="di-card">
+        <div class="di-num">Implication 1</div>
+        <div class="di-title">Workflows must support asynchronous interactivity</div>
+        <div class="di-body">The event stream quickly becomes overwhelming. Batch updates, async artifact reviews, and alerts for urgent items are essential.</div>
+      </div>
+      <div class="di-card">
+        <div class="di-num">Implication 2</div>
+        <div class="di-title">Use a unified event bus for coordination &amp; context</div>
+        <div class="di-body">Agents subscribe to events from users and other agents, enabling async interaction without bespoke integrations.</div>
+      </div>
+      <div class="di-card">
+        <div class="di-num">Implication 3</div>
+        <div class="di-title">Separate infrastructure from behavior monitoring</div>
+        <div class="di-body">Many "agent errors" were OOM crashes or jobs on the wrong machine. Separating concerns reduces false diagnoses.</div>
+      </div>
+      <div class="di-card">
+        <div class="di-num">Implication 4</div>
+        <div class="di-title">Design research artifacts to minimize verification time</div>
+        <div class="di-body">Agents must produce <em>reviewable</em> results&mdash;inspectable code, retrievable artifacts, and faithful-to-proposal outputs.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Contributions to HEAL Themes</h2>
+      <div class="contrib-item">
+        <div class="contrib-bullet"><svg viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="contrib-text"><strong>Async-first design:</strong> Multi-agent oversight must assume asynchronous human interaction, with affordances for catching up, triaging, and intervening after the fact.</div>
+      </div>
+      <div class="contrib-item">
+        <div class="contrib-bullet"><svg viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="contrib-text"><strong>Multi-level steering:</strong> Micro steering (individual agent/task) vs. macro steering (overall direction) require distinct interface affordances.</div>
+      </div>
+      <div class="contrib-item">
+        <div class="contrib-bullet"><svg viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="contrib-text"><strong>Infra vs. behavior monitoring:</strong> Separating "is it running?" from "is it doing the right thing?" was critical for effective debugging.</div>
+      </div>
+      <div class="contrib-item">
+        <div class="contrib-bullet"><svg viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="contrib-text"><strong>Human agency through intervention:</strong> What affordances let humans remain active participants alongside autonomous agents?</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>References</h2>
+      <div class="refs">
+        <p>[1] Si, Yang, Hashimoto. "Can LLMs Generate Novel Research Ideas? A Large-Scale Human Study with 100+ NLP Researchers." arXiv:2409.04109, 2024.</p>
+        <p>[2] Lu et al. "The AI Scientist: Towards Fully Automated Open-ended Scientific Discovery." arXiv:2408.06292, 2024.</p>
+        <p>[3] Wu et al. "AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation." arXiv:2308.08155, 2023.</p>
+        <p>[4] Hong et al. "MetaGPT: Meta Programming for A Multi-Agent Collaborative Framework." ICLR, 2024.</p>
+        <p>[5] Amershi et al. "Guidelines for Human-AI Interaction." CHI, 2019.</p>
+      </div>
+    </section>
+
+  </div>
+
+</div>
+
+<!-- ════════════ FOOTER ════════════ -->
+<div class="footer">
+  <span>HEAL@CHI'26 &middot; Human-centered Evaluation and Auditing of Language Models &middot; Barcelona, Spain &middot; April 13&ndash;17, 2026</span>
+  <span>Contact: brian@miravoice.com</span>
+</div>
+
+</body>
+</html>
