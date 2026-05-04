@@ -232,6 +232,53 @@ def terminate_sandbox(payload: TerminateSandboxRequest) -> dict:
 
 @app.function(image=endpoint_image, secrets=[SECRETS])
 @modal.fastapi_endpoint(method="GET")
+def list_volumes() -> dict:
+    """List all mad-sandbox volumes."""
+    volumes = []
+    for vol in modal.Volume.objects.list():
+        if vol.name and vol.name.startswith(VOLUME_NAME_PREFIX):
+            volumes.append({"name": vol.name, "volume_id": vol.object_id})
+    return {"volumes": volumes}
+
+
+@app.function(image=endpoint_image, secrets=[SECRETS])
+@modal.fastapi_endpoint(method="GET")
+def volume_ls(volume_name: str, path: str = "/") -> dict:
+    """List files in a volume at the given path."""
+    volume = modal.Volume.from_name(volume_name)
+    entries = []
+    for entry in volume.listdir(path, recursive=False):
+        entries.append({
+            "path": entry.path,
+            "type": "directory" if entry.type == modal.volume.FileEntryType.DIRECTORY else "file",
+        })
+    return {"volume_name": volume_name, "path": path, "entries": entries}
+
+
+@app.function(image=endpoint_image, secrets=[SECRETS])
+@modal.fastapi_endpoint(method="GET")
+def volume_read(volume_name: str, path: str) -> dict:
+    """Read a file from a volume. Returns the file content as text.
+    curl <endpoint> | jq -r .content > out.ipynb
+    """
+    import base64
+
+    volume = modal.Volume.from_name(volume_name)
+    data = b""
+    for chunk in volume.read_file(path):
+        data += chunk
+
+    # Try to decode as text, fall back to base64
+    try:
+        content = data.decode("utf-8")
+        return {"volume_name": volume_name, "path": path, "encoding": "utf-8", "content": content}
+    except UnicodeDecodeError:
+        content = base64.b64encode(data).decode("ascii")
+        return {"volume_name": volume_name, "path": path, "encoding": "base64", "content": content}
+
+
+@app.function(image=endpoint_image, secrets=[SECRETS])
+@modal.fastapi_endpoint(method="GET")
 def list_sandboxes() -> dict:
     """List all running sandboxes for this app."""
     sandboxes = []
