@@ -116,7 +116,7 @@ def create_sandbox(
         f"uv sync && "
         f"uv pip install ipykernel && "
         f"uv run python -m ipykernel install --user --name=mad --display-name='MAD' && "
-        f"jupyter lab --ip=0.0.0.0 --port={JUPYTER_PORT} --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password='' &"
+        f"jupyter lab --ip=0.0.0.0 --port={JUPYTER_PORT} --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.tornado_settings='{{\"headers\":{{\"Content-Security-Policy\":\"frame-ancestors *\"}}}}' &"
         f" opencode serve --hostname=0.0.0.0 --port={OPENCODE_PORT} --log-level=DEBUG --print-logs"
     )
 
@@ -147,6 +147,7 @@ class CreateSandboxRequest(BaseModel):
     timeout_hours: int = 12
     allow_modal_access: bool = True
     gpu: Optional[str] = "T4"
+    volume_name: Optional[str] = None
 
 
 class CreateSandboxResponse(BaseModel):
@@ -185,7 +186,7 @@ def create_sandbox_worker(payload: CreateSandboxRequest = CreateSandboxRequest()
     if payload.allow_modal_access:
         image = add_modal_access(image)
 
-    volume_name = f"{VOLUME_NAME_PREFIX}{uuid.uuid4().hex[:8]}"
+    volume_name = payload.volume_name or f"{VOLUME_NAME_PREFIX}{uuid.uuid4().hex[:8]}"
     volume = modal.Volume.from_name(volume_name, create_if_missing=True)
 
     password_secret_name = "mad-worker-secrets"
@@ -281,13 +282,20 @@ def volume_read(volume_name: str, path: str) -> dict:
 @modal.fastapi_endpoint(method="GET")
 def list_sandboxes() -> dict:
     """List all running sandboxes for this app."""
+    sandbox_app = modal.App.lookup(APP_NAME, create_if_missing=True)
     sandboxes = []
-    for sb in modal.Sandbox.list(app_id=APP_NAME):
-        tunnels = sb.tunnels()
-        tunnel_url = tunnels[OPENCODE_PORT].url if OPENCODE_PORT in tunnels else None
+    for sb in modal.Sandbox.list(app_id=sandbox_app.app_id):
+        try:
+            tunnels = sb.tunnels()
+            opencode_url = tunnels[OPENCODE_PORT].url if OPENCODE_PORT in tunnels else None
+            jupyter_url = tunnels[JUPYTER_PORT].url if JUPYTER_PORT in tunnels else None
+        except Exception:
+            opencode_url = None
+            jupyter_url = None
         sandboxes.append({
             "sandbox_id": sb.object_id,
-            "opencode_url": tunnel_url,
+            "opencode_url": opencode_url,
+            "jupyter_url": jupyter_url,
         })
     return {"sandboxes": sandboxes}
 
