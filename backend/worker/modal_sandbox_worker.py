@@ -24,6 +24,7 @@ CLI usage:
     uv run python -m worker.modal_sandbox_worker --timeout 2h
 """
 
+import json
 import os
 import uuid
 from pathlib import Path
@@ -56,16 +57,30 @@ def define_base_image() -> modal.Image:
             "curl -LsSf https://astral.sh/uv/install.sh | sh",
         )
         .pip_install("jupyterlab")
-        .env({"PATH": "/root/.opencode/bin:/root/.local/bin:${PATH}"})
+        .env({
+            "PATH": "/root/.opencode/bin:/root/.local/bin:${PATH}",
+            "OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS": "0",
+        })
     )
 
-    # Include the project's opencode-go config so the sandbox uses the right provider/model.
-    OPENCODE_CONFIG = Path(__file__).parent / "opencode" / "opencode.jsonc"
-    if OPENCODE_CONFIG.exists():
-        print("🏖️  Including opencode-go config from", OPENCODE_CONFIG)
-        image = image.add_local_file(
-            str(OPENCODE_CONFIG), "/root/.config/opencode/opencode.json", copy=True
-        )
+    # Inline opencode config so sandbox uses the right provider/model with full permissions.
+    opencode_config = json.dumps({
+        "$schema": "https://opencode.ai/config.json",
+        "model": "opencode-go/glm-5.1",
+        "autoupdate": True,
+        "permission": "allow",
+        "server": {"port": OPENCODE_PORT},
+        "provider": {
+            "opencode-go": {
+                "options": {
+                    "apiKey": "{env:OPENCODE_GO_API_KEY}"
+                }
+            }
+        }
+    })
+    image = image.run_commands(
+        f"mkdir -p /root/.config/opencode && echo '{opencode_config}' > /root/.config/opencode/opencode.json"
+    )
 
     return image
 
@@ -102,6 +117,7 @@ def create_sandbox(
     ref: str = "main",
     token: str | None = None,
     gpu: str | None = "T4",
+    volume_name: str = "",
 ) -> modal.Sandbox:
     print("🏖️  Creating sandbox")
 
@@ -116,12 +132,12 @@ def create_sandbox(
         f"uv sync && "
         f"uv pip install ipykernel && "
         f"uv run python -m ipykernel install --user --name=mad --display-name='MAD' && "
-        f"jupyter lab --ip=0.0.0.0 --port={JUPYTER_PORT} --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.tornado_settings='{{\"headers\":{{\"Content-Security-Policy\":\"frame-ancestors *\"}}}}' &"
+        f"jupyter lab --ip=0.0.0.0 --port={JUPYTER_PORT} --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.disable_check_xsrf=True --ServerApp.tornado_settings='{{\"headers\":{{\"Content-Security-Policy\":\"frame-ancestors *\"}}}}' &"
         f" opencode serve --hostname=0.0.0.0 --port={OPENCODE_PORT} --log-level=DEBUG --print-logs"
     )
 
     with modal.enable_output():
-        return modal.Sandbox.create(
+        sb = modal.Sandbox.create(
             "bash",
             "-c",
             entrypoint,
@@ -134,6 +150,9 @@ def create_sandbox(
             volumes={"/root/code": volume},
             workdir="/root/code",
         )
+    if volume_name:
+        sb.set_tags({"volume_name": volume_name})
+    return sb
 
 
 
@@ -199,7 +218,7 @@ def create_sandbox_worker(payload: CreateSandboxRequest = CreateSandboxRequest()
     sandbox = create_sandbox(
         image, timeout, sandbox_app, sandbox_secrets, volume,
         repo=payload.github_repo, ref=payload.github_ref, token=payload.github_token,
-        gpu=payload.gpu,
+        gpu=payload.gpu, volume_name=volume_name,
     )
 
     tunnels = sandbox.tunnels()
@@ -292,10 +311,16 @@ def list_sandboxes() -> dict:
         except Exception:
             opencode_url = None
             jupyter_url = None
+        try:
+            tags = sb.get_tags()
+            vol_name = tags.get("volume_name", "")
+        except Exception:
+            vol_name = ""
         sandboxes.append({
             "sandbox_id": sb.object_id,
             "opencode_url": opencode_url,
             "jupyter_url": jupyter_url,
+            "volume_name": vol_name,
         })
     return {"sandboxes": sandboxes}
 

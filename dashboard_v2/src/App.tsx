@@ -17,6 +17,7 @@ interface SandboxListItem {
   sandbox_id: string
   opencode_url: string | null
   jupyter_url: string | null
+  volume_name: string
 }
 
 function App() {
@@ -117,7 +118,7 @@ function App() {
     if (!sb.opencode_url) return
     setSession({
       sandbox_id: sb.sandbox_id,
-      volume_name: '',
+      volume_name: sb.volume_name || '',
       opencode_url: sb.opencode_url,
       jupyter_url: sb.jupyter_url || '',
       status: 'running',
