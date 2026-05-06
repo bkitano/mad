@@ -48,6 +48,9 @@ app = modal.App(APP_NAME)
 endpoint_image = modal.Image.debian_slim().pip_install("pydantic>=2.0.0", "fastapi[standard]")
 
 
+HARNESS_DIR = Path(__file__).parent.parent.parent / "harness"
+
+
 def define_base_image() -> modal.Image:
     image = (
         modal.Image.debian_slim()
@@ -56,12 +59,15 @@ def define_base_image() -> modal.Image:
             "curl -fsSL https://opencode.ai/install | bash",
             "curl -LsSf https://astral.sh/uv/install.sh | sh",
         )
-        .pip_install("jupyterlab")
+        .pip_install("jupyterlab", "pydantic>=2.0.0", "pyyaml", "httpx")
         .env({
             "PATH": "/root/.opencode/bin:/root/.local/bin:${PATH}",
             "OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS": "0",
         })
     )
+
+    if HARNESS_DIR.exists():
+        image = image.add_local_dir(str(HARNESS_DIR), "/root/harness", copy=True)
 
     # Inline opencode config so sandbox uses the right provider/model with full permissions.
     opencode_config = json.dumps({
@@ -118,6 +124,7 @@ def create_sandbox(
     token: str | None = None,
     gpu: str | None = "T4",
     volume_name: str = "",
+    criteria_yaml: str | None = None,
 ) -> modal.Sandbox:
     print("🏖️  Creating sandbox")
 
@@ -126,9 +133,14 @@ def create_sandbox(
     else:
         clone_url = f"https://github.com/{repo}.git"
 
-    # Clone into the volume mount, install deps, start jupyter in background, then opencode in foreground
+    criteria_cmd = ""
+    if criteria_yaml:
+        escaped = criteria_yaml.replace("'", "'\\''")
+        criteria_cmd = f"echo '{escaped}' > /root/code/criteria.yaml && "
+
     entrypoint = (
         f"cd /root/code && git clone --depth 1 --branch {ref} {clone_url} . && "
+        f"{criteria_cmd}"
         f"uv sync && "
         f"uv pip install ipykernel && "
         f"uv run python -m ipykernel install --user --name=mad --display-name='MAD' && "
@@ -167,6 +179,7 @@ class CreateSandboxRequest(BaseModel):
     allow_modal_access: bool = True
     gpu: Optional[str] = "T4"
     volume_name: Optional[str] = None
+    criteria_yaml: Optional[str] = None
 
 
 class CreateSandboxResponse(BaseModel):
@@ -219,6 +232,7 @@ def create_sandbox_worker(payload: CreateSandboxRequest = CreateSandboxRequest()
         image, timeout, sandbox_app, sandbox_secrets, volume,
         repo=payload.github_repo, ref=payload.github_ref, token=payload.github_token,
         gpu=payload.gpu, volume_name=volume_name,
+        criteria_yaml=payload.criteria_yaml,
     )
 
     tunnels = sandbox.tunnels()
