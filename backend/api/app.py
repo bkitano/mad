@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from src import event_bus, experiment_store, opencode_code
 from src.db import DatabaseManager
+from src.prompt_template import build_agent_prompt
 from src.stores import EventsStore, ExperimentsStore, ProposalsStore, TricksStore, WorkersStore
 from supabase import acreate_client
 
@@ -70,6 +71,7 @@ class CreateProposalRequest(BaseModel):
     priority: Optional[str] = None
     hypothesis: Optional[str] = None
     based_on: Optional[str] = None
+    criteria: Optional[dict] = None
 
 
 class CreateExperimentRequest(BaseModel):
@@ -606,6 +608,7 @@ def get_proposal(proposal_id: str):
         "hypothesis": row.get("hypothesis"),
         "has_mve": "## Minimum Viable Experiment" in (row["content"] or ""),
         "content": row["content"],
+        "criteria": row.get("criteria"),
     }
 
 
@@ -622,6 +625,7 @@ def create_proposal(req: CreateProposalRequest):
         priority=req.priority,
         hypothesis=req.hypothesis,
         based_on=req.based_on,
+        criteria=req.criteria,
     )
     return {
         "id": row["proposal_id"],
@@ -629,6 +633,7 @@ def create_proposal(req: CreateProposalRequest):
         "priority": row["priority"],
         "hypothesis": row.get("hypothesis"),
         "content": row["content"],
+        "criteria": row.get("criteria"),
     }
 
 
@@ -1012,6 +1017,12 @@ async def assign_submitted_proposals_to_worker(worker_id: str):
         if not proposal:
             continue
         try:
+            prompt_text = build_agent_prompt(
+                proposal_content=proposal["content"],
+                criteria=proposal.get("criteria"),
+                experiment_id=exp.id,
+                service_url=os.environ.get("MAD_SERVICE_URL"),
+            )
             async with _httpx.AsyncClient(base_url=worker['opencode_url'], timeout=30.0) as http:
                 sess_resp = await http.post("/session", json={})
                 sess_resp.raise_for_status()
@@ -1021,7 +1032,7 @@ async def assign_submitted_proposals_to_worker(worker_id: str):
 
                 await http.post(
                     f"/session/{session_id}/prompt_async",
-                    json={"parts": [{"type": "text", "text": proposal["content"]}]},
+                    json={"parts": [{"type": "text", "text": prompt_text}]},
                 )
             experiments.update(exp.id, status="running")
             event_bus.emit(
@@ -1211,14 +1222,72 @@ def post_event(req: EmitEventRequest):
     if req.event_type == "session.idle" and experiment_id:
         exp = experiments.get(experiment_id)
         if exp and exp.get("status") == "running":
-            experiments.update(experiment_id, status="completed")
-            event_bus.emit(
-                "experiment.completed",
-                f"Experiment {experiment_id} completed (session idle)",
-                experiment_id=experiment_id,
-                parent_id=event_bus.get_root_event(experiment_id),
-            )
+            verdict = _try_fetch_verdict(experiment_id)
+            if verdict:
+                status = "completed" if verdict.get("overall_pass") else "failed"
+                experiments.update(experiment_id, status=status, results=verdict)
+                event_bus.emit(
+                    f"experiment.{status}",
+                    f"Experiment {experiment_id} {status} (verdict: {'PASS' if verdict.get('overall_pass') else 'FAIL'})",
+                    experiment_id=experiment_id,
+                    details=verdict,
+                    parent_id=event_bus.get_root_event(experiment_id),
+                )
+            else:
+                experiments.update(experiment_id, status="completed")
+                event_bus.emit(
+                    "experiment.completed",
+                    f"Experiment {experiment_id} completed (session idle, no verdict)",
+                    experiment_id=experiment_id,
+                    parent_id=event_bus.get_root_event(experiment_id),
+                )
     return result
+
+
+def _try_fetch_verdict(experiment_id: str) -> dict | None:
+    """Try to fetch verdict.json from the worker's OpenCode API."""
+    try:
+        opencode_result = _try_opencode_code(experiment_id)
+    except (opencode_code.OpenCodeNoFiles, opencode_code.OpenCodeProxyError):
+        return None
+    if opencode_result is None:
+        return None
+    _, files = opencode_result
+    verdict_content = files.get("verdict.json")
+    if not verdict_content:
+        return None
+    try:
+        return json.loads(verdict_content)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+class VerdictRequest(BaseModel):
+    overall_pass: bool
+    results: list[dict] = []
+    training_completed: bool = False
+    wall_time_seconds: Optional[float] = None
+    raw_metrics: dict = {}
+
+
+@app.post("/experiments/{experiment_id}/verdict")
+def submit_verdict(experiment_id: str, req: VerdictRequest):
+    """Accept an evaluation verdict from the sandbox and update the experiment."""
+    exp = experiments.get(experiment_id)
+    if exp is None:
+        raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
+
+    verdict = req.model_dump()
+    status = "completed" if req.overall_pass else "failed"
+    experiments.update(experiment_id, status=status, results=verdict)
+    event_bus.emit(
+        f"experiment.{status}",
+        f"Experiment {experiment_id} verdict: {'PASS' if req.overall_pass else 'FAIL'}",
+        experiment_id=experiment_id,
+        details=verdict,
+        parent_id=event_bus.get_root_event(experiment_id),
+    )
+    return {"experiment_id": experiment_id, "status": status, "verdict": verdict}
 
 
 # -- POST /dispatch ------------------------------------------------------------
