@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import NotebookViewer from './NotebookViewer'
 
 const MODAL_BASE = 'https://miravoice--mad-sandbox-worker'
 const CREATE_URL = `${MODAL_BASE}-create-sandbox-worker.modal.run`
 const TERMINATE_URL = `${MODAL_BASE}-terminate-sandbox.modal.run`
 const LIST_URL = `${MODAL_BASE}-list-sandboxes.modal.run`
+const VOLUMES_URL = `${MODAL_BASE}-list-volumes.modal.run`
+const VOLUME_LS_URL = `${MODAL_BASE}-volume-ls.modal.run`
+const VOLUME_READ_URL = `${MODAL_BASE}-volume-read.modal.run`
 
 interface Session {
   sandbox_id: string
@@ -20,6 +24,15 @@ interface SandboxListItem {
   volume_name: string
 }
 
+interface VolumeItem {
+  name: string
+  volume_id: string
+  created_at: string | null
+  created_by: string | null
+}
+
+type SidebarTab = 'sandboxes' | 'volumes'
+
 function App() {
   const [sandboxes, setSandboxes] = useState<SandboxListItem[]>([])
   const [session, setSession] = useState<Session | null>(null)
@@ -29,6 +42,18 @@ function App() {
   const [jupyterReady, setJupyterReady] = useState(false)
   const jupyterPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Sidebar navigation
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('sandboxes')
+  const [volumes, setVolumes] = useState<VolumeItem[]>([])
+  const [selectedVolume, setSelectedVolume] = useState<VolumeItem | null>(null)
+
+  // Volume file browser
+  const [volumePath, setVolumePath] = useState('/')
+  const [volumeEntries, setVolumeEntries] = useState<{ path: string; type: string }[]>([])
+  const [volumeLoading, setVolumeLoading] = useState(false)
+  const [viewingFile, setViewingFile] = useState<{ path: string; content: string; encoding: string } | null>(null)
+  const [fileLoading, setFileLoading] = useState(false)
+
   // Poll jupyter URL until it responds
   const pollJupyter = useCallback((url: string) => {
     setJupyterReady(false)
@@ -36,7 +61,6 @@ function App() {
     jupyterPollRef.current = setInterval(async () => {
       try {
         const res = await fetch(url, { method: 'HEAD', mode: 'no-cors' })
-        // no-cors gives opaque response (status 0) but means the server responded
         if (res.type === 'opaque' || res.ok) {
           setJupyterReady(true)
           if (jupyterPollRef.current) clearInterval(jupyterPollRef.current)
@@ -47,14 +71,12 @@ function App() {
     }, 3000)
   }, [])
 
-  // Clean up polling on unmount or session change
   useEffect(() => {
     return () => {
       if (jupyterPollRef.current) clearInterval(jupyterPollRef.current)
     }
   }, [])
 
-  // Start polling when session changes
   useEffect(() => {
     if (session?.jupyter_url) {
       pollJupyter(session.jupyter_url)
@@ -82,8 +104,21 @@ function App() {
     }
   }
 
+  const fetchVolumes = async () => {
+    try {
+      const res = await fetch(VOLUMES_URL)
+      if (res.ok) {
+        const data = await res.json()
+        setVolumes(data.volumes || [])
+      }
+    } catch {
+      // silently fail
+    }
+  }
+
   useEffect(() => {
     fetchSandboxes()
+    fetchVolumes()
     const interval = setInterval(fetchSandboxes, 15000)
     return () => clearInterval(interval)
   }, [])
@@ -106,6 +141,8 @@ function App() {
       const data: Session = await res.json()
       setSession(data)
       setShowCreateForm(false)
+      setSelectedVolume(null)
+      setSidebarTab('sandboxes')
       fetchSandboxes()
     } catch (err) {
       alert(`Failed to spawn session: ${err}`)
@@ -116,6 +153,7 @@ function App() {
 
   const selectSandbox = (sb: SandboxListItem) => {
     if (!sb.opencode_url) return
+    setSelectedVolume(null)
     setSession({
       sandbox_id: sb.sandbox_id,
       volume_name: sb.volume_name || '',
@@ -146,48 +184,150 @@ function App() {
     window.open(session.jupyter_url, '_blank')
   }
 
+  const fetchVolumeContents = async (volName: string, path: string) => {
+    setVolumeLoading(true)
+    try {
+      const params = new URLSearchParams({ volume_name: volName, path })
+      const res = await fetch(`${VOLUME_LS_URL}?${params}`)
+      if (res.ok) {
+        const data = await res.json()
+        setVolumeEntries(data.entries || [])
+      }
+    } catch {
+      setVolumeEntries([])
+    } finally {
+      setVolumeLoading(false)
+    }
+  }
+
+  const handleSelectVolume = (vol: VolumeItem) => {
+    setSelectedVolume(vol)
+    setSession(null)
+    setVolumePath('/')
+    setViewingFile(null)
+    fetchVolumeContents(vol.name, '/')
+  }
+
+  const navigateVolume = (path: string) => {
+    if (!selectedVolume) return
+    setVolumePath(path)
+    setViewingFile(null)
+    fetchVolumeContents(selectedVolume.name, path)
+  }
+
+  const openFile = async (filePath: string) => {
+    if (!selectedVolume) return
+    setFileLoading(true)
+    try {
+      const params = new URLSearchParams({ volume_name: selectedVolume.name, path: filePath })
+      const res = await fetch(`${VOLUME_READ_URL}?${params}`)
+      if (res.ok) {
+        const data = await res.json()
+        setViewingFile({ path: data.path, content: data.content, encoding: data.encoding })
+      }
+    } catch {
+      setViewingFile(null)
+    } finally {
+      setFileLoading(false)
+    }
+  }
+
+  const handleAttachAndCreate = (vol: VolumeItem) => {
+    setVolumeName(vol.name)
+    setShowCreateForm(true)
+  }
+
   return (
     <div className="h-screen flex bg-gray-950 text-gray-100">
       {/* Sidebar */}
       <aside className="w-64 flex flex-col border-r border-gray-800 bg-gray-900">
-        <div className="p-4 border-b border-gray-800">
-          <h1 className="text-lg font-semibold">Sandboxes</h1>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {sandboxes.map((sb) => (
-            <button
-              key={sb.sandbox_id}
-              onClick={() => selectSandbox(sb)}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
-                session?.sandbox_id === sb.sandbox_id
-                  ? 'bg-purple-600/20 text-purple-300 border border-purple-700'
-                  : 'hover:bg-gray-800 text-gray-300'
-              }`}
-            >
-              <div className="font-mono text-xs truncate">{sb.sandbox_id.slice(0, 16)}</div>
-              <div className="text-xs text-gray-500 mt-0.5">
-                {sb.opencode_url ? 'running' : 'no tunnel'}
-              </div>
-            </button>
-          ))}
-          {sandboxes.length === 0 && (
-            <p className="text-sm text-gray-500 px-3 py-2">No running sandboxes</p>
-          )}
-        </div>
-
-        <div className="p-3 border-t border-gray-800">
+        {/* Sidebar tab switcher */}
+        <div className="flex border-b border-gray-800">
           <button
-            onClick={() => setShowCreateForm(true)}
-            className="w-full py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            onClick={() => setSidebarTab('sandboxes')}
+            className={`flex-1 py-3 text-sm font-medium transition-colors cursor-pointer ${
+              sidebarTab === 'sandboxes'
+                ? 'text-purple-400 border-b-2 border-purple-400'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
           >
-            Create Sandbox
+            Sandboxes
+          </button>
+          <button
+            onClick={() => { setSidebarTab('volumes'); fetchVolumes() }}
+            className={`flex-1 py-3 text-sm font-medium transition-colors cursor-pointer ${
+              sidebarTab === 'volumes'
+                ? 'text-purple-400 border-b-2 border-purple-400'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            Volumes
           </button>
         </div>
+
+        {/* Sidebar content */}
+        {sidebarTab === 'sandboxes' && (
+          <>
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {sandboxes.map((sb) => (
+                <button
+                  key={sb.sandbox_id}
+                  onClick={() => selectSandbox(sb)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                    session?.sandbox_id === sb.sandbox_id
+                      ? 'bg-purple-600/20 text-purple-300 border border-purple-700'
+                      : 'hover:bg-gray-800 text-gray-300'
+                  }`}
+                >
+                  <div className="font-mono text-xs truncate">{sb.sandbox_id.slice(0, 16)}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {sb.opencode_url ? 'running' : 'no tunnel'}
+                  </div>
+                </button>
+              ))}
+              {sandboxes.length === 0 && (
+                <p className="text-sm text-gray-500 px-3 py-2">No running sandboxes</p>
+              )}
+            </div>
+
+            <div className="p-3 border-t border-gray-800">
+              <button
+                onClick={() => { fetchVolumes(); setShowCreateForm(true) }}
+                className="w-full py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              >
+                Create Sandbox
+              </button>
+            </div>
+          </>
+        )}
+
+        {sidebarTab === 'volumes' && (
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {volumes.map((vol) => (
+              <button
+                key={vol.volume_id}
+                onClick={() => handleSelectVolume(vol)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                  selectedVolume?.volume_id === vol.volume_id
+                    ? 'bg-purple-600/20 text-purple-300 border border-purple-700'
+                    : 'hover:bg-gray-800 text-gray-300'
+                }`}
+              >
+                <div className="font-mono text-xs truncate">{vol.name}</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {vol.created_at ? new Date(vol.created_at).toLocaleDateString() : 'unknown date'}
+                </div>
+              </button>
+            ))}
+            {volumes.length === 0 && (
+              <p className="text-sm text-gray-500 px-3 py-2">No volumes found</p>
+            )}
+          </div>
+        )}
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0">
         {session ? (
           <>
             {/* Top bar */}
@@ -267,9 +407,136 @@ function App() {
               />
             </main>
           </>
+        ) : selectedVolume ? (
+          /* Volume detail + file browser */
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* Volume header */}
+            <header className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800 shrink-0">
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-mono text-gray-300">{selectedVolume.name}</span>
+                <span className="text-xs text-gray-500">
+                  {selectedVolume.created_at
+                    ? new Date(selectedVolume.created_at).toLocaleString()
+                    : ''}
+                </span>
+              </div>
+              <button
+                onClick={() => handleAttachAndCreate(selectedVolume)}
+                className="px-4 py-1.5 text-sm bg-purple-600 hover:bg-purple-500 rounded-lg font-medium transition-colors cursor-pointer"
+              >
+                Create Sandbox with this Volume
+              </button>
+            </header>
+
+            {/* Breadcrumb */}
+            <div className="px-4 py-2 border-b border-gray-800 flex items-center gap-1 text-sm shrink-0">
+              <button
+                onClick={() => navigateVolume('/')}
+                className="text-purple-400 hover:text-purple-300 cursor-pointer"
+              >
+                /
+              </button>
+              {volumePath !== '/' && volumePath.split('/').filter(Boolean).map((segment, i, arr) => {
+                const fullPath = '/' + arr.slice(0, i + 1).join('/')
+                return (
+                  <span key={fullPath} className="flex items-center gap-1">
+                    <span className="text-gray-600">/</span>
+                    <button
+                      onClick={() => navigateVolume(fullPath)}
+                      className="text-purple-400 hover:text-purple-300 cursor-pointer"
+                    >
+                      {segment}
+                    </button>
+                  </span>
+                )
+              })}
+            </div>
+
+            {/* File listing + content (side by side when file is open) */}
+            <div className="flex-1 flex min-h-0">
+              {/* Directory listing */}
+              <div className={`overflow-y-auto shrink-0 ${viewingFile ? 'w-64 border-r border-gray-800' : 'flex-1'}`}>
+                {volumeLoading ? (
+                  <div className="flex items-center justify-center p-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-700 border-t-purple-500"></div>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-800">
+                    {volumePath !== '/' && (
+                      <button
+                        onClick={() => {
+                          const parent = volumePath.split('/').slice(0, -1).join('/') || '/'
+                          navigateVolume(parent)
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-900 flex items-center gap-3 cursor-pointer"
+                      >
+                        <span className="text-gray-500">..</span>
+                      </button>
+                    )}
+                    {volumeEntries.map((entry) => {
+                      const name = entry.path.split('/').pop() || entry.path
+                      const isDir = entry.type === 'directory'
+                      return (
+                        <button
+                          key={entry.path}
+                          onClick={() => isDir ? navigateVolume(entry.path) : openFile(entry.path)}
+                          className={`w-full text-left px-4 py-2 hover:bg-gray-900 flex items-center gap-3 cursor-pointer ${
+                            viewingFile?.path === entry.path ? 'bg-gray-800' : ''
+                          }`}
+                        >
+                          <span className={`text-sm ${isDir ? 'text-blue-400' : 'text-gray-400'}`}>
+                            {isDir ? '📁' : '📄'}
+                          </span>
+                          <span className={`text-sm font-mono ${isDir ? 'text-gray-200' : 'text-gray-400'}`}>
+                            {name}
+                          </span>
+                        </button>
+                      )
+                    })}
+                    {volumeEntries.length === 0 && !volumeLoading && (
+                      <p className="text-sm text-gray-500 px-4 py-4">Empty directory</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* File content viewer */}
+              {fileLoading && (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-700 border-t-purple-500"></div>
+                </div>
+              )}
+              {viewingFile && !fileLoading && (
+                <div className="flex-1 flex flex-col min-h-0 min-w-0">
+                  <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800 shrink-0">
+                    <span className="text-xs font-mono text-gray-400 truncate">{viewingFile.path}</span>
+                    <button
+                      onClick={() => setViewingFile(null)}
+                      className="text-xs text-gray-500 hover:text-gray-300 cursor-pointer ml-2 shrink-0"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  {viewingFile.encoding === 'base64' ? (
+                    <pre className="flex-1 overflow-auto p-4 text-xs font-mono text-gray-300 bg-gray-950 whitespace-pre-wrap">
+                      {`[Binary file — ${viewingFile.content.length} bytes base64]`}
+                    </pre>
+                  ) : viewingFile.path.endsWith('.ipynb') ? (
+                    <div className="flex-1 overflow-auto bg-gray-950">
+                      <NotebookViewer content={viewingFile.content} />
+                    </div>
+                  ) : (
+                    <pre className="flex-1 overflow-auto p-4 text-xs font-mono text-gray-300 bg-gray-950 whitespace-pre-wrap">
+                      {viewingFile.content}
+                    </pre>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-500">
-            <p>Select a sandbox or create a new one</p>
+            <p>Select a sandbox or volume</p>
           </div>
         )}
       </div>
@@ -303,14 +570,19 @@ function App() {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Volume Name (attach existing)</label>
-                <input
-                  type="text"
-                  placeholder="Leave empty for new volume"
+                <label className="block text-sm text-gray-400 mb-1">Volume</label>
+                <select
                   value={volumeName}
                   onChange={(e) => setVolumeName(e.target.value)}
                   className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-purple-500"
-                />
+                >
+                  <option value="">Create new volume</option>
+                  {volumes.map((v) => (
+                    <option key={v.volume_id} value={v.name}>
+                      {v.name}{v.created_at ? ` (${new Date(v.created_at).toLocaleDateString()})` : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
