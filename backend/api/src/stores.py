@@ -213,6 +213,7 @@ class ProposalsStore:
         priority: Optional[str] = None,
         hypothesis: Optional[str] = None,
         based_on: Optional[str] = None,
+        criteria: Optional[dict] = None,
     ) -> dict:
         with self.db.get_connection() as conn, conn.cursor(
             cursor_factory=psycopg2.extras.RealDictCursor
@@ -220,10 +221,11 @@ class ProposalsStore:
             cur.execute("DELETE FROM proposals WHERE proposal_id = %s", (proposal_id,))
             cur.execute(
                 """INSERT INTO proposals
-                   (proposal_id, title, priority, hypothesis, based_on, content)
-                   VALUES (%s, %s, %s, %s, %s, %s)
+                   (proposal_id, title, priority, hypothesis, based_on, content, criteria)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)
                    RETURNING *""",
-                (proposal_id, title, priority, hypothesis, based_on, content),
+                (proposal_id, title, priority, hypothesis, based_on, content,
+                 json.dumps(criteria) if criteria else None),
             )
             return dict(cur.fetchone())
 

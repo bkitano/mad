@@ -1,0 +1,3 @@
+[submodule "template_repo"]
+	path = template_repo
+	url = https://github.com/bkitano/mad-experiments-template.git

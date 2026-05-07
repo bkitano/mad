@@ -91,6 +91,9 @@ function App() {
   const [githubRef, setGithubRef] = useState('main')
   const [volumeName, setVolumeName] = useState('')
   const [gpu, setGpu] = useState('T4')
+  const [gpuCount, setGpuCount] = useState(1)
+  const [cpu, setCpu] = useState(4)
+  const [memory, setMemory] = useState(32768)
 
   const fetchSandboxes = async () => {
     try {
@@ -130,7 +133,9 @@ function App() {
       if (githubRepo) body.github_repo = githubRepo
       if (githubRef) body.github_ref = githubRef
       if (volumeName) body.volume_name = volumeName
-      if (gpu) body.gpu = gpu
+      if (gpu) body.gpu = gpuCount > 1 ? `${gpu}:${gpuCount}` : gpu
+      body.cpu = cpu
+      body.memory = memory
 
       const res = await fetch(CREATE_URL, {
         method: 'POST',
@@ -587,15 +592,61 @@ function App() {
 
               <div>
                 <label className="block text-sm text-gray-400 mb-1">GPU</label>
+                <div className="flex gap-2">
+                  <select
+                    value={gpu}
+                    onChange={(e) => { setGpu(e.target.value); if (!e.target.value) setGpuCount(1) }}
+                    className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-purple-500"
+                  >
+                    <option value="T4">T4</option>
+                    <option value="L4">L4</option>
+                    <option value="A10G">A10G</option>
+                    <option value="L40S">L40S</option>
+                    <option value="A100">A100 (40GB)</option>
+                    <option value="A100-80GB">A100 (80GB)</option>
+                    <option value="H100">H100</option>
+                    <option value="">None (CPU only)</option>
+                  </select>
+                  <select
+                    value={gpuCount}
+                    onChange={(e) => setGpuCount(Number(e.target.value))}
+                    disabled={!gpu}
+                    className="w-16 px-2 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-purple-500 disabled:opacity-40"
+                  >
+                    <option value={1}>1x</option>
+                    <option value={2}>2x</option>
+                    <option value={4}>4x</option>
+                    <option value={8}>8x</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">CPU Cores</label>
                 <select
-                  value={gpu}
-                  onChange={(e) => setGpu(e.target.value)}
+                  value={cpu}
+                  onChange={(e) => setCpu(Number(e.target.value))}
                   className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-purple-500"
                 >
-                  <option value="T4">T4</option>
-                  <option value="A10G">A10G</option>
-                  <option value="A100">A100</option>
-                  <option value="">None</option>
+                  <option value={2}>2 cores</option>
+                  <option value={4}>4 cores</option>
+                  <option value={8}>8 cores</option>
+                  <option value={16}>16 cores</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Memory</label>
+                <select
+                  value={memory}
+                  onChange={(e) => setMemory(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-purple-500"
+                >
+                  <option value={8192}>8 GiB</option>
+                  <option value={16384}>16 GiB</option>
+                  <option value={32768}>32 GiB</option>
+                  <option value={65536}>64 GiB</option>
+                  <option value={131072}>128 GiB</option>
                 </select>
               </div>
             </div>

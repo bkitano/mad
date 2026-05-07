@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from src import event_bus, experiment_store, opencode_code
 from src.db import DatabaseManager
+from src.prompt_template import build_agent_prompt
 from src.stores import EventsStore, ExperimentsStore, ProposalsStore, TricksStore, WorkersStore
 from supabase import acreate_client
 
@@ -70,6 +71,7 @@ class CreateProposalRequest(BaseModel):
     priority: Optional[str] = None
     hypothesis: Optional[str] = None
     based_on: Optional[str] = None
+    criteria: Optional[dict] = None  # ExperimentCriteria dict for harness evaluation
 
 
 class CreateExperimentRequest(BaseModel):
@@ -586,6 +588,7 @@ def list_proposals(
             "created": str(row["created"]) if row.get("created") else None,
             "based_on": row["based_on"],
             "has_mve": "## Minimum Viable Experiment" in (row["content"] or ""),
+            "has_criteria": row.get("criteria") is not None,
         }
         for row in rows
     ]
@@ -606,6 +609,7 @@ def get_proposal(proposal_id: str):
         "hypothesis": row.get("hypothesis"),
         "has_mve": "## Minimum Viable Experiment" in (row["content"] or ""),
         "content": row["content"],
+        "criteria": row.get("criteria"),
     }
 
 
@@ -622,6 +626,7 @@ def create_proposal(req: CreateProposalRequest):
         priority=req.priority,
         hypothesis=req.hypothesis,
         based_on=req.based_on,
+        criteria=req.criteria,
     )
     return {
         "id": row["proposal_id"],
@@ -629,6 +634,7 @@ def create_proposal(req: CreateProposalRequest):
         "priority": row["priority"],
         "hypothesis": row.get("hypothesis"),
         "content": row["content"],
+        "criteria": row.get("criteria"),
     }
 
 
@@ -1019,9 +1025,34 @@ async def assign_submitted_proposals_to_worker(worker_id: str):
 
                 session_ids[exp.proposal_id] = session_id
 
+                # If criteria are attached, write criteria.yaml to workspace first
+                criteria = proposal.get("criteria")
+                if criteria:
+                    import yaml as _yaml
+                    criteria_yaml = _yaml.dump(criteria, default_flow_style=False)
+                    setup_msg = (
+                        f"Write the following content to `criteria.yaml` in the workspace root. "
+                        f"Do not modify it, just write it exactly:\n\n```yaml\n{criteria_yaml}```\n\n"
+                        f"Then confirm it was written."
+                    )
+                    await http.post(
+                        f"/session/{session_id}/prompt_async",
+                        json={"parts": [{"type": "text", "text": setup_msg}]},
+                    )
+                    # Brief pause to let setup complete before main prompt
+                    await asyncio.sleep(5)
+
+                # Wrap proposal with harness prompt if criteria are attached
+                prompt_text = build_agent_prompt(
+                    proposal_content=proposal["content"],
+                    criteria=criteria,
+                    experiment_id=exp.id,
+                    proposal_id=exp.proposal_id,
+                    service_url=os.environ.get("MAD_SERVICE_URL", ""),
+                )
                 await http.post(
                     f"/session/{session_id}/prompt_async",
-                    json={"parts": [{"type": "text", "text": proposal["content"]}]},
+                    json={"parts": [{"type": "text", "text": prompt_text}]},
                 )
             experiments.update(exp.id, status="running")
             event_bus.emit(
@@ -1219,6 +1250,55 @@ def post_event(req: EmitEventRequest):
                 parent_id=event_bus.get_root_event(experiment_id),
             )
     return result
+
+
+# -- POST /experiments/{id}/verdict --------------------------------------------
+
+
+class SubmitVerdictRequest(BaseModel):
+    overall_pass: bool
+    criteria_results: list[dict]
+    training_completed: bool = True
+    wall_time_seconds: Optional[float] = None
+    path_violations: list[dict] = []
+    error: Optional[str] = None
+    raw_metrics: dict = {}
+
+
+@app.post("/experiments/{experiment_id}/verdict")
+def submit_verdict(experiment_id: str, req: SubmitVerdictRequest):
+    """Accept an evaluation verdict from the harness and update experiment status."""
+    exp = experiments.get(experiment_id)
+    if not exp:
+        raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
+
+    verdict = req.model_dump()
+    verdict["experiment_id"] = experiment_id
+    verdict["proposal_id"] = exp.get("proposal_id", "")
+
+    new_status = "completed" if req.overall_pass else "failed"
+    error_msg = req.error
+    if not req.overall_pass and not error_msg:
+        failed = [r["name"] for r in req.criteria_results if r.get("required") and not r.get("passed")]
+        if failed:
+            error_msg = f"Failed required criteria: {', '.join(failed)}"
+        elif req.path_violations:
+            error_msg = f"Path violations: {', '.join(v['path'] for v in req.path_violations)}"
+
+    experiments.update(
+        experiment_id,
+        status=new_status,
+        results=verdict,
+        error=error_msg,
+    )
+    event_bus.emit(
+        f"experiment.{new_status}",
+        f"Experiment {experiment_id} {new_status} (verdict: {'PASS' if req.overall_pass else 'FAIL'})",
+        experiment_id=experiment_id,
+        details=verdict,
+        parent_id=event_bus.get_root_event(experiment_id),
+    )
+    return {"experiment_id": experiment_id, "status": new_status, "verdict": verdict}
 
 
 # -- POST /dispatch ------------------------------------------------------------

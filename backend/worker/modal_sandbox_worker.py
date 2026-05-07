@@ -48,6 +48,9 @@ app = modal.App(APP_NAME)
 endpoint_image = modal.Image.debian_slim().pip_install("pydantic>=2.0.0", "fastapi[standard]")
 
 
+HARNESS_DIR = Path(__file__).resolve().parent.parent.parent / "harness"
+
+
 def define_base_image() -> modal.Image:
     image = (
         modal.Image.debian_slim()
@@ -56,31 +59,22 @@ def define_base_image() -> modal.Image:
             "curl -fsSL https://opencode.ai/install | bash",
             "curl -LsSf https://astral.sh/uv/install.sh | sh",
         )
-        .pip_install("jupyterlab")
+        .pip_install("jupyterlab", "pydantic>=2.0.0", "pyyaml")
         .env({
             "PATH": "/root/.opencode/bin:/root/.local/bin:${PATH}",
             "OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS": "0",
         })
     )
 
-    # Inline opencode config so sandbox uses the right provider/model with full permissions.
-    opencode_config = json.dumps({
-        "$schema": "https://opencode.ai/config.json",
-        "model": "opencode-go/glm-5.1",
-        "autoupdate": True,
-        "permission": "allow",
-        "server": {"port": OPENCODE_PORT},
-        "provider": {
-            "opencode-go": {
-                "options": {
-                    "apiKey": "{env:OPENCODE_GO_API_KEY}"
-                }
-            }
-        }
-    })
-    image = image.run_commands(
-        f"mkdir -p /root/.config/opencode && echo '{opencode_config}' > /root/.config/opencode/opencode.json"
-    )
+    # Bake the harness evaluation scripts into the image so they're
+    # always available in every sandbox at /opt/harness/
+    if HARNESS_DIR.exists():
+        image = image.add_local_dir(str(HARNESS_DIR), "/opt/harness/harness", copy=True)
+        image = image.run_commands(
+            "touch /opt/harness/__init__.py",  # make it importable as a package
+        )
+
+    # opencode config is written at runtime in the entrypoint (after volume symlinks are set up)
 
     return image
 
@@ -117,6 +111,8 @@ def create_sandbox(
     ref: str = "main",
     token: str | None = None,
     gpu: str | None = "T4",
+    cpu: float = 4.0,
+    memory: int = 32768,
     volume_name: str = "",
 ) -> modal.Sandbox:
     print("🏖️  Creating sandbox")
@@ -126,12 +122,49 @@ def create_sandbox(
     else:
         clone_url = f"https://github.com/{repo}.git"
 
-    # Clone into the volume mount, install deps, start jupyter in background, then opencode in foreground
+    # Write opencode config at runtime (after symlinks, so it lands on the volume)
+    opencode_config = json.dumps({
+        "$schema": "https://opencode.ai/config.json",
+        "model": "opencode-go/glm-5.1",
+        "autoupdate": True,
+        "permission": "allow",
+        "server": {"port": OPENCODE_PORT},
+        "provider": {
+            "opencode-go": {
+                "options": {
+                    "apiKey": "{env:OPENCODE_GO_API_KEY}"
+                }
+            }
+        }
+    })
+
+    # Mount volume at /root/state, then symlink key directories into /root
+    # so that code, opencode conversations, configs, etc. all persist.
     entrypoint = (
-        f"cd /root/code && git clone --depth 1 --branch {ref} {clone_url} . && "
+        f"mkdir -p /root/state/code /root/state/.local /root/state/.config /root/state/.cache && "
+        f"rm -rf /root/.local /root/.config /root/.cache && "
+        f"ln -sfn /root/state/.local /root/.local && "
+        f"ln -sfn /root/state/.config /root/.config && "
+        f"ln -sfn /root/state/.cache /root/.cache && "
+        f"mkdir -p /root/.config/opencode && echo '{opencode_config}' > /root/.config/opencode/opencode.json && "
+        f"cd /root/state/code && "
+        f"if [ ! -d .git ]; then git clone --depth 1 --branch {ref} {clone_url} .; fi && "
         f"uv sync && "
         f"uv pip install ipykernel && "
         f"uv run python -m ipykernel install --user --name=mad --display-name='MAD' && "
+        # Copy harness evaluation scripts into the workspace so the agent can run them
+        f"if [ -d /opt/harness ]; then cp -r /opt/harness/harness /root/state/code/harness 2>/dev/null || true; fi && "
+        # Set PYTHONPATH so harness imports work
+        f"export PYTHONPATH=/root/state/code:$PYTHONPATH && "
+        # Generate accelerate config that auto-uses all available GPUs
+        f"uv run python -c \""
+        f"import torch, yaml, os; "
+        f"n = torch.cuda.device_count(); "
+        f"cfg = {{'compute_environment': 'LOCAL_MACHINE', 'mixed_precision': 'fp16', 'num_machines': 1, 'num_processes': max(n, 1), 'use_cpu': n == 0}}; "
+        f"cfg['distributed_type'] = 'MULTI_GPU' if n > 1 else 'NO'; "
+        f"os.makedirs(os.path.expanduser('~/.cache/huggingface/accelerate'), exist_ok=True); "
+        f"yaml.dump(cfg, open(os.path.expanduser('~/.cache/huggingface/accelerate/default_config.yaml'), 'w')); "
+        f"print(f'Accelerate: {{n}} GPU(s), distributed={{cfg[\\\"distributed_type\\\"]}}')\" && "
         f"jupyter lab --ip=0.0.0.0 --port={JUPYTER_PORT} --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.disable_check_xsrf=True --ServerApp.tornado_settings='{{\"headers\":{{\"Content-Security-Policy\":\"frame-ancestors *\"}}}}' &"
         f" opencode serve --hostname=0.0.0.0 --port={OPENCODE_PORT} --log-level=DEBUG --print-logs"
     )
@@ -147,8 +180,10 @@ def create_sandbox(
             image=image,
             app=app,
             gpu=gpu,
-            volumes={"/root/code": volume},
-            workdir="/root/code",
+            cpu=cpu,
+            memory=memory,
+            volumes={"/root/state": volume},
+            workdir="/root/state/code",
         )
     if volume_name:
         sb.set_tags({"volume_name": volume_name})
@@ -165,7 +200,9 @@ class CreateSandboxRequest(BaseModel):
     github_token: Optional[str] = None
     timeout_hours: int = 12
     allow_modal_access: bool = True
-    gpu: Optional[str] = "T4"
+    gpu: Optional[str] = "T4"  # T4, L4, A10G, L40S, A100, A100-80GB, H100, or "T4:4" for multi-GPU
+    cpu: float = 4.0           # CPU cores
+    memory: int = 32768        # Memory in MiB (default 32 GiB)
     volume_name: Optional[str] = None
 
 
@@ -218,7 +255,7 @@ def create_sandbox_worker(payload: CreateSandboxRequest = CreateSandboxRequest()
     sandbox = create_sandbox(
         image, timeout, sandbox_app, sandbox_secrets, volume,
         repo=payload.github_repo, ref=payload.github_ref, token=payload.github_token,
-        gpu=payload.gpu, volume_name=volume_name,
+        gpu=payload.gpu, cpu=payload.cpu, memory=payload.memory, volume_name=volume_name,
     )
 
     tunnels = sandbox.tunnels()
@@ -257,7 +294,13 @@ def list_volumes() -> dict:
     volumes = []
     for vol in modal.Volume.objects.list():
         if vol.name and vol.name.startswith(VOLUME_NAME_PREFIX):
-            volumes.append({"name": vol.name, "volume_id": vol.object_id})
+            info = vol.info()
+            volumes.append({
+                "name": vol.name,
+                "volume_id": vol.object_id,
+                "created_at": info.created_at.isoformat() if info.created_at else None,
+                "created_by": info.created_by,
+            })
     return {"volumes": volumes}
 
 
