@@ -147,6 +147,7 @@ def create_sandbox(
         f"ln -sfn /root/state/.config /root/.config && "
         f"ln -sfn /root/state/.cache /root/.cache && "
         f"mkdir -p /root/.config/opencode && echo '{opencode_config}' > /root/.config/opencode/opencode.json && "
+        f"export UV_CACHE_DIR=/tmp/.cache/uv && "
         f"cd /root/state/code && "
         f"if [ ! -d .git ]; then git clone --depth 1 --branch {ref} {clone_url} .; fi && "
         f"uv sync && "
@@ -165,6 +166,7 @@ def create_sandbox(
         f"os.makedirs(os.path.expanduser('~/.cache/huggingface/accelerate'), exist_ok=True); "
         f"yaml.dump(cfg, open(os.path.expanduser('~/.cache/huggingface/accelerate/default_config.yaml'), 'w')); "
         f"print(f'Accelerate: {{n}} GPU(s), distributed={{cfg[\\\"distributed_type\\\"]}}')\" && "
+        f"rm -rf /root/.local/share/jupyter/runtime/* && "
         f"jupyter lab --ip=0.0.0.0 --port={JUPYTER_PORT} --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.disable_check_xsrf=True --ServerApp.tornado_settings='{{\"headers\":{{\"Content-Security-Policy\":\"frame-ancestors *\"}}}}' &"
         f" opencode serve --hostname=0.0.0.0 --port={OPENCODE_PORT} --log-level=DEBUG --print-logs"
     )
