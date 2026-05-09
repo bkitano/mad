@@ -8,6 +8,8 @@ const LIST_URL = `${MODAL_BASE}-list-sandboxes.modal.run`
 const VOLUMES_URL = `${MODAL_BASE}-list-volumes.modal.run`
 const VOLUME_LS_URL = `${MODAL_BASE}-volume-ls.modal.run`
 const VOLUME_READ_URL = `${MODAL_BASE}-volume-read.modal.run`
+const RENAME_VOLUME_URL = `${MODAL_BASE}-rename-volume.modal.run`
+const DELETE_VOLUME_URL = `${MODAL_BASE}-delete-volume.modal.run`
 
 interface Session {
   sandbox_id: string
@@ -53,6 +55,11 @@ function App() {
   const [volumeLoading, setVolumeLoading] = useState(false)
   const [viewingFile, setViewingFile] = useState<{ path: string; content: string; encoding: string } | null>(null)
   const [fileLoading, setFileLoading] = useState(false)
+
+  // Volume rename
+  const [renamingVolume, setRenamingVolume] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const [renameLoading, setRenameLoading] = useState(false)
 
   // Poll jupyter URL until it responds
   const pollJupyter = useCallback((url: string) => {
@@ -242,6 +249,52 @@ function App() {
     setShowCreateForm(true)
   }
 
+  const startRename = () => {
+    if (!selectedVolume) return
+    setRenameValue(selectedVolume.name)
+    setRenamingVolume(true)
+  }
+
+  const submitRename = async () => {
+    if (!selectedVolume || !renameValue.trim() || renameValue === selectedVolume.name) {
+      setRenamingVolume(false)
+      return
+    }
+    setRenameLoading(true)
+    try {
+      const res = await fetch(RENAME_VOLUME_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ old_name: selectedVolume.name, new_name: renameValue.trim() }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setSelectedVolume({ ...selectedVolume, name: renameValue.trim() })
+      setRenamingVolume(false)
+      fetchVolumes()
+    } catch (err) {
+      alert(`Failed to rename: ${err}`)
+    } finally {
+      setRenameLoading(false)
+    }
+  }
+
+  const deleteVolume = async () => {
+    if (!selectedVolume) return
+    if (!confirm(`Delete volume "${selectedVolume.name}"? This is irreversible.`)) return
+    try {
+      const res = await fetch(DELETE_VOLUME_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ volume_name: selectedVolume.name }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setSelectedVolume(null)
+      fetchVolumes()
+    } catch (err) {
+      alert(`Failed to delete: ${err}`)
+    }
+  }
+
   return (
     <div className="h-screen flex bg-gray-950 text-gray-100">
       {/* Sidebar */}
@@ -418,19 +471,69 @@ function App() {
             {/* Volume header */}
             <header className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800 shrink-0">
               <div className="flex items-center gap-4">
-                <span className="text-sm font-mono text-gray-300">{selectedVolume.name}</span>
+                {renamingVolume ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') submitRename()
+                        if (e.key === 'Escape') setRenamingVolume(false)
+                      }}
+                      autoFocus
+                      disabled={renameLoading}
+                      className="px-2 py-1 bg-gray-800 border border-gray-600 rounded text-sm font-mono text-gray-200 focus:outline-none focus:border-purple-500 w-64"
+                    />
+                    <button
+                      onClick={submitRename}
+                      disabled={renameLoading}
+                      className="px-2 py-1 text-xs bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 rounded transition-colors cursor-pointer"
+                    >
+                      {renameLoading ? '...' : 'Save'}
+                    </button>
+                    <button
+                      onClick={() => setRenamingVolume(false)}
+                      disabled={renameLoading}
+                      className="px-2 py-1 text-xs text-gray-400 hover:text-gray-200 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-sm font-mono text-gray-300">{selectedVolume.name}</span>
+                    <button
+                      onClick={startRename}
+                      className="text-gray-500 hover:text-gray-300 cursor-pointer"
+                      title="Rename volume"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                        <path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
+                      </svg>
+                    </button>
+                  </>
+                )}
                 <span className="text-xs text-gray-500">
                   {selectedVolume.created_at
                     ? new Date(selectedVolume.created_at).toLocaleString()
                     : ''}
                 </span>
               </div>
-              <button
-                onClick={() => handleAttachAndCreate(selectedVolume)}
-                className="px-4 py-1.5 text-sm bg-purple-600 hover:bg-purple-500 rounded-lg font-medium transition-colors cursor-pointer"
-              >
-                Create Sandbox with this Volume
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleAttachAndCreate(selectedVolume)}
+                  className="px-4 py-1.5 text-sm bg-purple-600 hover:bg-purple-500 rounded-lg font-medium transition-colors cursor-pointer"
+                >
+                  Create Sandbox with this Volume
+                </button>
+                <button
+                  onClick={deleteVolume}
+                  className="px-3 py-1.5 text-sm bg-red-900 hover:bg-red-800 text-red-200 border border-red-800 rounded-lg transition-colors cursor-pointer"
+                >
+                  Delete
+                </button>
+              </div>
             </header>
 
             {/* Breadcrumb */}

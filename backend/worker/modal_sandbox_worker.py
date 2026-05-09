@@ -370,3 +370,35 @@ def list_sandboxes() -> dict:
     return {"sandboxes": sandboxes}
 
 
+class RenameVolumeRequest(BaseModel):
+    old_name: str
+    new_name: str
+
+
+@app.function(image=endpoint_image, secrets=[SECRETS])
+@modal.fastapi_endpoint(method="POST")
+def rename_volume(payload: RenameVolumeRequest) -> dict:
+    """Rename a volume."""
+    modal.Volume.rename(payload.old_name, payload.new_name)
+    return {
+        "old_name": payload.old_name,
+        "new_name": payload.new_name,
+        "status": "renamed",
+    }
+
+
+class DeleteVolumeRequest(BaseModel):
+    volume_name: str
+
+
+@app.function(image=endpoint_image, secrets=[SECRETS])
+@modal.fastapi_endpoint(method="POST")
+def delete_volume(payload: DeleteVolumeRequest) -> dict:
+    """Delete a volume by name."""
+    modal.Volume.objects.delete(payload.volume_name)
+    return {
+        "volume_name": payload.volume_name,
+        "status": "deleted",
+    }
+
+
