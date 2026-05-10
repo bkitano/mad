@@ -1,4 +1,5 @@
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
@@ -88,7 +89,7 @@ export default function NotebookViewer({ content }: { content: string }) {
         <div key={i} className="nb-cell">
           {cell.cell_type === 'markdown' ? (
             <div className="nb-markdown">
-              <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                 {joinText(cell.source)}
               </ReactMarkdown>
             </div>

@@ -295,14 +295,15 @@ def list_volumes() -> dict:
     """List all mad-sandbox volumes."""
     volumes = []
     for vol in modal.Volume.objects.list():
-        if vol.name and vol.name.startswith(VOLUME_NAME_PREFIX):
-            info = vol.info()
-            volumes.append({
-                "name": vol.name,
-                "volume_id": vol.object_id,
-                "created_at": info.created_at.isoformat() if info.created_at else None,
-                "created_by": info.created_by,
-            })
+        if not vol.name:
+            continue
+        info = vol.info()
+        volumes.append({
+            "name": vol.name,
+            "volume_id": vol.object_id,
+            "created_at": info.created_at.isoformat() if info.created_at else None,
+            "created_by": info.created_by,
+        })
     return {"volumes": volumes}
 
 
