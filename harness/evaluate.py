@@ -311,14 +311,10 @@ def main():
         proposal_id=args.proposal_id,
     )
 
-    # Write verdict
-    verdict_dict = verdict.model_dump()
-    with open(args.output, "w") as f:
-        json.dump(verdict_dict, f, indent=2)
-
     print_verdict(verdict)
 
     # Log the verdict to W&B so it shows up alongside the agent's training run.
+    # Stamp the resolved run id/url onto the verdict so the API can persist them.
     if not args.no_wandb:
         from harness.wandb_log import log_verdict_to_wandb
 
@@ -331,9 +327,16 @@ def main():
             cwd=Path.cwd(),
         )
         if status.get("logged"):
+            verdict.wandb_run_id = status.get("run_id")
+            verdict.wandb_url = status.get("url")
             print(f"  Verdict logged to W&B: {status.get('url')}")
         else:
             print(f"  W&B logging skipped: {status.get('reason')}", file=sys.stderr)
+
+    # Write verdict (after wandb so wandb_run_id/wandb_url land in the file).
+    verdict_dict = verdict.model_dump()
+    with open(args.output, "w") as f:
+        json.dump(verdict_dict, f, indent=2)
 
     # Optionally report to API
     if args.report_url:
