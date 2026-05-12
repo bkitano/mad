@@ -279,6 +279,26 @@ def main():
         default=Path("verdict.json"),
         help="Path to write verdict.json",
     )
+    parser.add_argument(
+        "--wandb-project",
+        default="mad",
+        help="W&B project to log the verdict to (default: mad)",
+    )
+    parser.add_argument(
+        "--wandb-entity",
+        default=None,
+        help="W&B entity/team (defaults to user's default entity)",
+    )
+    parser.add_argument(
+        "--wandb-run-id",
+        default=None,
+        help="Resume this W&B run id; falls back to env / results.json / wandb/latest-run",
+    )
+    parser.add_argument(
+        "--no-wandb",
+        action="store_true",
+        help="Skip logging the verdict to W&B",
+    )
     args = parser.parse_args()
 
     criteria = load_criteria(args.criteria)
@@ -297,6 +317,23 @@ def main():
         json.dump(verdict_dict, f, indent=2)
 
     print_verdict(verdict)
+
+    # Log the verdict to W&B so it shows up alongside the agent's training run.
+    if not args.no_wandb:
+        from harness.wandb_log import log_verdict_to_wandb
+
+        status = log_verdict_to_wandb(
+            verdict=verdict,
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            run_id=args.wandb_run_id,
+            results=metrics,
+            cwd=Path.cwd(),
+        )
+        if status.get("logged"):
+            print(f"  Verdict logged to W&B: {status.get('url')}")
+        else:
+            print(f"  W&B logging skipped: {status.get('reason')}", file=sys.stderr)
 
     # Optionally report to API
     if args.report_url:
