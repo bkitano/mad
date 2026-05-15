@@ -110,6 +110,10 @@ Criteria marked with * are **required** — all must pass for the experiment to 
 2. **Implement** your model architecture in `models/your_model.py`
 3. **Create** a YAML config in `configs/` pointing to your model (see `configs/s5_example.yaml` for the format)
 4. **Train**: `uv run accelerate launch -m train.run_config --config configs/your_config.yaml`
+   - Your training script must call `wandb.init(...)` and write the resulting
+     `wandb.run.id` into `results.json` under the key `wandb_run_id` (and ideally
+     also `wandb_url`). This lets the evaluator attach the verdict to the same
+     W&B run for cross-experiment comparison.
 5. **Evaluate**: `uv run python -m harness.evaluate --criteria criteria.yaml --results results.json --experiment-id {experiment_id} --proposal-id {proposal_id}`
 {report_cmd}
 

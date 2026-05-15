@@ -114,6 +114,8 @@ class EvaluationVerdict(BaseModel):
     wall_time_seconds: Optional[float] = None
     path_violations: list[PathViolation] = Field(default_factory=list)
     error: Optional[str] = None
+    wandb_run_id: Optional[str] = None
+    wandb_url: Optional[str] = None
     raw_metrics: dict = Field(
         default_factory=dict, description="Full metrics dump for archival"
     )

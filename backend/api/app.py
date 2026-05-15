@@ -1262,6 +1262,8 @@ class SubmitVerdictRequest(BaseModel):
     wall_time_seconds: Optional[float] = None
     path_violations: list[dict] = []
     error: Optional[str] = None
+    wandb_run_id: Optional[str] = None
+    wandb_url: Optional[str] = None
     raw_metrics: dict = {}
 
 
@@ -1285,12 +1287,18 @@ def submit_verdict(experiment_id: str, req: SubmitVerdictRequest):
         elif req.path_violations:
             error_msg = f"Path violations: {', '.join(v['path'] for v in req.path_violations)}"
 
-    experiments.update(
-        experiment_id,
+    update_kwargs = dict(
         status=new_status,
         results=verdict,
         error=error_msg,
     )
+    # Only overwrite the wandb columns if the verdict actually carries values —
+    # otherwise we'd clobber whatever the worker already wrote there.
+    if req.wandb_run_id:
+        update_kwargs["wandb_run_id"] = req.wandb_run_id
+    if req.wandb_url:
+        update_kwargs["wandb_url"] = req.wandb_url
+    experiments.update(experiment_id, **update_kwargs)
     event_bus.emit(
         f"experiment.{new_status}",
         f"Experiment {experiment_id} {new_status} (verdict: {'PASS' if req.overall_pass else 'FAIL'})",
