@@ -43,8 +43,11 @@ APP_NAME = "mad-sandbox-worker"
 SECRETS = modal.Secret.from_name("mad-worker-secrets")
 
 # Default model for the volume chat agent. Overridable per-request and via the
-# OPENROUTER_MODEL_DEFAULT env var on the mad-worker-secrets Modal secret.
-DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5"
+# OPENCODE_MODEL_DEFAULT env var on the mad-worker-secrets Modal secret.
+# Uses OpenCode Go's OpenAI-compatible endpoint and the OPENCODE_GO_API_KEY
+# secret already used by the sandbox's opencode config.
+OPENCODE_ZEN_BASE_URL = "https://opencode.ai/zen/go/v1"
+DEFAULT_CHAT_MODEL = "glm-5.1"
 MAX_AGENT_STEPS = 12
 CHAT_SESSIONS_DICT = "mad-volume-chat-sessions"
 
@@ -494,11 +497,11 @@ def volume_chat(req: VolumeChatRequest) -> dict:
 
     from worker import volume_tools
 
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+    api_key = os.environ.get("OPENCODE_GO_API_KEY")
     if not api_key:
         raise HTTPException(
             status_code=500,
-            detail="OPENROUTER_API_KEY missing — add it to the mad-worker-secrets Modal secret.",
+            detail="OPENCODE_GO_API_KEY missing — add it to the mad-worker-secrets Modal secret.",
         )
 
     sessions = modal.Dict.from_name(CHAT_SESSIONS_DICT, create_if_missing=True)
@@ -514,8 +517,8 @@ def volume_chat(req: VolumeChatRequest) -> dict:
         )
     history.append({"role": "user", "content": req.message})
 
-    model = req.model or os.environ.get("OPENROUTER_MODEL_DEFAULT") or DEFAULT_OPENROUTER_MODEL
-    client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+    model = req.model or os.environ.get("OPENCODE_MODEL_DEFAULT") or DEFAULT_CHAT_MODEL
+    client = OpenAI(base_url=OPENCODE_ZEN_BASE_URL, api_key=api_key)
 
     final_text = ""
     for _ in range(MAX_AGENT_STEPS):
