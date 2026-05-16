@@ -42,10 +42,26 @@ VOLUME_NAME_PREFIX = "mad-sandbox-"
 APP_NAME = "mad-sandbox-worker"
 SECRETS = modal.Secret.from_name("mad-worker-secrets")
 
+# Default model for the volume chat agent. Overridable per-request and via the
+# OPENROUTER_MODEL_DEFAULT env var on the mad-worker-secrets Modal secret.
+DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5"
+MAX_AGENT_STEPS = 12
+CHAT_SESSIONS_DICT = "mad-volume-chat-sessions"
+
 app = modal.App(APP_NAME)
 
-# Minimal image for the endpoint functions (not the sandbox itself)
-endpoint_image = modal.Image.debian_slim().pip_install("pydantic>=2.0.0", "fastapi[standard]")
+# Image for the lightweight HTTP endpoints (NOT the heavy sandbox container).
+# Includes mcp + openai for the MCP server and chat agent endpoints.
+endpoint_image = (
+    modal.Image.debian_slim()
+    .pip_install(
+        "pydantic>=2.0.0",
+        "fastapi[standard]",
+        "mcp>=1.0",
+        "openai>=1.50",
+    )
+    .add_local_python_source("worker")
+)
 
 
 HARNESS_DIR = Path(__file__).resolve().parent.parent.parent / "harness"
@@ -401,5 +417,175 @@ def delete_volume(payload: DeleteVolumeRequest) -> dict:
         "volume_name": payload.volume_name,
         "status": "deleted",
     }
+
+
+# -- MCP server ----------------------------------------------------------------
+# Exposes the volume-inspection tools to any MCP client (Claude Desktop, etc.)
+# over the Streamable HTTP transport at /mcp.
+
+
+@app.function(image=endpoint_image, secrets=[SECRETS])
+@modal.asgi_app()
+def mcp_server():
+    from mcp.server.fastmcp import FastMCP
+
+    from worker import volume_tools
+
+    server = FastMCP("mad-volume", stateless_http=True)
+
+    @server.tool(description="List every Modal volume in the workspace.")
+    def list_volumes() -> list[dict]:
+        return volume_tools.list_volumes()
+
+    @server.tool(description="List the immediate contents of a path on a volume (non-recursive).")
+    def list_files(volume_name: str, path: str = "/") -> list[dict]:
+        return volume_tools.list_files(volume_name, path)
+
+    @server.tool(description="Read a file from a volume. Returns UTF-8 text or base64 if binary.")
+    def read_file(volume_name: str, path: str, max_bytes: int = 200_000) -> dict:
+        return volume_tools.read_file(volume_name, path, max_bytes)
+
+    @server.tool(description="Read a Jupyter notebook (.ipynb) with image outputs stripped.")
+    def read_notebook(volume_name: str, path: str) -> dict:
+        return volume_tools.read_notebook(volume_name, path)
+
+    @server.tool(description="Recursively grep a volume for a Python regex. Skips binary files.")
+    def grep(volume_name: str, pattern: str, path: str = "/", max_matches: int = 200) -> dict:
+        return volume_tools.grep(volume_name, pattern, path, max_matches)
+
+    return server.streamable_http_app()
+
+
+# -- Volume chat ---------------------------------------------------------------
+# Chat-with-the-volume endpoint. Runs an OpenRouter-powered agent loop that
+# calls the same volume_tools functions in-process. State is stashed in a
+# modal.Dict so sessions survive container recycles.
+
+
+class VolumeChatRequest(BaseModel):
+    volume_name: str
+    message: str
+    session_id: Optional[str] = None
+    model: Optional[str] = None
+
+
+SYSTEM_PROMPT_TMPL = (
+    "You are a helpful assistant with tool-access to files on the Modal volume "
+    "'{volume_name}'. Use the tools to explore the volume and answer questions "
+    "about the experiment(s) that ran on it.\n\n"
+    "Guidelines:\n"
+    "- Prefer `grep` and targeted `read_file` calls over walking the directory tree.\n"
+    "- Use `read_notebook` for .ipynb files — never `read_file`.\n"
+    "- When the user asks about training results, look for wandb run URLs, "
+    "metric logs, and notebook outputs.\n"
+    "- Be concise. Quote short excerpts rather than dumping whole files."
+)
+
+
+def _serialize_assistant_message(msg) -> dict:
+    """Strip the OpenAI ChatCompletionMessage to what OpenRouter expects on replay."""
+    out: dict = {"role": "assistant"}
+    if msg.content:
+        out["content"] = msg.content
+    if msg.tool_calls:
+        out["tool_calls"] = [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {
+                    "name": tc.function.name,
+                    "arguments": tc.function.arguments,
+                },
+            }
+            for tc in msg.tool_calls
+        ]
+    return out
+
+
+@app.function(image=endpoint_image, secrets=[SECRETS])
+@modal.fastapi_endpoint(method="POST")
+def volume_chat(req: VolumeChatRequest) -> dict:
+    """Chat with the contents of a Modal volume via an LLM + tool-use loop."""
+    from fastapi import HTTPException
+    from openai import OpenAI
+
+    from worker import volume_tools
+
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="OPENROUTER_API_KEY missing — add it to the mad-worker-secrets Modal secret.",
+        )
+
+    sessions = modal.Dict.from_name(CHAT_SESSIONS_DICT, create_if_missing=True)
+    session_id = req.session_id or uuid.uuid4().hex
+    history: list[dict] = sessions.get(session_id, [])
+
+    if not history:
+        history.append(
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT_TMPL.format(volume_name=req.volume_name),
+            }
+        )
+    history.append({"role": "user", "content": req.message})
+
+    model = req.model or os.environ.get("OPENROUTER_MODEL_DEFAULT") or DEFAULT_OPENROUTER_MODEL
+    client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+
+    final_text = ""
+    for _ in range(MAX_AGENT_STEPS):
+        resp = client.chat.completions.create(
+            model=model,
+            messages=history,
+            tools=volume_tools.TOOLS_SCHEMA,
+        )
+        msg = resp.choices[0].message
+        history.append(_serialize_assistant_message(msg))
+
+        if not msg.tool_calls:
+            final_text = msg.content or ""
+            break
+
+        for tc in msg.tool_calls:
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+                result = volume_tools.dispatch_tool(tc.function.name, req.volume_name, args)
+                content = json.dumps(result, default=str)
+            except Exception as e:
+                content = json.dumps({"error": f"{type(e).__name__}: {e}"})
+            history.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": content,
+                }
+            )
+    else:
+        # Hit the step budget without a clean assistant-only reply. Surface the
+        # last assistant content (if any) so the user sees something.
+        for h in reversed(history):
+            if h.get("role") == "assistant" and h.get("content"):
+                final_text = h["content"]
+                break
+
+    sessions[session_id] = history
+
+    return {
+        "session_id": session_id,
+        "response": final_text,
+        "model": model,
+        "volume_name": req.volume_name,
+    }
+
+
+@app.function(image=endpoint_image, secrets=[SECRETS])
+@modal.fastapi_endpoint(method="POST")
+def volume_chat_reset(session_id: str) -> dict:
+    """Drop a chat session's history."""
+    sessions = modal.Dict.from_name(CHAT_SESSIONS_DICT, create_if_missing=True)
+    sessions.pop(session_id, None)
+    return {"session_id": session_id, "status": "reset"}
 
 

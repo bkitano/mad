@@ -10,6 +10,13 @@ const VOLUME_LS_URL = `${MODAL_BASE}-volume-ls.modal.run`
 const VOLUME_READ_URL = `${MODAL_BASE}-volume-read.modal.run`
 const RENAME_VOLUME_URL = `${MODAL_BASE}-rename-volume.modal.run`
 const DELETE_VOLUME_URL = `${MODAL_BASE}-delete-volume.modal.run`
+const VOLUME_CHAT_URL = `${MODAL_BASE}-volume-chat.modal.run`
+const VOLUME_CHAT_RESET_URL = `${MODAL_BASE}-volume-chat-reset.modal.run`
+
+interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
 
 interface Session {
   sandbox_id: string
@@ -75,6 +82,14 @@ function App() {
   const [renamingVolume, setRenamingVolume] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [renameLoading, setRenameLoading] = useState(false)
+
+  // Volume chat
+  const [volumeView, setVolumeView] = useState<'files' | 'chat'>('files')
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatSending, setChatSending] = useState(false)
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
 
   // Poll jupyter URL until it responds
   const pollJupyter = useCallback((url: string) => {
@@ -234,9 +249,61 @@ function App() {
     setSession(null)
     setVolumePath('/')
     setViewingFile(null)
+    setVolumeView('files')
+    setChatMessages([])
+    setChatSessionId(null)
+    setChatInput('')
     fetchVolumeContents(vol.name, '/')
     setMobileSidebarOpen(false)
   }
+
+  const sendChatMessage = async () => {
+    if (!selectedVolume || !chatInput.trim() || chatSending) return
+    const userMessage = chatInput.trim()
+    setChatInput('')
+    setChatMessages((msgs) => [...msgs, { role: 'user', content: userMessage }])
+    setChatSending(true)
+    try {
+      const res = await fetch(VOLUME_CHAT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          volume_name: selectedVolume.name,
+          message: userMessage,
+          session_id: chatSessionId,
+        }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      setChatSessionId(data.session_id)
+      setChatMessages((msgs) => [...msgs, { role: 'assistant', content: data.response || '(no response)' }])
+    } catch (err) {
+      setChatMessages((msgs) => [...msgs, { role: 'assistant', content: `Error: ${err}` }])
+    } finally {
+      setChatSending(false)
+    }
+  }
+
+  const resetChat = async () => {
+    if (chatSessionId) {
+      try {
+        await fetch(`${VOLUME_CHAT_RESET_URL}?session_id=${encodeURIComponent(chatSessionId)}`, {
+          method: 'POST',
+        })
+      } catch {
+        // best-effort
+      }
+    }
+    setChatMessages([])
+    setChatSessionId(null)
+    setChatInput('')
+  }
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
+    }
+  }, [chatMessages, chatSending])
 
   const navigateVolume = (path: string) => {
     if (!selectedVolume) return
@@ -556,6 +623,28 @@ function App() {
                 )}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex bg-gray-800 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setVolumeView('files')}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors cursor-pointer ${
+                      volumeView === 'files'
+                        ? 'bg-purple-600 text-white'
+                        : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    Files
+                  </button>
+                  <button
+                    onClick={() => setVolumeView('chat')}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors cursor-pointer ${
+                      volumeView === 'chat'
+                        ? 'bg-purple-600 text-white'
+                        : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    Chat
+                  </button>
+                </div>
                 <button
                   onClick={() => handleAttachAndCreate(selectedVolume)}
                   className="px-3 py-1.5 text-sm bg-purple-600 hover:bg-purple-500 rounded-lg font-medium transition-colors cursor-pointer"
@@ -572,6 +661,76 @@ function App() {
               </div>
             </header>
 
+            {volumeView === 'chat' ? (
+              <div className="flex-1 flex flex-col min-h-0">
+                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3">
+                  {chatMessages.length === 0 && !chatSending && (
+                    <div className="text-sm text-gray-500 text-center mt-8 space-y-2">
+                      <p>Ask anything about what's on <span className="font-mono text-gray-400">{selectedVolume.name}</span>.</p>
+                      <p className="text-xs">Tries grep / read_file / read_notebook via tool-use.</p>
+                    </div>
+                  )}
+                  {chatMessages.map((m, i) => (
+                    <div
+                      key={i}
+                      className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-[85%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap ${
+                          m.role === 'user'
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-gray-800 text-gray-100 border border-gray-700'
+                        }`}
+                      >
+                        {m.content}
+                      </div>
+                    </div>
+                  ))}
+                  {chatSending && (
+                    <div className="flex justify-start">
+                      <div className="px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm text-gray-400">
+                        <span className="inline-block animate-pulse">thinking…</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="border-t border-gray-800 p-3 md:p-4 shrink-0 bg-gray-900">
+                  <div className="flex gap-2 items-end">
+                    <textarea
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          sendChatMessage()
+                        }
+                      }}
+                      placeholder="What's the latest train loss? Did experiment 042 finish?"
+                      rows={2}
+                      disabled={chatSending}
+                      className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm resize-none focus:outline-none focus:border-purple-500 disabled:opacity-60"
+                    />
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <button
+                        onClick={sendChatMessage}
+                        disabled={chatSending || !chatInput.trim()}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                      >
+                        Send
+                      </button>
+                      <button
+                        onClick={resetChat}
+                        disabled={chatSending || (chatMessages.length === 0 && !chatSessionId)}
+                        className="px-4 py-1 text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40 cursor-pointer"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+            <>
             {/* Breadcrumb — horizontal scroll instead of wrap so deep paths stay readable */}
             <div className="px-3 md:px-4 py-2 border-b border-gray-800 text-sm shrink-0 overflow-x-auto">
               <div className="flex items-center gap-1 whitespace-nowrap">
@@ -685,6 +844,8 @@ function App() {
                 </div>
               )}
             </div>
+            </>
+            )}
           </div>
         ) : (
           <>
