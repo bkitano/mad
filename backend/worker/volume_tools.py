@@ -39,7 +39,9 @@ def list_volumes() -> list[dict]:
         out.append(
             {
                 "name": vol.name,
+                "volume_id": vol.object_id,
                 "created_at": info.created_at.isoformat() if info.created_at else None,
+                "created_by": info.created_by,
             }
         )
     return out
@@ -59,14 +61,17 @@ def list_files(volume_name: str, path: str = "/") -> list[dict]:
     return entries
 
 
-def read_file(volume_name: str, path: str, max_bytes: int = 200_000) -> dict:
-    """Read a file from a volume. Returns UTF-8 text or base64 if binary."""
+def read_file(volume_name: str, path: str, max_bytes: int | None = 200_000) -> dict:
+    """Read a file from a volume. Returns UTF-8 text or base64 if binary.
+
+    Pass `max_bytes=None` to read the file in full (no truncation).
+    """
     vol = modal.Volume.from_name(volume_name)
     buf = bytearray()
     truncated = False
     for chunk in vol.read_file(path):
         buf.extend(chunk)
-        if len(buf) > max_bytes:
+        if max_bytes is not None and len(buf) > max_bytes:
             buf = buf[:max_bytes]
             truncated = True
             break

@@ -309,31 +309,18 @@ def terminate_sandbox(payload: TerminateSandboxRequest) -> dict:
 @modal.fastapi_endpoint(method="GET")
 def list_volumes() -> dict:
     """List all mad-sandbox volumes."""
-    volumes = []
-    for vol in modal.Volume.objects.list():
-        if not vol.name:
-            continue
-        info = vol.info()
-        volumes.append({
-            "name": vol.name,
-            "volume_id": vol.object_id,
-            "created_at": info.created_at.isoformat() if info.created_at else None,
-            "created_by": info.created_by,
-        })
-    return {"volumes": volumes}
+    from worker import volume_tools
+
+    return {"volumes": volume_tools.list_volumes()}
 
 
 @app.function(image=endpoint_image, secrets=[SECRETS])
 @modal.fastapi_endpoint(method="GET")
 def volume_ls(volume_name: str, path: str = "/") -> dict:
     """List files in a volume at the given path."""
-    volume = modal.Volume.from_name(volume_name)
-    entries = []
-    for entry in volume.listdir(path, recursive=False):
-        entries.append({
-            "path": entry.path,
-            "type": "directory" if entry.type == modal.volume.FileEntryType.DIRECTORY else "file",
-        })
+    from worker import volume_tools
+
+    entries = volume_tools.list_files(volume_name, path)
     return {"volume_name": volume_name, "path": path, "entries": entries}
 
 
@@ -343,20 +330,16 @@ def volume_read(volume_name: str, path: str) -> dict:
     """Read a file from a volume. Returns the file content as text.
     curl <endpoint> | jq -r .content > out.ipynb
     """
-    import base64
+    from worker import volume_tools
 
-    volume = modal.Volume.from_name(volume_name)
-    data = b""
-    for chunk in volume.read_file(path):
-        data += chunk
-
-    # Try to decode as text, fall back to base64
-    try:
-        content = data.decode("utf-8")
-        return {"volume_name": volume_name, "path": path, "encoding": "utf-8", "content": content}
-    except UnicodeDecodeError:
-        content = base64.b64encode(data).decode("ascii")
-        return {"volume_name": volume_name, "path": path, "encoding": "base64", "content": content}
+    # max_bytes=None preserves the historical "no truncation" behavior.
+    result = volume_tools.read_file(volume_name, path, max_bytes=None)
+    return {
+        "volume_name": volume_name,
+        "path": result["path"],
+        "encoding": result["encoding"],
+        "content": result["content"],
+    }
 
 
 @app.function(image=endpoint_image, secrets=[SECRETS])
