@@ -44,8 +44,17 @@ SECRETS = modal.Secret.from_name("mad-worker-secrets")
 
 app = modal.App(APP_NAME)
 
-# Minimal image for the endpoint functions (not the sandbox itself)
-endpoint_image = modal.Image.debian_slim().pip_install("pydantic>=2.0.0", "fastapi[standard]")
+# Image for the lightweight HTTP endpoints (NOT the heavy sandbox container).
+# Only needs mcp for the MCP server — volume CRUD + chat moved to the FastAPI API.
+endpoint_image = (
+    modal.Image.debian_slim()
+    .pip_install(
+        "pydantic>=2.0.0",
+        "fastapi[standard]",
+        "mcp>=1.0",
+    )
+    .add_local_python_source("worker")
+)
 
 
 HARNESS_DIR = Path(__file__).resolve().parent.parent.parent / "harness"
@@ -289,117 +298,40 @@ def terminate_sandbox(payload: TerminateSandboxRequest) -> dict:
     }
 
 
-@app.function(image=endpoint_image, secrets=[SECRETS])
-@modal.fastapi_endpoint(method="GET")
-def list_volumes() -> dict:
-    """List all mad-sandbox volumes."""
-    volumes = []
-    for vol in modal.Volume.objects.list():
-        if not vol.name:
-            continue
-        info = vol.info()
-        volumes.append({
-            "name": vol.name,
-            "volume_id": vol.object_id,
-            "created_at": info.created_at.isoformat() if info.created_at else None,
-            "created_by": info.created_by,
-        })
-    return {"volumes": volumes}
+# -- MCP server ----------------------------------------------------------------
+# Exposes the volume-inspection tools to any MCP client (Claude Desktop, etc.)
+# over the Streamable HTTP transport at /mcp.
 
 
 @app.function(image=endpoint_image, secrets=[SECRETS])
-@modal.fastapi_endpoint(method="GET")
-def volume_ls(volume_name: str, path: str = "/") -> dict:
-    """List files in a volume at the given path."""
-    volume = modal.Volume.from_name(volume_name)
-    entries = []
-    for entry in volume.listdir(path, recursive=False):
-        entries.append({
-            "path": entry.path,
-            "type": "directory" if entry.type == modal.volume.FileEntryType.DIRECTORY else "file",
-        })
-    return {"volume_name": volume_name, "path": path, "entries": entries}
+@modal.asgi_app()
+def mcp_server():
+    from mcp.server.fastmcp import FastMCP
 
+    from worker import volume_tools
 
-@app.function(image=endpoint_image, secrets=[SECRETS])
-@modal.fastapi_endpoint(method="GET")
-def volume_read(volume_name: str, path: str) -> dict:
-    """Read a file from a volume. Returns the file content as text.
-    curl <endpoint> | jq -r .content > out.ipynb
-    """
-    import base64
+    server = FastMCP("mad-volume", stateless_http=True)
 
-    volume = modal.Volume.from_name(volume_name)
-    data = b""
-    for chunk in volume.read_file(path):
-        data += chunk
+    @server.tool(description="List every Modal volume in the workspace.")
+    def list_volumes() -> list[dict]:
+        return volume_tools.list_volumes()
 
-    # Try to decode as text, fall back to base64
-    try:
-        content = data.decode("utf-8")
-        return {"volume_name": volume_name, "path": path, "encoding": "utf-8", "content": content}
-    except UnicodeDecodeError:
-        content = base64.b64encode(data).decode("ascii")
-        return {"volume_name": volume_name, "path": path, "encoding": "base64", "content": content}
+    @server.tool(description="List the immediate contents of a path on a volume (non-recursive).")
+    def list_files(volume_name: str, path: str = "/") -> list[dict]:
+        return volume_tools.list_files(volume_name, path)
 
+    @server.tool(description="Read a file from a volume. Returns UTF-8 text or base64 if binary.")
+    def read_file(volume_name: str, path: str, max_bytes: int = 200_000) -> dict:
+        return volume_tools.read_file(volume_name, path, max_bytes)
 
-@app.function(image=endpoint_image, secrets=[SECRETS])
-@modal.fastapi_endpoint(method="GET")
-def list_sandboxes() -> dict:
-    """List all running sandboxes for this app."""
-    sandbox_app = modal.App.lookup(APP_NAME, create_if_missing=True)
-    sandboxes = []
-    for sb in modal.Sandbox.list(app_id=sandbox_app.app_id):
-        try:
-            tunnels = sb.tunnels()
-            opencode_url = tunnels[OPENCODE_PORT].url if OPENCODE_PORT in tunnels else None
-            jupyter_url = tunnels[JUPYTER_PORT].url if JUPYTER_PORT in tunnels else None
-        except Exception:
-            opencode_url = None
-            jupyter_url = None
-        try:
-            tags = sb.get_tags()
-            vol_name = tags.get("volume_name", "")
-        except Exception:
-            vol_name = ""
-        sandboxes.append({
-            "sandbox_id": sb.object_id,
-            "opencode_url": opencode_url,
-            "jupyter_url": jupyter_url,
-            "volume_name": vol_name,
-        })
-    return {"sandboxes": sandboxes}
+    @server.tool(description="Read a Jupyter notebook (.ipynb) with image outputs stripped.")
+    def read_notebook(volume_name: str, path: str) -> dict:
+        return volume_tools.read_notebook(volume_name, path)
 
+    @server.tool(description="Recursively grep a volume for a Python regex. Skips binary files.")
+    def grep(volume_name: str, pattern: str, path: str = "/", max_matches: int = 200) -> dict:
+        return volume_tools.grep(volume_name, pattern, path, max_matches)
 
-class RenameVolumeRequest(BaseModel):
-    old_name: str
-    new_name: str
-
-
-@app.function(image=endpoint_image, secrets=[SECRETS])
-@modal.fastapi_endpoint(method="POST")
-def rename_volume(payload: RenameVolumeRequest) -> dict:
-    """Rename a volume."""
-    modal.Volume.rename(payload.old_name, payload.new_name)
-    return {
-        "old_name": payload.old_name,
-        "new_name": payload.new_name,
-        "status": "renamed",
-    }
-
-
-class DeleteVolumeRequest(BaseModel):
-    volume_name: str
-
-
-@app.function(image=endpoint_image, secrets=[SECRETS])
-@modal.fastapi_endpoint(method="POST")
-def delete_volume(payload: DeleteVolumeRequest) -> dict:
-    """Delete a volume by name."""
-    modal.Volume.objects.delete(payload.volume_name)
-    return {
-        "volume_name": payload.volume_name,
-        "status": "deleted",
-    }
+    return server.streamable_http_app()
 
 

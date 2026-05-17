@@ -1,813 +1,746 @@
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
-import ExperimentCard from '../components/mad/ExperimentCard'
-import LogViewer from '../components/mad/LogViewer'
-import ProposalsView from '../components/mad/ProposalsView'
-import TricksView from '../components/mad/TricksView'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import NotebookViewer from '../components/mad/NotebookViewer'
 
-import CodeViewer from '../components/mad/CodeViewer'
-import WorkersView from '../components/mad/WorkersView'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
-interface ActiveExperiment {
-  id: string
-  proposal_id: string
-  started_at: string
+interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+interface Session {
+  sandbox_id: string
+  volume_name: string
+  opencode_url: string
+  jupyter_url: string
   status: string
 }
 
-interface HistoryItem extends ActiveExperiment {
-  completed_at?: string
-  staled_at?: string
+interface SandboxListItem {
+  sandbox_id: string
+  opencode_url: string | null
+  jupyter_url: string | null
+  volume_name: string
 }
 
-interface DashboardData {
-  active_work: Record<string, ActiveExperiment>
-  history: HistoryItem[]
-  server_timestamp?: string
+interface VolumeItem {
+  name: string
+  volume_id: string
+  created_at: string | null
+  created_by: string | null
 }
 
-interface Experiment {
-  id: string
-  proposal_id: string
-  status: string
-  worker_id?: string
-  wandb_url?: string
-  results?: Record<string, unknown>
-  error?: string
-  error_class?: string
-  cost_actual?: number
-  cost_estimate?: number
-  created_at: string
-  completed_at?: string
-  submitted_at?: string
-  artifacts_url?: string
+type SidebarTab = 'sandboxes' | 'volumes'
+
+function MobileMenuButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="md:hidden -ml-1 p-2 text-gray-400 hover:text-gray-200 cursor-pointer shrink-0"
+      aria-label="Open sidebar"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+        <path fillRule="evenodd" d="M2 4.75A.75.75 0 0 1 2.75 4h14.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 4.75ZM2 10a.75.75 0 0 1 .75-.75h14.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 10Zm0 5.25a.75.75 0 0 1 .75-.75h14.5a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1-.75-.75Z" clipRule="evenodd" />
+      </svg>
+    </button>
+  )
 }
-
-type TabType = 'experiments' | 'proposals' | 'tricks' | 'workers'
-
-const API_URL = import.meta.env.VITE_API_URL || 'https://mad.briankitano.com'
 
 export default function MADDashboard() {
-  const navigate = useNavigate()
-  const location = useLocation()
+  const [sandboxes, setSandboxes] = useState<SandboxListItem[]>([])
+  const [session, setSession] = useState<Session | null>(null)
+  const [spawning, setSpawning] = useState(false)
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [activeTab, setActiveTab] = useState<'opencode' | 'jupyter'>('opencode')
+  const [jupyterReady, setJupyterReady] = useState(false)
+  const jupyterPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Determine active tab from path
-  const getActiveTab = (): TabType => {
-    const path = location.pathname
-    if (path.includes('/proposals')) return 'proposals'
-    if (path.includes('/tricks')) return 'tricks'
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('sandboxes')
+  const [volumes, setVolumes] = useState<VolumeItem[]>([])
+  const [selectedVolume, setSelectedVolume] = useState<VolumeItem | null>(null)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
-    if (path.includes('/workers')) return 'workers'
-    return 'experiments'
-  }
-  const activeTab = getActiveTab()
+  const [volumePath, setVolumePath] = useState('/')
+  const [volumeEntries, setVolumeEntries] = useState<{ path: string; type: string }[]>([])
+  const [volumeLoading, setVolumeLoading] = useState(false)
+  const [viewingFile, setViewingFile] = useState<{ path: string; content: string; encoding: string } | null>(null)
+  const [fileLoading, setFileLoading] = useState(false)
 
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [connected, setConnected] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
-  const [selectedResult, setSelectedResult] = useState<{ id: string; content: string } | null>(null)
-  const [selectedLog, setSelectedLog] = useState<{ id: string; events: Array<{ created_at: string; type: string; summary: string; worker_id?: string }> } | null>(null)
-  const selectedLogRef = useRef(selectedLog)
-  selectedLogRef.current = selectedLog
-  const logContainerRef = useRef<HTMLDivElement>(null)
-  const [selectedCode, setSelectedCode] = useState<string | null>(null)
-  const [selectedArtifacts, setSelectedArtifacts] = useState<{
-    id: string
-    proposal_id: string
-    artifacts_url?: string
-    code_files: string[]
-    wandb_url?: string
-    results?: Record<string, unknown>
-  } | null>(null)
-  const [isInitialLoad, setIsInitialLoad] = useState(true)
+  const [renamingVolume, setRenamingVolume] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const [renameLoading, setRenameLoading] = useState(false)
 
-  // All experiments list
-  const [experiments, setExperiments] = useState<Experiment[]>([])
-  const [experimentsLoading, setExperimentsLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState<string>('')
-  const [experimentsPage, setExperimentsPage] = useState(0)
-  const EXPERIMENTS_PER_PAGE = 25
+  const [volumeView, setVolumeView] = useState<'files' | 'chat'>('files')
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatSending, setChatSending] = useState(false)
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
 
-  // Fetch all experiments
-  useEffect(() => {
-    const fetchExperiments = async () => {
-      setExperimentsLoading(true)
+  // Create form state
+  const [githubRepo, setGithubRepo] = useState('bkitano/mad-experiments-template')
+  const [githubRef, setGithubRef] = useState('main')
+  const [volumeName, setVolumeName] = useState('')
+  const [gpu, setGpu] = useState('T4')
+  const [gpuCount, setGpuCount] = useState(1)
+  const [cpu, setCpu] = useState(4)
+  const [memory, setMemory] = useState(32768)
+
+  const pollJupyter = useCallback((url: string) => {
+    setJupyterReady(false)
+    if (jupyterPollRef.current) clearInterval(jupyterPollRef.current)
+    jupyterPollRef.current = setInterval(async () => {
       try {
-        const params = new URLSearchParams({
-          limit: String(EXPERIMENTS_PER_PAGE),
-          offset: String(experimentsPage * EXPERIMENTS_PER_PAGE),
-        })
-        if (statusFilter) params.set('status', statusFilter)
-        const res = await fetch(`${API_URL}/experiments?${params}`)
-        if (res.ok) {
-          setExperiments(await res.json())
+        const res = await fetch(url, { method: 'HEAD', mode: 'no-cors' })
+        if (res.type === 'opaque' || res.ok) {
+          setJupyterReady(true)
+          if (jupyterPollRef.current) clearInterval(jupyterPollRef.current)
         }
-      } catch (err) {
-        console.error('Error fetching experiments:', err)
-      } finally {
-        setExperimentsLoading(false)
+      } catch {
+        // not ready yet
       }
-    }
-    fetchExperiments()
-  }, [statusFilter, experimentsPage])
-
-  // Fetch initial state immediately
-  useEffect(() => {
-    const fetchInitialState = async () => {
-      try {
-        console.log('Fetching initial state...')
-        const [runningRes, statsRes] = await Promise.all([
-          fetch(`${API_URL}/experiments?status=running`),
-          fetch(`${API_URL}/stats`)
-        ])
-
-        if (runningRes.ok && statsRes.ok) {
-          const runningExps = await runningRes.json()
-          await statsRes.json()
-
-          const activeWork: Record<string, ActiveExperiment> = {}
-          for (const exp of runningExps) {
-            activeWork[exp.id] = {
-              id: exp.id,
-              proposal_id: exp.proposal_id,
-              started_at: exp.created_at,
-              status: exp.status
-            }
-          }
-
-          setData({ active_work: activeWork, history: [] })
-          setLastUpdate(new Date())
-          setIsInitialLoad(false)
-          console.log('Initial state loaded')
-        }
-      } catch (err) {
-        console.error('Error fetching initial state:', err)
-      }
-    }
-
-    fetchInitialState()
+    }, 3000)
   }, [])
 
-  // SSE connection for live updates
   useEffect(() => {
-    let eventSource: EventSource | null = null
-    let reconnectTimeout: NodeJS.Timeout
-
-    const connect = () => {
-      console.log('Connecting to SSE stream...')
-      eventSource = new EventSource(`${API_URL}/events/stream`)
-
-      eventSource.onopen = () => {
-        console.log('SSE connected')
-        setConnected(true)
-        setError(null)
-      }
-
-      eventSource.onmessage = (e) => {
-        try {
-          const event = JSON.parse(e.data)
-          console.log('Received event:', event.type)
-
-          // Handle experiment events — refetch running experiments
-          if (event.type?.startsWith('experiment.')) {
-            fetch(`${API_URL}/experiments?status=running`)
-              .then(res => res.json())
-              .then(runningExps => {
-                const activeWork: Record<string, ActiveExperiment> = {}
-                for (const exp of runningExps) {
-                  activeWork[exp.id] = {
-                    id: exp.id,
-                    proposal_id: exp.proposal_id,
-                    started_at: exp.created_at,
-                    status: exp.status
-                  }
-                }
-                setData(prev => ({ ...prev, active_work: activeWork } as DashboardData))
-                setLastUpdate(new Date())
-              })
-              .catch(err => console.error('Error refetching experiments:', err))
-          }
-        } catch (err) {
-          console.error('Error parsing event data:', err)
-        }
-      }
-
-      eventSource.onerror = () => {
-        console.error('SSE connection error')
-        setConnected(false)
-        setError('Connection lost. Reconnecting...')
-        eventSource?.close()
-
-        // Reconnect after 5 seconds
-        reconnectTimeout = setTimeout(connect, 5000)
-      }
-    }
-
-    connect()
-
-    return () => {
-      eventSource?.close()
-      clearTimeout(reconnectTimeout)
-    }
+    return () => { if (jupyterPollRef.current) clearInterval(jupyterPollRef.current) }
   }, [])
 
-  // Fetch experiment log (events)
-  const fetchLog = async (experimentId: string) => {
-    try {
-      const res = await fetch(`${API_URL}/experiments/${experimentId}/events?limit=200`)
-      if (res.ok) {
-        const events = await res.json()
-        setSelectedLog({ id: experimentId, events })
-      } else {
-        setSelectedLog({ id: experimentId, events: [] })
-      }
-    } catch (err) {
-      console.error('Error fetching log:', err)
-      setSelectedLog({ id: experimentId, events: [] })
-    }
-  }
-
-  // SSE subscription for live log updates when modal is open
   useEffect(() => {
-    if (!selectedLog) return
-    const es = new EventSource(`${API_URL}/events/stream`)
-    es.onmessage = (msg) => {
+    if (session?.jupyter_url) {
+      pollJupyter(session.jupyter_url)
+    } else {
+      setJupyterReady(false)
+      if (jupyterPollRef.current) clearInterval(jupyterPollRef.current)
+    }
+  }, [session?.jupyter_url, pollJupyter])
+
+  const fetchSandboxes = async () => {
+    try {
+      const res = await fetch(`${API_URL}/sandboxes`)
+      if (res.ok) {
+        const data = await res.json()
+        setSandboxes(data.sandboxes || [])
+      }
+    } catch { /* silently fail */ }
+  }
+
+  const fetchVolumes = async () => {
+    try {
+      const res = await fetch(`${API_URL}/volumes`)
+      if (res.ok) {
+        const data = await res.json()
+        setVolumes(data.volumes || [])
+      }
+    } catch { /* silently fail */ }
+  }
+
+  useEffect(() => {
+    fetchSandboxes()
+    fetchVolumes()
+    const interval = setInterval(fetchSandboxes, 15000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const spawnSession = async () => {
+    setSpawning(true)
+    try {
+      const body: Record<string, unknown> = {}
+      if (githubRepo) body.github_repo = githubRepo
+      if (githubRef) body.github_ref = githubRef
+      if (volumeName) body.volume_name = volumeName
+      if (gpu) body.gpu = gpuCount > 1 ? `${gpu}:${gpuCount}` : gpu
+      body.cpu = cpu
+      body.memory = memory
+
+      const res = await fetch(`${API_URL}/sandboxes/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const data: Session = await res.json()
+      setSession(data)
+      setShowCreateForm(false)
+      setSelectedVolume(null)
+      setSidebarTab('sandboxes')
+      setMobileSidebarOpen(false)
+      fetchSandboxes()
+    } catch (err) {
+      alert(`Failed to spawn session: ${err}`)
+    } finally {
+      setSpawning(false)
+    }
+  }
+
+  const selectSandbox = (sb: SandboxListItem) => {
+    if (!sb.opencode_url) return
+    setSelectedVolume(null)
+    setSession({
+      sandbox_id: sb.sandbox_id,
+      volume_name: sb.volume_name || '',
+      opencode_url: sb.opencode_url,
+      jupyter_url: sb.jupyter_url || '',
+      status: 'running',
+    })
+    setMobileSidebarOpen(false)
+  }
+
+  const terminateSession = async () => {
+    if (!session) return
+    if (!confirm('Terminate this session?')) return
+    try {
+      await fetch(`${API_URL}/sandboxes/terminate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sandbox_id: session.sandbox_id }),
+      })
+      setSession(null)
+      fetchSandboxes()
+    } catch (err) {
+      alert(`Failed to terminate: ${err}`)
+    }
+  }
+
+  const exportFiles = () => {
+    if (!session) return
+    window.open(session.jupyter_url, '_blank')
+  }
+
+  const fetchVolumeContents = async (volName: string, path: string) => {
+    setVolumeLoading(true)
+    try {
+      const params = new URLSearchParams({ volume_name: volName, path })
+      const res = await fetch(`${API_URL}/volumes/ls?${params}`)
+      if (res.ok) {
+        const data = await res.json()
+        setVolumeEntries(data.entries || [])
+      }
+    } catch {
+      setVolumeEntries([])
+    } finally {
+      setVolumeLoading(false)
+    }
+  }
+
+  const handleSelectVolume = (vol: VolumeItem) => {
+    setSelectedVolume(vol)
+    setSession(null)
+    setVolumePath('/')
+    setViewingFile(null)
+    setVolumeView('files')
+    setChatMessages([])
+    setChatSessionId(null)
+    setChatInput('')
+    fetchVolumeContents(vol.name, '/')
+    setMobileSidebarOpen(false)
+  }
+
+  const sendChatMessage = async () => {
+    if (!selectedVolume || !chatInput.trim() || chatSending) return
+    const userMessage = chatInput.trim()
+    setChatInput('')
+    setChatMessages((msgs) => [...msgs, { role: 'user', content: userMessage }])
+    setChatSending(true)
+    try {
+      const res = await fetch(`${API_URL}/volumes/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          volume_name: selectedVolume.name,
+          message: userMessage,
+          session_id: chatSessionId,
+        }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      setChatSessionId(data.session_id)
+      setChatMessages((msgs) => [...msgs, { role: 'assistant', content: data.response || '(no response)' }])
+    } catch (err) {
+      setChatMessages((msgs) => [...msgs, { role: 'assistant', content: `Error: ${err}` }])
+    } finally {
+      setChatSending(false)
+    }
+  }
+
+  const resetChat = async () => {
+    if (chatSessionId) {
       try {
-        const event = JSON.parse(msg.data)
-        if (String(event.experiment_id) === selectedLog.id) {
-          setSelectedLog(prev => prev ? { ...prev, events: [...prev.events, event] } : prev)
-          // Auto-scroll
-          requestAnimationFrame(() => {
-            if (logContainerRef.current) {
-              logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight
-            }
-          })
-        }
-      } catch { /* ignore */ }
+        await fetch(`${API_URL}/volumes/chat/reset?session_id=${encodeURIComponent(chatSessionId)}`, { method: 'POST' })
+      } catch { /* best-effort */ }
     }
-    return () => es.close()
-  }, [selectedLog?.id])
+    setChatMessages([])
+    setChatSessionId(null)
+    setChatInput('')
+  }
 
-  // Fetch experiment results
-  const fetchResult = async (experimentId: string) => {
+  useEffect(() => {
+    if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
+  }, [chatMessages, chatSending])
+
+  const navigateVolume = (path: string) => {
+    if (!selectedVolume) return
+    setVolumePath(path)
+    setViewingFile(null)
+    fetchVolumeContents(selectedVolume.name, path)
+  }
+
+  const openFile = async (filePath: string) => {
+    if (!selectedVolume) return
+    setFileLoading(true)
     try {
-      // Check if experiment is currently active
-      const isActive = data?.active_work && experimentId in data.active_work
-
-      const res = await fetch(`${API_URL}/experiments/${experimentId}`)
+      const params = new URLSearchParams({ volume_name: selectedVolume.name, path: filePath })
+      const res = await fetch(`${API_URL}/volumes/read?${params}`)
       if (res.ok) {
-        const experiment = await res.json()
-        if (experiment.results) {
-          // Format results as markdown
-          const resultsContent = `# Experiment ${experimentId} Results\n\n` +
-            `**Status:** ${experiment.status}\n\n` +
-            (experiment.wandb_url ? `**W&B:** [View Run](${experiment.wandb_url})\n\n` : '') +
-            `## Results\n\n\`\`\`json\n${JSON.stringify(experiment.results, null, 2)}\n\`\`\``
-          setSelectedResult({ id: experimentId, content: resultsContent })
-        } else {
-          if (experiment.status === 'completed' || experiment.status === 'failed') {
-            fetchArtifacts(experiment)
-          } else {
-            const message = isActive
-              ? `# Experiment In Progress\n\nExperiment ${experimentId} is currently running.\n\nCheck back later for results, or view the Active Experiments section above for real-time status.`
-              : `# Results Not Available\n\nNo results found for experiment ${experimentId}.\n\n**Status:** ${experiment.status}`
-            setSelectedResult({ id: experimentId, content: message })
-          }
-        }
-      } else {
-        const message = `# Experiment Not Found\n\nExperiment ${experimentId} was not found.`
-        setSelectedResult({ id: experimentId, content: message })
+        const data = await res.json()
+        setViewingFile({ path: data.path, content: data.content, encoding: data.encoding })
       }
-    } catch (err) {
-      console.error('Error fetching result:', err)
-      setSelectedResult({ id: experimentId, content: `# Error\n\nFailed to load results: ${err}` })
+    } catch {
+      setViewingFile(null)
+    } finally {
+      setFileLoading(false)
     }
   }
 
-  // Fetch experiment artifacts
-  const fetchArtifacts = async (exp: Experiment) => {
+  const handleAttachAndCreate = (vol: VolumeItem) => {
+    setVolumeName(vol.name)
+    setShowCreateForm(true)
+  }
+
+  const startRename = () => {
+    if (!selectedVolume) return
+    setRenameValue(selectedVolume.name)
+    setRenamingVolume(true)
+  }
+
+  const submitRename = async () => {
+    if (!selectedVolume || !renameValue.trim() || renameValue === selectedVolume.name) {
+      setRenamingVolume(false)
+      return
+    }
+    setRenameLoading(true)
     try {
-      const res = await fetch(`${API_URL}/experiments/${exp.id}/artifacts`)
-      if (res.ok) {
-        setSelectedArtifacts(await res.json())
-      } else {
-        console.error('Failed to fetch artifacts')
-      }
+      const res = await fetch(`${API_URL}/volumes/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ old_name: selectedVolume.name, new_name: renameValue.trim() }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setSelectedVolume({ ...selectedVolume, name: renameValue.trim() })
+      setRenamingVolume(false)
+      fetchVolumes()
     } catch (err) {
-      console.error('Error fetching artifacts:', err)
+      alert(`Failed to rename: ${err}`)
+    } finally {
+      setRenameLoading(false)
     }
   }
 
-  // Calculate stats
-  const activeExperiments = data ? Object.keys(data.active_work).length : 0
-  const totalExperiments = experiments.length
-  const completedToday = experiments.filter(exp => {
-    if (!exp.completed_at) return false
-    const completed = new Date(exp.completed_at)
-    const today = new Date()
-    return completed.toDateString() === today.toDateString()
-  }).length
+  const deleteVolume = async () => {
+    if (!selectedVolume) return
+    if (!confirm(`Delete volume "${selectedVolume.name}"? This is irreversible.`)) return
+    try {
+      const res = await fetch(`${API_URL}/volumes/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ volume_name: selectedVolume.name }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setSelectedVolume(null)
+      fetchVolumes()
+    } catch (err) {
+      alert(`Failed to delete: ${err}`)
+    }
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">😡 MAD Architecture Search</h1>
-        <p className="mt-2 text-gray-600">
-          Real-time experiment monitoring dashboard
-        </p>
-      </div>
-
-
-      {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex gap-8">
-          <button
-            onClick={() => navigate('/')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'experiments'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Experiments
-          </button>
-          <button
-            onClick={() => navigate('/proposals')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'proposals'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Proposals
-          </button>
-          <button
-            onClick={() => navigate('/tricks')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'tricks'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Tricks
-          </button>
-          <button
-            onClick={() => navigate('/workers')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'workers'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Workers
-          </button>
-        </nav>
-      </div>
-
-      {/* Connection Status (only show on experiments tab) */}
-      {activeTab === 'experiments' && (
-        <div className="flex items-center gap-4 text-sm">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className={connected ? 'text-green-700' : 'text-red-700'}>
-            {connected ? 'Connected' : 'Disconnected'}
-          </span>
-        </div>
-        {lastUpdate && (
-          <span className="text-gray-500">
-            Last update: {lastUpdate.toLocaleTimeString()}
-          </span>
-        )}
-        {error && (
-          <span className="text-red-600">{error}</span>
-        )}
-        </div>
-      )}
-
-      {/* Content based on active tab */}
-      {activeTab === 'experiments' && (
-        <>
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-4">
-            {isInitialLoad ? (
-              <>
-                <div className="bg-blue-50 p-4 rounded-lg animate-pulse">
-                  <div className="h-8 w-12 bg-blue-200 rounded mb-2"></div>
-                  <div className="h-4 w-32 bg-blue-200 rounded"></div>
-                </div>
-                <div className="bg-green-50 p-4 rounded-lg animate-pulse">
-                  <div className="h-8 w-12 bg-green-200 rounded mb-2"></div>
-                  <div className="h-4 w-32 bg-green-200 rounded"></div>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg animate-pulse">
-                  <div className="h-8 w-12 bg-gray-300 rounded mb-2"></div>
-                  <div className="h-4 w-32 bg-gray-300 rounded"></div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-900">{activeExperiments}</div>
-                  <div className="text-sm text-blue-700">Active Experiments</div>
-                </div>
-                <div className="bg-green-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-green-900">{completedToday}</div>
-                  <div className="text-sm text-green-700">Completed Today</div>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-gray-900">{totalExperiments}</div>
-                  <div className="text-sm text-gray-700">Experiments (this page)</div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Active Experiments */}
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Active Experiments</h2>
-            {isInitialLoad ? (
-              <div className="bg-gray-50 p-8 rounded-lg animate-pulse">
-                <div className="h-6 bg-gray-300 rounded w-3/4 mb-4"></div>
-                <div className="h-4 bg-gray-300 rounded w-1/2 mb-2"></div>
-                <div className="h-4 bg-gray-300 rounded w-2/3"></div>
-              </div>
-            ) : activeExperiments === 0 ? (
-              <div className="bg-gray-50 p-8 rounded-lg text-center text-gray-500">
-                No experiments currently running
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {Object.entries(data?.active_work || {}).map(([experimentId, exp]) => (
-                  <ExperimentCard
-                    key={experimentId}
-                    proposalId={exp.proposal_id}
-                    experiment={exp}
-                    apiUrl={API_URL}
-                    onViewProposal={() => {
-                      navigate(`/proposals/${exp.proposal_id}`)
-                    }}
-                    onViewLog={() => fetchLog(experimentId)}
-                    onViewCode={() => setSelectedCode(experimentId)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Recent Logs */}
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Recent Logs</h2>
-            <LogViewer apiUrl={API_URL} />
-          </div>
-
-          {/* All Experiments */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-semibold text-gray-900">All Experiments</h2>
-              <div className="flex items-center gap-2">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => { setStatusFilter(e.target.value); setExperimentsPage(0) }}
-                  className="text-sm border border-gray-300 rounded-md px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">All statuses</option>
-                  <option value="created">Created</option>
-                  <option value="code_ready">Code Ready</option>
-                  <option value="submitted">Submitted</option>
-                  <option value="running">Running</option>
-                  <option value="completed">Completed</option>
-                  <option value="failed">Failed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
-            </div>
-            {experimentsLoading ? (
-              <div className="space-y-2">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="p-3 bg-gray-50 rounded-lg animate-pulse">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="h-5 w-16 bg-gray-300 rounded"></div>
-                        <div className="h-4 w-48 bg-gray-300 rounded"></div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="h-5 w-20 bg-gray-300 rounded"></div>
-                        <div className="h-4 w-32 bg-gray-300 rounded"></div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : experiments.length === 0 ? (
-              <div className="bg-gray-50 p-8 rounded-lg text-center text-gray-500">
-                No experiments found{statusFilter ? ` with status "${statusFilter}"` : ''}
-              </div>
-            ) : (
-              <>
-                <div className="overflow-hidden rounded-lg border border-gray-200">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Proposal</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Worker</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Links</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {experiments.map((exp) => (
-                        <tr
-                          key={exp.id}
-                          className="hover:bg-gray-50 cursor-pointer"
-                          onClick={() => fetchResult(exp.id)}
-                        >
-                          <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">{exp.id}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700 max-w-[200px] truncate">{exp.proposal_id}</td>
-                          <td className="px-4 py-3">
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              exp.status === 'completed' ? 'bg-green-100 text-green-800' :
-                              exp.status === 'failed' ? 'bg-red-100 text-red-800' :
-                              exp.status === 'running' ? 'bg-blue-100 text-blue-800' :
-                              exp.status === 'cancelled' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
-                              {exp.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm font-mono text-gray-500">
-                            {exp.worker_id || '—'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-500">
-                            {new Date(exp.created_at).toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-500">
-                            {exp.cost_actual != null ? `$${exp.cost_actual.toFixed(2)}` : exp.cost_estimate != null ? `~$${exp.cost_estimate.toFixed(2)}` : '—'}
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                              {exp.wandb_url && (
-                                <a href={exp.wandb_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-xs underline">W&B</a>
-                              )}
-                              <button
-                                onClick={() => setSelectedCode(exp.id)}
-                                className="text-blue-600 hover:text-blue-800 text-xs underline"
-                              >
-                                Code
-                              </button>
-                              <button
-                                onClick={() => fetchLog(exp.id)}
-                                className="text-blue-600 hover:text-blue-800 text-xs underline"
-                              >
-                                Log
-                              </button>
-                              <button
-                                onClick={() => fetchArtifacts(exp)}
-                                className="text-blue-600 hover:text-blue-800 text-xs underline"
-                              >
-                                Artifacts
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {/* Pagination */}
-                <div className="flex items-center justify-between mt-3">
-                  <span className="text-sm text-gray-500">
-                    Page {experimentsPage + 1} · Showing {experiments.length} experiment{experiments.length !== 1 ? 's' : ''}
-                  </span>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setExperimentsPage(p => Math.max(0, p - 1))}
-                      disabled={experimentsPage === 0}
-                      className="px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                    >
-                      Previous
-                    </button>
-                    <button
-                      onClick={() => setExperimentsPage(p => p + 1)}
-                      disabled={experiments.length < EXPERIMENTS_PER_PAGE}
-                      className="px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Debug Info */}
-          {data && (
-            <details className="text-xs text-gray-500">
-              <summary className="cursor-pointer hover:text-gray-700">Debug Info</summary>
-              <pre className="mt-2 p-4 bg-gray-50 rounded overflow-auto max-h-96">
-                {JSON.stringify(data, null, 2)}
-              </pre>
-            </details>
-          )}
-        </>
-      )}
-
-      {activeTab === 'proposals' && <ProposalsView apiUrl={API_URL} />}
-      {activeTab === 'tricks' && <TricksView apiUrl={API_URL} />}
-      {activeTab === 'workers' && <WorkersView apiUrl={API_URL} />}
-
-      {/* Results Modal */}
-      {selectedResult && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedResult(null)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Results: {selectedResult.id}
-              </h3>
-              <button
-                onClick={() => setSelectedResult(null)}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
-              <div className="prose prose-sm max-w-none">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                >
-                  {selectedResult.content}
-                </ReactMarkdown>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Experiment Log Modal */}
-      {selectedLog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedLog(null)}>
-          <div className="bg-gray-900 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 bg-gray-800">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-mono text-gray-300">
-                  Logs: {selectedLog.id}
-                </span>
-                <span className="text-xs text-gray-400">
-                  {selectedLog.events.length} events
-                </span>
-                <span className="inline-flex items-center gap-1 text-xs text-green-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  Live
-                </span>
-              </div>
-              <button
-                onClick={() => setSelectedLog(null)}
-                className="text-gray-400 hover:text-gray-200 text-2xl leading-none"
-              >
-                ×
-              </button>
-            </div>
-            <div ref={logContainerRef} className="p-4 overflow-y-auto max-h-[calc(90vh-60px)] font-mono text-xs">
-              {selectedLog.events.length === 0 ? (
-                <div className="text-gray-400 text-center py-8">No events recorded for this experiment.</div>
-              ) : (
-                selectedLog.events.map((event, idx) => (
-                  <div
-                    key={idx}
-                    className={`${
-                      event.type.includes('error') || event.type.includes('fail') ? 'text-red-400' :
-                      event.type.includes('warn') ? 'text-yellow-400' :
-                      event.type.includes('start') || event.type.includes('creat') ? 'text-blue-400' :
-                      event.type.includes('complet') || event.type.includes('success') ? 'text-green-400' :
-                      'text-gray-300'
-                    }`}
-                  >
-                    [{new Date(event.created_at).toLocaleString()}] [{event.type}]{event.worker_id ? ` [${event.worker_id}]` : ''} {event.summary}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Code Viewer Modal */}
-      {selectedCode && (
-        <CodeViewer
-          experimentId={selectedCode}
-          apiUrl={API_URL}
-          onClose={() => setSelectedCode(null)}
+    <div className="h-[100dvh] flex bg-gray-950 text-gray-100 overflow-hidden">
+      {/* Mobile sidebar backdrop */}
+      {mobileSidebarOpen && (
+        <div
+          onClick={() => setMobileSidebarOpen(false)}
+          className="md:hidden fixed inset-0 bg-black/60 z-30"
+          aria-hidden="true"
         />
       )}
 
-      {/* Artifacts Modal */}
-      {selectedArtifacts && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedArtifacts(null)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Artifacts: {selectedArtifacts.id}
-              </h3>
+      {/* Sidebar */}
+      <aside
+        className={`fixed md:static inset-y-0 left-0 z-40 w-64 flex flex-col border-r border-gray-800 bg-gray-900 transform transition-transform duration-200 md:translate-x-0 ${
+          mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="flex border-b border-gray-800">
+          <button
+            onClick={() => setSidebarTab('sandboxes')}
+            className={`flex-1 py-3 text-sm font-medium transition-colors cursor-pointer ${
+              sidebarTab === 'sandboxes'
+                ? 'text-purple-400 border-b-2 border-purple-400'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            Sandboxes
+          </button>
+          <button
+            onClick={() => { setSidebarTab('volumes'); fetchVolumes() }}
+            className={`flex-1 py-3 text-sm font-medium transition-colors cursor-pointer ${
+              sidebarTab === 'volumes'
+                ? 'text-purple-400 border-b-2 border-purple-400'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            Volumes
+          </button>
+        </div>
+
+        {sidebarTab === 'sandboxes' && (
+          <>
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {sandboxes.map((sb) => (
+                <button
+                  key={sb.sandbox_id}
+                  onClick={() => selectSandbox(sb)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                    session?.sandbox_id === sb.sandbox_id
+                      ? 'bg-purple-600/20 text-purple-300 border border-purple-700'
+                      : 'hover:bg-gray-800 text-gray-300'
+                  }`}
+                >
+                  <div className="font-mono text-xs truncate">{sb.sandbox_id.slice(0, 16)}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {sb.opencode_url ? 'running' : 'no tunnel'}
+                  </div>
+                </button>
+              ))}
+              {sandboxes.length === 0 && (
+                <p className="text-sm text-gray-500 px-3 py-2">No running sandboxes</p>
+              )}
+            </div>
+            <div className="p-3 border-t border-gray-800">
               <button
-                onClick={() => setSelectedArtifacts(null)}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                onClick={() => { fetchVolumes(); setShowCreateForm(true) }}
+                className="w-full py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
               >
-                ×
+                Create Sandbox
               </button>
             </div>
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
-              <div className="space-y-6">
-                {/* Proposal */}
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Proposal</h4>
+          </>
+        )}
+
+        {sidebarTab === 'volumes' && (
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {volumes.map((vol) => (
+              <button
+                key={vol.volume_id}
+                onClick={() => handleSelectVolume(vol)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                  selectedVolume?.volume_id === vol.volume_id
+                    ? 'bg-purple-600/20 text-purple-300 border border-purple-700'
+                    : 'hover:bg-gray-800 text-gray-300'
+                }`}
+              >
+                <div className="font-mono text-xs truncate">{vol.name}</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {vol.created_at ? new Date(vol.created_at).toLocaleDateString() : 'unknown date'}
+                </div>
+              </button>
+            ))}
+            {volumes.length === 0 && (
+              <p className="text-sm text-gray-500 px-3 py-2">No volumes found</p>
+            )}
+          </div>
+        )}
+      </aside>
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
+        {session ? (
+          <>
+            <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 py-2 md:px-4 bg-gray-900 border-b border-gray-800 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <MobileMenuButton onClick={() => setMobileSidebarOpen(true)} />
+                <span className="text-sm font-mono text-gray-400 truncate">{session.sandbox_id.slice(0, 12)}</span>
+                <span className="text-xs px-2 py-0.5 bg-green-900 text-green-300 rounded shrink-0">{session.status}</span>
+                {session.volume_name && (
+                  <span className="hidden md:inline text-xs text-gray-500 truncate">vol: {session.volume_name}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex bg-gray-800 rounded-lg p-0.5">
                   <button
-                    onClick={() => navigate(`/proposals/${selectedArtifacts.proposal_id}`)}
-                    className="text-blue-600 hover:text-blue-800 underline text-sm"
+                    onClick={() => setActiveTab('opencode')}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors cursor-pointer ${
+                      activeTab === 'opencode' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-gray-200'
+                    }`}
                   >
-                    View {selectedArtifacts.proposal_id}
+                    OpenCode
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('jupyter')}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors cursor-pointer ${
+                      activeTab === 'jupyter' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    Jupyter
                   </button>
                 </div>
+                <button onClick={exportFiles} className="px-3 py-1.5 text-sm bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors cursor-pointer">Export</button>
+                <button onClick={terminateSession} className="px-3 py-1.5 text-sm bg-red-900 hover:bg-red-800 text-red-200 border border-red-800 rounded-lg transition-colors cursor-pointer">Terminate</button>
+              </div>
+            </header>
+            <main className="flex-1 relative">
+              <iframe src={session.opencode_url} className={`absolute inset-0 w-full h-full border-0 ${activeTab === 'opencode' ? 'block' : 'hidden'}`} title="OpenCode" />
+              {activeTab === 'jupyter' && !jupyterReady && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950 z-10">
+                  <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-700 border-t-purple-500 mb-4"></div>
+                  <p className="text-sm text-gray-400">Waiting for Jupyter to start...</p>
+                </div>
+              )}
+              <iframe src={jupyterReady ? session.jupyter_url : undefined} className={`absolute inset-0 w-full h-full border-0 ${activeTab === 'jupyter' ? 'block' : 'hidden'}`} title="Jupyter" />
+            </main>
+          </>
+        ) : selectedVolume ? (
+          <div className="flex-1 flex flex-col min-h-0">
+            <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 py-2 md:px-4 bg-gray-900 border-b border-gray-800 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <MobileMenuButton onClick={() => setMobileSidebarOpen(true)} />
+                {renamingVolume ? (
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <input
+                      type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') submitRename(); if (e.key === 'Escape') setRenamingVolume(false) }}
+                      autoFocus disabled={renameLoading}
+                      className="flex-1 min-w-0 sm:w-64 sm:flex-none px-2 py-1 bg-gray-800 border border-gray-600 rounded text-sm font-mono text-gray-200 focus:outline-none focus:border-purple-500"
+                    />
+                    <button onClick={submitRename} disabled={renameLoading} className="px-2 py-1 text-xs bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 rounded transition-colors cursor-pointer shrink-0">{renameLoading ? '...' : 'Save'}</button>
+                    <button onClick={() => setRenamingVolume(false)} disabled={renameLoading} className="px-2 py-1 text-xs text-gray-400 hover:text-gray-200 cursor-pointer shrink-0">Cancel</button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-sm font-mono text-gray-300 truncate">{selectedVolume.name}</span>
+                    <button onClick={startRename} className="text-gray-500 hover:text-gray-300 cursor-pointer shrink-0" title="Rename volume">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                        <path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
+                      </svg>
+                    </button>
+                    <span className="hidden md:inline text-xs text-gray-500 shrink-0">
+                      {selectedVolume.created_at ? new Date(selectedVolume.created_at).toLocaleString() : ''}
+                    </span>
+                  </>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex bg-gray-800 rounded-lg p-0.5">
+                  <button onClick={() => setVolumeView('files')} className={`px-3 py-1 text-sm rounded-md transition-colors cursor-pointer ${volumeView === 'files' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}>Files</button>
+                  <button onClick={() => setVolumeView('chat')} className={`px-3 py-1 text-sm rounded-md transition-colors cursor-pointer ${volumeView === 'chat' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}>Chat</button>
+                </div>
+                <button onClick={() => handleAttachAndCreate(selectedVolume)} className="px-3 py-1.5 text-sm bg-purple-600 hover:bg-purple-500 rounded-lg font-medium transition-colors cursor-pointer">
+                  <span className="hidden sm:inline">Create Sandbox with this Volume</span>
+                  <span className="sm:hidden">Create Sandbox</span>
+                </button>
+                <button onClick={deleteVolume} className="px-3 py-1.5 text-sm bg-red-900 hover:bg-red-800 text-red-200 border border-red-800 rounded-lg transition-colors cursor-pointer">Delete</button>
+              </div>
+            </header>
 
-                {/* Results */}
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Results</h4>
-                  {selectedArtifacts.results ? (
-                    <div className="bg-gray-50 p-3 rounded text-xs">
-                      <pre className="overflow-auto max-h-40">
-                        {JSON.stringify(selectedArtifacts.results, null, 2)}
-                      </pre>
-                      {selectedArtifacts.wandb_url && (
-                        <div className="mt-2">
-                          <a href={selectedArtifacts.wandb_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
-                            View on W&B →
-                          </a>
-                        </div>
+            {volumeView === 'chat' ? (
+              <div className="flex-1 flex flex-col min-h-0">
+                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3">
+                  {chatMessages.length === 0 && !chatSending && (
+                    <div className="text-sm text-gray-500 text-center mt-8 space-y-2">
+                      <p>Ask anything about what's on <span className="font-mono text-gray-400">{selectedVolume.name}</span>.</p>
+                      <p className="text-xs">Tries grep / read_file / read_notebook via tool-use.</p>
+                    </div>
+                  )}
+                  {chatMessages.map((m, i) => (
+                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap ${
+                        m.role === 'user' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-100 border border-gray-700'
+                      }`}>{m.content}</div>
+                    </div>
+                  ))}
+                  {chatSending && (
+                    <div className="flex justify-start">
+                      <div className="px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm text-gray-400">
+                        <span className="inline-block animate-pulse">thinking...</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="border-t border-gray-800 p-3 md:p-4 shrink-0 bg-gray-900">
+                  <div className="flex gap-2 items-end">
+                    <textarea
+                      value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() } }}
+                      placeholder="What's the latest train loss? Did experiment 042 finish?"
+                      rows={2} disabled={chatSending}
+                      className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm resize-none focus:outline-none focus:border-purple-500 disabled:opacity-60"
+                    />
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <button onClick={sendChatMessage} disabled={chatSending || !chatInput.trim()} className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer">Send</button>
+                      <button onClick={resetChat} disabled={chatSending || (chatMessages.length === 0 && !chatSessionId)} className="px-4 py-1 text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40 cursor-pointer">Reset</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="px-3 md:px-4 py-2 border-b border-gray-800 text-sm shrink-0 overflow-x-auto">
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    <button onClick={() => navigateVolume('/')} className="text-purple-400 hover:text-purple-300 cursor-pointer">/</button>
+                    {volumePath !== '/' && volumePath.split('/').filter(Boolean).map((segment, i, arr) => {
+                      const fullPath = '/' + arr.slice(0, i + 1).join('/')
+                      return (
+                        <span key={fullPath} className="flex items-center gap-1">
+                          <span className="text-gray-600">/</span>
+                          <button onClick={() => navigateVolume(fullPath)} className="text-purple-400 hover:text-purple-300 cursor-pointer">{segment}</button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div className="flex-1 flex min-h-0">
+                  <div className={`overflow-y-auto shrink-0 ${viewingFile ? 'hidden md:block md:w-64 md:border-r md:border-gray-800' : 'flex-1'}`}>
+                    {volumeLoading ? (
+                      <div className="flex items-center justify-center p-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-700 border-t-purple-500"></div>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-gray-800">
+                        {volumePath !== '/' && (
+                          <button onClick={() => { const parent = volumePath.split('/').slice(0, -1).join('/') || '/'; navigateVolume(parent) }} className="w-full text-left px-4 py-2 hover:bg-gray-900 flex items-center gap-3 cursor-pointer">
+                            <span className="text-gray-500">..</span>
+                          </button>
+                        )}
+                        {volumeEntries.map((entry) => {
+                          const name = entry.path.split('/').pop() || entry.path
+                          const isDir = entry.type === 'directory'
+                          return (
+                            <button key={entry.path} onClick={() => isDir ? navigateVolume(entry.path) : openFile(entry.path)}
+                              className={`w-full text-left px-4 py-2 hover:bg-gray-900 flex items-center gap-3 cursor-pointer ${viewingFile?.path === entry.path ? 'bg-gray-800' : ''}`}>
+                              <span className={`text-sm ${isDir ? 'text-blue-400' : 'text-gray-400'}`}>{isDir ? '\u{1F4C1}' : '\u{1F4C4}'}</span>
+                              <span className={`text-sm font-mono ${isDir ? 'text-gray-200' : 'text-gray-400'}`}>{name}</span>
+                            </button>
+                          )
+                        })}
+                        {volumeEntries.length === 0 && !volumeLoading && (
+                          <p className="text-sm text-gray-500 px-4 py-4">Empty directory</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {fileLoading && (
+                    <div className="flex-1 flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-700 border-t-purple-500"></div>
+                    </div>
+                  )}
+                  {viewingFile && !fileLoading && (
+                    <div className="flex-1 flex flex-col min-h-0 min-w-0">
+                      <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-gray-900 border-b border-gray-800 shrink-0 gap-2">
+                        <span className="text-xs font-mono text-gray-400 truncate">{viewingFile.path}</span>
+                        <button onClick={() => setViewingFile(null)} className="text-xs text-gray-400 hover:text-gray-200 cursor-pointer shrink-0 px-2 py-1 rounded hover:bg-gray-800">Close</button>
+                      </div>
+                      {viewingFile.encoding === 'base64' ? (
+                        <pre className="flex-1 overflow-auto p-4 text-xs font-mono text-gray-300 bg-gray-950 whitespace-pre-wrap">{`[Binary file — ${viewingFile.content.length} bytes base64]`}</pre>
+                      ) : viewingFile.path.endsWith('.ipynb') ? (
+                        <div className="flex-1 overflow-auto bg-gray-950"><NotebookViewer content={viewingFile.content} /></div>
+                      ) : (
+                        <pre className="flex-1 overflow-auto p-4 text-xs font-mono text-gray-300 bg-gray-950 whitespace-pre-wrap">{viewingFile.content}</pre>
                       )}
                     </div>
-                  ) : (
-                    <p className="text-sm text-gray-500">No results available</p>
                   )}
                 </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            <header className="md:hidden flex items-center gap-3 px-3 py-2 bg-gray-900 border-b border-gray-800 shrink-0">
+              <MobileMenuButton onClick={() => setMobileSidebarOpen(true)} />
+              <span className="text-sm text-gray-400">Dashboard</span>
+            </header>
+            <div className="flex-1 flex items-center justify-center text-gray-500 px-4 text-center">
+              <p>
+                <span className="md:hidden">Open the menu to select a sandbox or volume</span>
+                <span className="hidden md:inline">Select a sandbox or volume</span>
+              </p>
+            </div>
+          </>
+        )}
+      </div>
 
-                {/* Code */}
+      {/* Create form modal */}
+      {showCreateForm && (
+        <div className="fixed inset-0 bg-black/60 z-50 overflow-y-auto p-4">
+          <div className="min-h-full flex items-center justify-center">
+            <div className="w-full max-w-md p-5 sm:p-6 bg-gray-900 rounded-xl border border-gray-800">
+              <h2 className="text-xl font-semibold mb-5">Create Sandbox</h2>
+              <div className="space-y-4">
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Code</h4>
-                  {selectedArtifacts.code_files.length > 0 ? (
-                    <button
-                      onClick={() => {
-                        setSelectedArtifacts(null)
-                        setSelectedCode(selectedArtifacts.id)
-                      }}
-                      className="text-blue-600 hover:text-blue-800 underline text-sm"
-                    >
-                      Browse Code ({selectedArtifacts.code_files.length} files)
-                    </button>
-                  ) : (
-                    <p className="text-sm text-gray-500">No code available</p>
-                  )}
+                  <label className="block text-sm text-gray-400 mb-1">GitHub Repo</label>
+                  <input type="text" placeholder="owner/repo" value={githubRepo} onChange={(e) => setGithubRepo(e.target.value)} className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-purple-500" />
                 </div>
-
-                {/* Logs */}
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Logs</h4>
-                  <button
-                    onClick={() => {
-                      setSelectedArtifacts(null)
-                      fetchLog(selectedArtifacts.id)
-                    }}
-                    className="text-blue-600 hover:text-blue-800 underline text-sm"
-                  >
-                    View Logs
-                  </button>
+                  <label className="block text-sm text-gray-400 mb-1">Branch / Ref</label>
+                  <input type="text" value={githubRef} onChange={(e) => setGithubRef(e.target.value)} className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-purple-500" />
                 </div>
-
-                {/* Artifacts Download */}
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Artifacts (S3)</h4>
-                  {selectedArtifacts.artifacts_url ? (
-                    <a href={selectedArtifacts.artifacts_url} download className="text-blue-600 hover:text-blue-800 underline text-sm">
-                      Download artifacts.tar.gz
-                    </a>
-                  ) : (
-                    <p className="text-sm text-gray-500">Not yet available (waiting for experiment to complete)</p>
-                  )}
+                  <label className="block text-sm text-gray-400 mb-1">Volume</label>
+                  <select value={volumeName} onChange={(e) => setVolumeName(e.target.value)} className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-purple-500">
+                    <option value="">Create new volume</option>
+                    {volumes.map((v) => (
+                      <option key={v.volume_id} value={v.name}>{v.name}{v.created_at ? ` (${new Date(v.created_at).toLocaleDateString()})` : ''}</option>
+                    ))}
+                  </select>
                 </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">GPU</label>
+                  <div className="flex gap-2">
+                    <select value={gpu} onChange={(e) => { setGpu(e.target.value); if (!e.target.value) setGpuCount(1) }} className="flex-1 min-w-0 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-purple-500">
+                      <option value="T4">T4</option>
+                      <option value="L4">L4</option>
+                      <option value="A10G">A10G</option>
+                      <option value="L40S">L40S</option>
+                      <option value="A100">A100 (40GB)</option>
+                      <option value="A100-80GB">A100 (80GB)</option>
+                      <option value="H100">H100</option>
+                      <option value="">None (CPU only)</option>
+                    </select>
+                    <select value={gpuCount} onChange={(e) => setGpuCount(Number(e.target.value))} disabled={!gpu} className="w-16 shrink-0 px-2 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-purple-500 disabled:opacity-40">
+                      <option value={1}>1x</option>
+                      <option value={2}>2x</option>
+                      <option value={4}>4x</option>
+                      <option value={8}>8x</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">CPU Cores</label>
+                  <select value={cpu} onChange={(e) => setCpu(Number(e.target.value))} className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-purple-500">
+                    <option value={2}>2 cores</option>
+                    <option value={4}>4 cores</option>
+                    <option value={8}>8 cores</option>
+                    <option value={16}>16 cores</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Memory</label>
+                  <select value={memory} onChange={(e) => setMemory(Number(e.target.value))} className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-purple-500">
+                    <option value={8192}>8 GiB</option>
+                    <option value={16384}>16 GiB</option>
+                    <option value={32768}>32 GiB</option>
+                    <option value={65536}>64 GiB</option>
+                    <option value={131072}>128 GiB</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => setShowCreateForm(false)} className="flex-1 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg font-medium transition-colors cursor-pointer">Cancel</button>
+                <button onClick={spawnSession} disabled={spawning} className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-medium transition-colors cursor-pointer">{spawning ? 'Creating...' : 'Create'}</button>
               </div>
             </div>
           </div>
         </div>
       )}
-
     </div>
   )
 }

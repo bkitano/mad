@@ -40,10 +40,7 @@ function App() {
         <Route path="/engineering" element={<Layout><EngineeringPage /></Layout>} />
         <Route path="/engineering/backtesting" element={<Layout><BacktestingPage /></Layout>} />
         <Route path="/engineering/market-making" element={<Layout><MarketMakingPage /></Layout>} />
-        <Route path="/agent/*" element={<Layout><div className="max-w-3xl mx-auto px-4 py-8"><MADDashboard /></div></Layout>} />
-        <Route path="/proposals/*" element={<Layout><div className="max-w-3xl mx-auto px-4 py-8"><MADDashboard /></div></Layout>} />
-        <Route path="/tricks/*" element={<Layout><div className="max-w-3xl mx-auto px-4 py-8"><MADDashboard /></div></Layout>} />
-        <Route path="/workers/*" element={<Layout><div className="max-w-3xl mx-auto px-4 py-8"><MADDashboard /></div></Layout>} />
+        <Route path="/agent/*" element={<MADDashboard />} />
       </Routes>
     </MDXProvider>
   )
