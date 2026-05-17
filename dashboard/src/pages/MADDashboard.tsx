@@ -79,6 +79,11 @@ export default function MADDashboard() {
   const [chatSessionId, setChatSessionId] = useState<string | null>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
 
+  // Voice chat state
+  const [voiceActive, setVoiceActive] = useState(false)
+  const pipecatClientRef = useRef<any>(null)
+  const voiceBubbleIdx = useRef<number | null>(null)
+
   // Create form state
   const [githubRepo, setGithubRepo] = useState('bkitano/mad-experiments-template')
   const [githubRef, setGithubRef] = useState('main')
@@ -368,6 +373,88 @@ export default function MADDashboard() {
   useEffect(() => {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
   }, [chatMessages, chatSending])
+
+  // Voice: Pipecat client SDK handles audio I/O + protobuf framing
+  const VOICE_WS_URL = (() => {
+    const base = API_URL.replace(/^http/, 'ws')
+    // Replace port with voice port
+    const url = new URL(base)
+    url.port = '8765'
+    return url.toString()
+  })()
+
+  const startVoice = async () => {
+    try {
+      const { PipecatClient } = await import('@pipecat-ai/client-js')
+      const { WebSocketTransport, ProtobufFrameSerializer } = await import('@pipecat-ai/websocket-transport')
+
+      const appendBotText = (data: any) => {
+        const text = typeof data === 'string' ? data : data?.text
+        if (!text) return
+        setChatMessages((msgs) => {
+          if (voiceBubbleIdx.current !== null && voiceBubbleIdx.current < msgs.length) {
+            const idx = voiceBubbleIdx.current
+            return msgs.map((m, i) => i === idx ? { ...m, content: m.content + ' ' + text } : m)
+          }
+          voiceBubbleIdx.current = msgs.length
+          return [...msgs, { role: 'assistant', content: text }]
+        })
+      }
+
+      const transport = new WebSocketTransport({
+        serializer: new ProtobufFrameSerializer(),
+      })
+
+      const client = new PipecatClient({
+        transport,
+        enableMic: true,
+        enableCam: false,
+        callbacks: {
+          onConnected: () => {
+            setVoiceActive(true)
+            setChatMessages((msgs) => [...msgs, { role: 'status', content: 'Voice connected — speak now' }])
+          },
+          onDisconnected: () => {
+            setVoiceActive(false)
+            setChatMessages((msgs) => [...msgs, { role: 'status', content: 'Voice disconnected' }])
+          },
+          onUserTranscript: (data: any) => {
+            const text = typeof data === 'string' ? data : data?.text
+            if (text && data?.final) {
+              voiceBubbleIdx.current = null  // new user msg resets the bot bubble
+              setChatMessages((msgs) => [...msgs, { role: 'user', content: text }])
+            }
+          },
+          onBotTtsText: (data: any) => { appendBotText(data) },
+          onBotLlmText: (data: any) => { appendBotText(data) },
+          onBotTranscript: (data: any) => { appendBotText(data) },
+        },
+      })
+
+
+      pipecatClientRef.current = client
+      await client.connect({ wsUrl: VOICE_WS_URL })
+    } catch (err) {
+      setChatMessages((msgs) => [...msgs, { role: 'status', content: `Voice failed: ${err}` }])
+      setVoiceActive(false)
+    }
+  }
+
+  const stopVoice = async () => {
+    try {
+      await pipecatClientRef.current?.disconnect()
+    } catch { /* best effort */ }
+    pipecatClientRef.current = null
+    setVoiceActive(false)
+  }
+
+  const toggleVoice = () => {
+    if (voiceActive) {
+      stopVoice()
+    } else {
+      startVoice()
+    }
+  }
 
   const navigateVolume = (path: string) => {
     if (!selectedVolume) return
@@ -857,22 +944,61 @@ export default function MADDashboard() {
 
           {/* Input */}
           <div className="border-t border-gray-800 p-3 shrink-0">
-            <div className="flex gap-2">
-              <textarea
-                value={chatInput} onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() } }}
-                placeholder="What's the latest train loss? Which volumes have results?"
-                rows={2} disabled={chatSending}
-                className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm resize-none focus:outline-none focus:border-purple-500 disabled:opacity-60"
-              />
-              <button
-                onClick={sendChatMessage}
-                disabled={chatSending || !chatInput.trim()}
-                className="px-3 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer self-end"
-              >
-                Send
-              </button>
-            </div>
+            {voiceActive ? (
+              /* Voice active state — full-width listening indicator */
+              <div className="flex items-center gap-3">
+                <div className="flex-1 flex items-center justify-center gap-1 py-3 bg-gray-800 rounded-lg border border-red-900/50">
+                  {/* Animated bars */}
+                  <div className="flex items-end gap-0.5 h-5">
+                    <div className="w-1 bg-red-400 rounded-full animate-[voice-bar_0.8s_ease-in-out_infinite]" style={{ height: '40%' }} />
+                    <div className="w-1 bg-red-400 rounded-full animate-[voice-bar_0.8s_ease-in-out_0.15s_infinite]" style={{ height: '70%' }} />
+                    <div className="w-1 bg-red-400 rounded-full animate-[voice-bar_0.8s_ease-in-out_0.3s_infinite]" style={{ height: '100%' }} />
+                    <div className="w-1 bg-red-400 rounded-full animate-[voice-bar_0.8s_ease-in-out_0.45s_infinite]" style={{ height: '60%' }} />
+                    <div className="w-1 bg-red-400 rounded-full animate-[voice-bar_0.8s_ease-in-out_0.6s_infinite]" style={{ height: '30%' }} />
+                  </div>
+                  <span className="ml-2 text-sm text-red-300">Listening...</span>
+                </div>
+                <button
+                  onClick={toggleVoice}
+                  className="p-3 bg-red-600 hover:bg-red-500 rounded-full text-white transition-colors cursor-pointer shrink-0"
+                  title="End voice"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path fillRule="evenodd" d="M5.5 3.5A1.5 1.5 0 0 1 7 5v10a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5Zm7 0A1.5 1.5 0 0 1 14 5v10a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5Z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              /* Text input mode */
+              <div className="flex gap-2">
+                <textarea
+                  value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() } }}
+                  placeholder="What's the latest train loss? Which volumes have results?"
+                  rows={2} disabled={chatSending}
+                  className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm resize-none focus:outline-none focus:border-purple-500 disabled:opacity-60"
+                />
+                <div className="flex flex-col gap-1 self-end">
+                  <button
+                    onClick={sendChatMessage}
+                    disabled={chatSending || !chatInput.trim()}
+                    className="px-3 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                  >
+                    Send
+                  </button>
+                  <button
+                    onClick={toggleVoice}
+                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                    title="Start voice"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 mx-auto">
+                      <path d="M7 4a3 3 0 0 1 6 0v6a3 3 0 1 1-6 0V4Z" />
+                      <path d="M5.5 9.643a.75.75 0 0 0-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 0 0 0 1.5h4.5a.75.75 0 0 0 0-1.5h-1.5v-1.546A6.001 6.001 0 0 0 16 10v-.357a.75.75 0 0 0-1.5 0V10a4.5 4.5 0 0 1-9 0v-.357Z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

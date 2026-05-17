@@ -47,6 +47,17 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+async def startup_voice_server():
+    """Start the Pipecat voice WebSocket server alongside FastAPI."""
+    import asyncio
+    try:
+        from voice import start_voice_server
+        asyncio.create_task(start_voice_server())
+    except Exception as e:
+        logger.warning(f"Voice server failed to start: {e}")
+
+
 # -- Constants -----------------------------------------------------------------
 
 SANDBOX_APP_NAME = "mad-sandbox-worker"
