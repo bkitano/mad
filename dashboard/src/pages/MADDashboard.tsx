@@ -84,6 +84,7 @@ export default function MADDashboard() {
   // Voice chat state
   const [voiceActive, setVoiceActive] = useState(false)
   const pipecatClientRef = useRef<any>(null)
+  const voiceStartingRef = useRef(false)
   const voiceBubbleIdx = useRef<number | null>(null)
 
   // Create form state
@@ -380,6 +381,9 @@ export default function MADDashboard() {
   const VOICE_WS_URL = API_URL.replace(/^http/, 'ws') + '/ws/voice'
 
   const startVoice = async () => {
+    // Guard against concurrent starts: a single open WS connection at a time.
+    if (pipecatClientRef.current || voiceStartingRef.current) return
+    voiceStartingRef.current = true
     try {
       const { PipecatClient } = await import('@pipecat-ai/client-js')
       const { WebSocketTransport, ProtobufFrameSerializer } = await import('@pipecat-ai/websocket-transport')
@@ -431,8 +435,11 @@ export default function MADDashboard() {
       pipecatClientRef.current = client
       await client.connect({ wsUrl: VOICE_WS_URL })
     } catch (err) {
+      pipecatClientRef.current = null
       setChatMessages((msgs) => [...msgs, { role: 'status', content: `Voice failed: ${err}` }])
       setVoiceActive(false)
+    } finally {
+      voiceStartingRef.current = false
     }
   }
 
@@ -441,6 +448,7 @@ export default function MADDashboard() {
       await pipecatClientRef.current?.disconnect()
     } catch { /* best effort */ }
     pipecatClientRef.current = null
+    voiceStartingRef.current = false
     setVoiceActive(false)
   }
 
