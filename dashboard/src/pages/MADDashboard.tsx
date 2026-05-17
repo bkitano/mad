@@ -377,13 +377,7 @@ export default function MADDashboard() {
   }, [chatMessages, chatSending])
 
   // Voice: Pipecat client SDK handles audio I/O + protobuf framing
-  const VOICE_WS_URL = (() => {
-    const base = API_URL.replace(/^http/, 'ws')
-    // Replace port with voice port
-    const url = new URL(base)
-    url.port = '8765'
-    return url.toString()
-  })()
+  const VOICE_WS_URL = API_URL.replace(/^http/, 'ws') + '/ws/voice'
 
   const startVoice = async () => {
     try {

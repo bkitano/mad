@@ -47,15 +47,22 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
-async def startup_voice_server():
-    """Start the Pipecat voice WebSocket server alongside FastAPI."""
-    import asyncio
+@app.websocket("/ws/voice")
+async def voice_websocket(websocket):
+    """WebSocket endpoint for voice chat via Pipecat pipeline."""
+    from starlette.websockets import WebSocket
+    ws: WebSocket = websocket
+    await ws.accept()
     try:
-        from voice import start_voice_server
-        asyncio.create_task(start_voice_server())
+        from voice import run_voice_pipeline
+        await run_voice_pipeline(ws)
     except Exception as e:
-        logger.warning(f"Voice server failed to start: {e}")
+        logger.error(f"Voice pipeline error: {e}")
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass
 
 
 # -- Constants -----------------------------------------------------------------

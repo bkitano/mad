@@ -35,9 +35,9 @@ from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.processors.audio.vad_processor import VADProcessor
 from pipecat.serializers.protobuf import ProtobufFrameSerializer
-from pipecat.transports.websocket.server import (
-    WebsocketServerParams,
-    WebsocketServerTransport,
+from pipecat.transports.websocket.fastapi import (
+    FastAPIWebsocketParams,
+    FastAPIWebsocketTransport,
 )
 
 import volume_tools
@@ -186,21 +186,21 @@ class VolumeToolsLLM(FrameProcessor):
 
 # -- Pipecat WebSocket server --------------------------------------------------
 
-VOICE_WS_PORT = int(os.environ.get("VOICE_WS_PORT", "8765"))
+async def run_voice_pipeline(websocket):
+    """Run a Pipecat voice pipeline for a single WebSocket connection.
 
-
-async def start_voice_server():
-    """Start the Pipecat WebSocket server on its own port.
-
-    Clients connect to ws://host:VOICE_WS_PORT.
-    Pipeline: transport → STT → LLM → TTS → transport
+    Called from the FastAPI WebSocket endpoint in app.py.
+    Pipeline: transport → VAD → STT → LLM → TTS → transport
     """
     import aiohttp
 
-    transport = WebsocketServerTransport(
-        host="0.0.0.0",
-        port=VOICE_WS_PORT,
-        params=WebsocketServerParams(
+    logger.info("[voice] new connection, building pipeline")
+    logger.info(f"[voice] STT api_key set: {bool(os.environ.get('ELEVENLABS_API_KEY'))}")
+    logger.info(f"[voice] LLM model: {DEFAULT_CHAT_MODEL}, base_url: {OPENCODE_ZEN_BASE_URL}")
+
+    transport = FastAPIWebsocketTransport(
+        websocket=websocket,
+        params=FastAPIWebsocketParams(
             audio_in_enabled=True,
             audio_in_sample_rate=16000,
             audio_out_enabled=True,
@@ -225,7 +225,6 @@ async def start_voice_server():
     )
 
     vad = VADProcessor(vad_analyzer=SileroVADAnalyzer(sample_rate=16000))
-
     llm = VolumeToolsLLM()
 
     pipeline = Pipeline([
@@ -245,22 +244,9 @@ async def start_voice_server():
         ),
     )
 
-    @transport.event_handler("on_client_connected")
-    async def on_client_connected(transport_ref, client):
-        logger.info(f"[voice] client connected: {client}")
-
-    @transport.event_handler("on_client_disconnected")
-    async def on_client_disconnected(transport_ref, client):
-        logger.info(f"[voice] client disconnected: {client}")
-
-    @transport.event_handler("on_session_timeout")
-    async def on_session_timeout(transport_ref, client):
-        logger.warning(f"[voice] session timeout: {client}")
-
-    logger.info(f"[voice] starting WebSocket server on ws://0.0.0.0:{VOICE_WS_PORT}")
-    logger.info(f"[voice] pipeline: transport.input → ElevenLabsSTT → VolumeToolsLLM → ElevenLabsTTS → transport.output")
-    logger.info(f"[voice] STT api_key set: {bool(os.environ.get('ELEVENLABS_API_KEY'))}")
-    logger.info(f"[voice] LLM model: {DEFAULT_CHAT_MODEL}, base_url: {OPENCODE_ZEN_BASE_URL}")
-
-    runner = PipelineRunner()
-    await runner.run(task)
+    try:
+        runner = PipelineRunner()
+        await runner.run(task)
+    finally:
+        await aiohttp_session.close()
+        logger.info("[voice] pipeline ended")
