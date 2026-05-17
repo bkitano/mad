@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import NotebookViewer from '../components/mad/NotebookViewer'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
@@ -779,7 +779,7 @@ export default function MADDashboard() {
                       ) : viewingFile.path.endsWith('.ipynb') ? (
                         <div className="flex-1 overflow-auto bg-gray-950"><NotebookViewer content={viewingFile.content} /></div>
                       ) : (
-                        <div className="flex-1 overflow-auto bg-gray-950">
+                        <div className="flex-1 overflow-auto">
                           <SyntaxHighlighter
                             language={(() => {
                               const ext = viewingFile.path.split('.').pop()?.toLowerCase() || ''
@@ -792,10 +792,10 @@ export default function MADDashboard() {
                               }
                               return map[ext] || 'text'
                             })()}
-                            style={oneDark}
-                            customStyle={{ margin: 0, padding: '16px', background: '#030712', fontSize: '12px', lineHeight: '1.5' }}
+                            style={vscDarkPlus}
                             showLineNumbers
-                            lineNumberStyle={{ color: '#4b5563', fontSize: '11px' }}
+                            lineNumberStyle={{ color: '#4b5563', fontSize: '11px', minWidth: '2.5em' }}
+                            customStyle={{ margin: 0, padding: '16px', fontSize: '12px', lineHeight: '1.5' }}
                           >
                             {viewingFile.content}
                           </SyntaxHighlighter>

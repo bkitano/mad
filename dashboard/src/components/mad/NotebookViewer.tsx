@@ -4,7 +4,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 interface NotebookCell {
   cell_type: 'code' | 'markdown' | 'raw'
@@ -102,8 +102,8 @@ export default function NotebookViewer({ content }: { content: string }) {
                 <div className="nb-code-source">
                   <SyntaxHighlighter
                     language={language}
-                    style={oneDark}
-                    customStyle={{ margin: 0, padding: '12px', borderRadius: 0, background: '#0d1117', fontSize: '13px', lineHeight: '1.45' }}
+                    style={vscDarkPlus}
+                    customStyle={{ margin: 0, padding: '12px', borderRadius: 0, fontSize: '13px', lineHeight: '1.45' }}
                   >
                     {joinText(cell.source)}
                   </SyntaxHighlighter>
