@@ -310,6 +310,9 @@ def mcp_server():
 
     from worker import volume_tools
 
+    # Alias module-level create_sandbox to avoid name collision with the MCP tool
+    _create_sandbox = create_sandbox
+
     server = FastMCP("mad-volume", stateless_http=True)
 
     @server.tool(description="List every Modal volume in the workspace.")
@@ -331,6 +334,94 @@ def mcp_server():
     @server.tool(description="Recursively grep a volume for a Python regex. Skips binary files.")
     def grep(volume_name: str, pattern: str, path: str = "/", max_matches: int = 200) -> dict:
         return volume_tools.grep(volume_name, pattern, path, max_matches)
+
+    @server.tool(description="Create a new sandbox with a volume attached (creates the volume if it doesn't exist). Returns sandbox URLs (OpenCode, Jupyter) for interactive access. Use this to spin up compute for running code, editing files, or executing experiments.")
+    def create_sandbox(
+        volume_name: str,
+        github_repo: str = DEFAULT_GITHUB_REPO,
+        github_ref: str = "main",
+        gpu: str = "T4",
+        cpu: float = 4.0,
+        memory: int = 32768,
+        timeout_hours: int = 12,
+    ) -> dict:
+        """Create a sandbox with the given volume mounted."""
+        import modal as _modal
+
+        timeout = timeout_hours * HOURS
+        sandbox_app = _modal.App.lookup(APP_NAME, create_if_missing=True)
+        image = define_base_image()
+        image = add_modal_access(image)
+
+        volume = _modal.Volume.from_name(volume_name, create_if_missing=True)
+        password_secret = _modal.Secret.from_name("mad-worker-secrets")
+
+        sb = _create_sandbox(
+            image, timeout, sandbox_app, [SECRETS, password_secret], volume,
+            repo=github_repo, ref=github_ref, token=None,
+            gpu=gpu, cpu=cpu, memory=memory, volume_name=volume_name,
+        )
+
+        tunnels = sb.tunnels()
+        opencode_tunnel = tunnels[OPENCODE_PORT]
+        jupyter_tunnel = tunnels[JUPYTER_PORT]
+
+        return {
+            "sandbox_id": sb.object_id,
+            "volume_name": volume_name,
+            "opencode_url": opencode_tunnel.url,
+            "jupyter_url": jupyter_tunnel.url,
+            "status": "running",
+        }
+
+    @server.tool(description="Terminate a running sandbox by its ID.")
+    def terminate_sandbox_tool(sandbox_id: str) -> dict:
+        """Stop a running sandbox."""
+        import modal as _modal
+        sb = _modal.Sandbox.from_id(sandbox_id)
+        sb.terminate()
+        return {"sandbox_id": sandbox_id, "status": "terminated"}
+
+    @server.tool(description="List all running sandboxes with their URLs and attached volumes.")
+    def list_sandboxes() -> list[dict]:
+        """List active sandboxes."""
+        import modal as _modal
+        sandbox_app = _modal.App.lookup(APP_NAME, create_if_missing=True)
+        sandboxes = []
+        for sb in _modal.Sandbox.list(app_id=sandbox_app.app_id):
+            try:
+                tunnels = sb.tunnels()
+                opencode_url = tunnels[OPENCODE_PORT].url if OPENCODE_PORT in tunnels else None
+                jupyter_url = tunnels[JUPYTER_PORT].url if JUPYTER_PORT in tunnels else None
+            except Exception:
+                opencode_url = None
+                jupyter_url = None
+            try:
+                tags = sb.get_tags()
+                vol_name = tags.get("volume_name", "")
+            except Exception:
+                vol_name = ""
+            sandboxes.append({
+                "sandbox_id": sb.object_id,
+                "opencode_url": opencode_url,
+                "jupyter_url": jupyter_url,
+                "volume_name": vol_name,
+            })
+        return sandboxes
+
+    @server.tool(description="Rename a volume. Useful for labeling experiments after they complete.")
+    def rename_volume(old_name: str, new_name: str) -> dict:
+        """Rename a Modal volume."""
+        import modal as _modal
+        _modal.Volume.rename(old_name, new_name)
+        return {"old_name": old_name, "new_name": new_name, "status": "renamed"}
+
+    @server.tool(description="Permanently delete a volume. This is irreversible.")
+    def delete_volume(volume_name: str) -> dict:
+        """Delete a Modal volume."""
+        import modal as _modal
+        _modal.Volume.objects.delete(volume_name)
+        return {"volume_name": volume_name, "status": "deleted"}
 
     return server.streamable_http_app()
 

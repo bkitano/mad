@@ -311,12 +311,318 @@ GLOBAL_TOOLS_SCHEMA: list[dict] = [
             },
         },
     },
+    # -- Sandbox tools --
+    {
+        "type": "function",
+        "function": {
+            "name": "create_sandbox",
+            "description": "Create a new sandbox with a volume attached (creates the volume if it doesn't exist). Returns sandbox URLs for interactive access. Use this to spin up compute for running code or experiments.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "volume_name": {"type": "string", "description": "Volume name to attach. Created if it doesn't exist."},
+                    "github_repo": {"type": "string", "description": "GitHub repo to clone. Defaults to 'bkitano/mad-experiments-template'."},
+                    "github_ref": {"type": "string", "description": "Branch/ref. Defaults to 'main'."},
+                    "gpu": {"type": "string", "description": "GPU type: T4, L4, A10G, L40S, A100, H100. Defaults to T4."},
+                },
+                "required": ["volume_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "terminate_sandbox",
+            "description": "Terminate a running sandbox by its ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sandbox_id": {"type": "string", "description": "The sandbox ID to terminate."},
+                },
+                "required": ["sandbox_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "rename_volume",
+            "description": "Rename a volume.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "old_name": {"type": "string", "description": "Current volume name."},
+                    "new_name": {"type": "string", "description": "New volume name."},
+                },
+                "required": ["old_name", "new_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_sandboxes",
+            "description": "List all running sandboxes with their OpenCode URLs, Jupyter URLs, and attached volume names.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_to_sandbox",
+            "description": "Send a message to an OpenCode agent running in a sandbox and wait for its full response. Use this to ask the sandbox agent to run code, edit files, execute experiments, etc. Can take up to 5 minutes for complex tasks.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sandbox_id": {"type": "string", "description": "The sandbox ID to send the message to."},
+                    "message": {"type": "string", "description": "The instruction or question to send to the OpenCode agent."},
+                    "session_id": {"type": "string", "description": "Optional session ID to continue a conversation. Omit to create a new session."},
+                },
+                "required": ["sandbox_id", "message"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_to_sandbox_async",
+            "description": "Send a task to an OpenCode sandbox without waiting for a response. Use for long-running tasks. Returns the session_id so you can check back later.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sandbox_id": {"type": "string", "description": "The sandbox ID."},
+                    "message": {"type": "string", "description": "The instruction to send."},
+                    "session_id": {"type": "string", "description": "Optional session ID to continue a conversation."},
+                },
+                "required": ["sandbox_id", "message"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_sandbox_sessions",
+            "description": "List active sessions on a sandbox. Shows what conversations/tasks are running.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sandbox_id": {"type": "string", "description": "The sandbox ID."},
+                },
+                "required": ["sandbox_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_sandbox_files",
+            "description": "List files in a running sandbox's workspace (live filesystem, not volume snapshot).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sandbox_id": {"type": "string", "description": "The sandbox ID."},
+                    "path": {"type": "string", "description": "Directory path relative to workspace root. Defaults to '.'."},
+                },
+                "required": ["sandbox_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_sandbox_file",
+            "description": "Read a file from a running sandbox's live workspace.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sandbox_id": {"type": "string", "description": "The sandbox ID."},
+                    "path": {"type": "string", "description": "File path relative to workspace root."},
+                },
+                "required": ["sandbox_id", "path"],
+            },
+        },
+    },
 ]
+
+
+# ---- Sandbox / OpenCode interaction tools ------------------------------------
+
+import httpx
+
+
+MODAL_CREATE_SANDBOX_URL = os.environ.get(
+    "MODAL_CREATE_SANDBOX_URL",
+    "https://miravoice--mad-sandbox-worker-create-sandbox-worker.modal.run",
+)
+
+
+def create_sandbox(
+    volume_name: str,
+    github_repo: str = "bkitano/mad-experiments-template",
+    github_ref: str = "main",
+    gpu: str = "T4",
+) -> dict:
+    """Create a sandbox by calling the Modal endpoint."""
+    resp = httpx.post(
+        MODAL_CREATE_SANDBOX_URL,
+        json={
+            "volume_name": volume_name,
+            "github_repo": github_repo,
+            "github_ref": github_ref,
+            "gpu": gpu,
+        },
+        timeout=120.0,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def terminate_sandbox(sandbox_id: str) -> dict:
+    """Terminate a sandbox by ID."""
+    sb = modal.Sandbox.from_id(sandbox_id)
+    sb.terminate()
+    return {"sandbox_id": sandbox_id, "status": "terminated"}
+
+
+def rename_volume(old_name: str, new_name: str) -> dict:
+    """Rename a Modal volume."""
+    modal.Volume.rename(old_name, new_name)
+    return {"old_name": old_name, "new_name": new_name, "status": "renamed"}
+
+
+def list_sandboxes() -> list[dict]:
+    """List all running sandboxes with their OpenCode URLs."""
+    sandbox_app = modal.App.lookup("mad-sandbox-worker", create_if_missing=True)
+    sandboxes = []
+    for sb in modal.Sandbox.list(app_id=sandbox_app.app_id):
+        try:
+            tunnels = sb.tunnels()
+            opencode_url = tunnels[4096].url if 4096 in tunnels else None
+            jupyter_url = tunnels[8888].url if 8888 in tunnels else None
+        except Exception:
+            opencode_url = None
+            jupyter_url = None
+        try:
+            tags = sb.get_tags()
+            vol_name = tags.get("volume_name", "")
+        except Exception:
+            vol_name = ""
+        sandboxes.append({
+            "sandbox_id": sb.object_id,
+            "opencode_url": opencode_url,
+            "jupyter_url": jupyter_url,
+            "volume_name": vol_name,
+        })
+    return sandboxes
+
+
+def _get_opencode_url(sandbox_id: str) -> str:
+    """Resolve a sandbox_id to its OpenCode tunnel URL."""
+    sb = modal.Sandbox.from_id(sandbox_id)
+    tunnels = sb.tunnels()
+    if 4096 not in tunnels:
+        raise ValueError(f"Sandbox {sandbox_id} has no OpenCode tunnel")
+    return tunnels[4096].url
+
+
+def send_to_sandbox(sandbox_id: str, message: str, session_id: str | None = None) -> dict:
+    """Send a message to an OpenCode sandbox and wait for the full response."""
+    url = _get_opencode_url(sandbox_id)
+
+    with httpx.Client(timeout=httpx.Timeout(connect=5.0, read=300.0, write=5.0, pool=5.0)) as http:
+        # Create or reuse session
+        if not session_id:
+            resp = http.post(f"{url}/session", json={})
+            resp.raise_for_status()
+            session_id = resp.json()["id"]
+
+        # Send message (sync — waits for response)
+        resp = http.post(
+            f"{url}/session/{session_id}/message",
+            json={"parts": [{"type": "text", "text": message}]},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Extract text from response parts
+        response_parts = data.get("response", {}).get("parts", []) if isinstance(data.get("response"), dict) else []
+        text_parts = [p.get("text", "") for p in response_parts if p.get("type") == "text"]
+        text = "\n".join(text_parts) if text_parts else str(data)
+
+        return {
+            "sandbox_id": sandbox_id,
+            "session_id": session_id,
+            "response": text,
+        }
+
+
+def send_to_sandbox_async(sandbox_id: str, message: str, session_id: str | None = None) -> dict:
+    """Send a task to an OpenCode sandbox (fire-and-forget). Returns immediately."""
+    url = _get_opencode_url(sandbox_id)
+
+    with httpx.Client(timeout=10.0) as http:
+        if not session_id:
+            resp = http.post(f"{url}/session", json={})
+            resp.raise_for_status()
+            session_id = resp.json()["id"]
+
+        http.post(
+            f"{url}/session/{session_id}/prompt_async",
+            json={"parts": [{"type": "text", "text": message}]},
+        )
+
+        return {
+            "sandbox_id": sandbox_id,
+            "session_id": session_id,
+            "status": "sent",
+        }
+
+
+def get_sandbox_sessions(sandbox_id: str) -> list[dict]:
+    """List active sessions on an OpenCode sandbox."""
+    url = _get_opencode_url(sandbox_id)
+    with httpx.Client(timeout=10.0) as http:
+        resp = http.get(f"{url}/session")
+        resp.raise_for_status()
+        return resp.json()
+
+
+def list_sandbox_files(sandbox_id: str, path: str = ".") -> list[dict]:
+    """List files in a live sandbox's workspace."""
+    url = _get_opencode_url(sandbox_id)
+    with httpx.Client(timeout=10.0) as http:
+        resp = http.get(f"{url}/file", params={"path": path})
+        resp.raise_for_status()
+        data = resp.json()
+        # Normalize response format
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            return data.get("children") or data.get("nodes") or data.get("list") or []
+        return []
+
+
+def read_sandbox_file(sandbox_id: str, path: str) -> dict:
+    """Read a file from a live sandbox's workspace."""
+    url = _get_opencode_url(sandbox_id)
+    with httpx.Client(timeout=10.0) as http:
+        resp = http.get(f"{url}/file/content", params={"path": path})
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, str):
+            return {"path": path, "content": data}
+        if isinstance(data, dict):
+            return {"path": path, "content": data.get("content") or data.get("text") or str(data)}
+        return {"path": path, "content": str(data)}
+
+
+# ---- Dispatch ----------------------------------------------------------------
 
 
 def dispatch_global_tool(name: str, args: dict[str, Any]) -> Any:
     """Dispatch for global mode — volume_name comes from the LLM's tool call args."""
     args = dict(args or {})
+    # Volume tools
     if name == "list_volumes":
         return list_volumes()
     if name == "list_files":
@@ -327,4 +633,23 @@ def dispatch_global_tool(name: str, args: dict[str, Any]) -> Any:
         return read_notebook(**args)
     if name == "grep":
         return grep(**args)
+    # Sandbox tools
+    if name == "create_sandbox":
+        return create_sandbox(**args)
+    if name == "terminate_sandbox":
+        return terminate_sandbox(**args)
+    if name == "rename_volume":
+        return rename_volume(**args)
+    if name == "list_sandboxes":
+        return list_sandboxes()
+    if name == "send_to_sandbox":
+        return send_to_sandbox(**args)
+    if name == "send_to_sandbox_async":
+        return send_to_sandbox_async(**args)
+    if name == "get_sandbox_sessions":
+        return get_sandbox_sessions(**args)
+    if name == "list_sandbox_files":
+        return list_sandbox_files(**args)
+    if name == "read_sandbox_file":
+        return read_sandbox_file(**args)
     raise ValueError(f"unknown tool: {name}")
