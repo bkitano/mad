@@ -22,3 +22,6 @@ dependencies = [
     "mcp>=1.0",
     "openai>=1.50",
 ]
+
+[tool.setuptools]
+py-modules = ["modal_sandbox_worker", "volume_tools"]
