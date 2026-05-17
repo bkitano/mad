@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import NotebookViewer from '../components/mad/NotebookViewer'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
 interface ChatMessage {
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'status'
   content: string
 }
 
@@ -70,7 +72,7 @@ export default function MADDashboard() {
   const [renameValue, setRenameValue] = useState('')
   const [renameLoading, setRenameLoading] = useState(false)
 
-  const [volumeView, setVolumeView] = useState<'files' | 'chat'>('files')
+  const [chatOpen, setChatOpen] = useState(false)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatSending, setChatSending] = useState(false)
@@ -228,34 +230,123 @@ export default function MADDashboard() {
     setSession(null)
     setVolumePath('/')
     setViewingFile(null)
-    setVolumeView('files')
-    setChatMessages([])
-    setChatSessionId(null)
-    setChatInput('')
     fetchVolumeContents(vol.name, '/')
     setMobileSidebarOpen(false)
   }
 
   const sendChatMessage = async () => {
-    if (!selectedVolume || !chatInput.trim() || chatSending) return
+    if (!chatInput.trim() || chatSending) return
     const userMessage = chatInput.trim()
     setChatInput('')
     setChatMessages((msgs) => [...msgs, { role: 'user', content: userMessage }])
     setChatSending(true)
+
+    let statusIdx: number | null = null
+    let contentIdx: number | null = null
+    let isThinking = false
+    let toolCount = 0
+
+    const updateStatus = () => {
+      const parts: string[] = []
+      if (isThinking) parts.push('Thinking')
+      if (toolCount > 0) parts.push(`${toolCount} tool call${toolCount > 1 ? 's' : ''}`)
+      const text = parts.join(' · ') + '...'
+      if (statusIdx === null) {
+        setChatMessages((msgs) => {
+          statusIdx = msgs.length
+          return [...msgs, { role: 'status', content: text }]
+        })
+      } else {
+        const idx = statusIdx
+        setChatMessages((msgs) => msgs.map((m, i) => i === idx ? { ...m, content: text } : m))
+      }
+    }
+
     try {
       const res = await fetch(`${API_URL}/volumes/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          volume_name: selectedVolume.name,
           message: userMessage,
           session_id: chatSessionId,
         }),
       })
       if (!res.ok) throw new Error(await res.text())
-      const data = await res.json()
-      setChatSessionId(data.session_id)
-      setChatMessages((msgs) => [...msgs, { role: 'assistant', content: data.response || '(no response)' }])
+
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const event = JSON.parse(line.slice(6))
+
+          switch (event.type) {
+            case 'session_id':
+              setChatSessionId(event.session_id)
+              break
+
+            case 'thinking':
+              if (!isThinking) { isThinking = true; updateStatus() }
+              break
+
+            case 'tool_call':
+              toolCount++
+              updateStatus()
+              break
+
+            case 'tool_result':
+              // status already shows count
+              break
+
+            case 'content':
+              // Remove status line once content starts
+              if (statusIdx !== null) {
+                const idx = statusIdx
+                setChatMessages((msgs) => msgs.filter((_, i) => i !== idx))
+                statusIdx = null
+                contentIdx = null // reset since indices shifted
+              }
+              if (contentIdx === null) {
+                setChatMessages((msgs) => {
+                  contentIdx = msgs.length
+                  return [...msgs, { role: 'assistant', content: event.content }]
+                })
+              } else {
+                const idx = contentIdx
+                setChatMessages((msgs) =>
+                  msgs.map((m, i) => i === idx ? { ...m, content: m.content + event.content } : m)
+                )
+              }
+              break
+
+            case 'error':
+              if (statusIdx !== null) {
+                const idx = statusIdx
+                setChatMessages((msgs) => msgs.filter((_, i) => i !== idx))
+                statusIdx = null
+              }
+              setChatMessages((msgs) => [...msgs, { role: 'assistant', content: `Error: ${event.content}` }])
+              break
+
+            case 'done':
+              // Clean up status if still showing (e.g. no content was generated)
+              if (statusIdx !== null) {
+                const idx = statusIdx
+                setChatMessages((msgs) => msgs.filter((_, i) => i !== idx))
+              }
+              break
+          }
+        }
+      }
     } catch (err) {
       setChatMessages((msgs) => [...msgs, { role: 'assistant', content: `Error: ${err}` }])
     } finally {
@@ -530,10 +621,6 @@ export default function MADDashboard() {
                 )}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex bg-gray-800 rounded-lg p-0.5">
-                  <button onClick={() => setVolumeView('files')} className={`px-3 py-1 text-sm rounded-md transition-colors cursor-pointer ${volumeView === 'files' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}>Files</button>
-                  <button onClick={() => setVolumeView('chat')} className={`px-3 py-1 text-sm rounded-md transition-colors cursor-pointer ${volumeView === 'chat' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}>Chat</button>
-                </div>
                 <button onClick={() => handleAttachAndCreate(selectedVolume)} className="px-3 py-1.5 text-sm bg-purple-600 hover:bg-purple-500 rounded-lg font-medium transition-colors cursor-pointer">
                   <span className="hidden sm:inline">Create Sandbox with this Volume</span>
                   <span className="sm:hidden">Create Sandbox</span>
@@ -542,48 +629,7 @@ export default function MADDashboard() {
               </div>
             </header>
 
-            {volumeView === 'chat' ? (
-              <div className="flex-1 flex flex-col min-h-0">
-                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3">
-                  {chatMessages.length === 0 && !chatSending && (
-                    <div className="text-sm text-gray-500 text-center mt-8 space-y-2">
-                      <p>Ask anything about what's on <span className="font-mono text-gray-400">{selectedVolume.name}</span>.</p>
-                      <p className="text-xs">Tries grep / read_file / read_notebook via tool-use.</p>
-                    </div>
-                  )}
-                  {chatMessages.map((m, i) => (
-                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[85%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap ${
-                        m.role === 'user' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-100 border border-gray-700'
-                      }`}>{m.content}</div>
-                    </div>
-                  ))}
-                  {chatSending && (
-                    <div className="flex justify-start">
-                      <div className="px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm text-gray-400">
-                        <span className="inline-block animate-pulse">thinking...</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="border-t border-gray-800 p-3 md:p-4 shrink-0 bg-gray-900">
-                  <div className="flex gap-2 items-end">
-                    <textarea
-                      value={chatInput} onChange={(e) => setChatInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() } }}
-                      placeholder="What's the latest train loss? Did experiment 042 finish?"
-                      rows={2} disabled={chatSending}
-                      className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm resize-none focus:outline-none focus:border-purple-500 disabled:opacity-60"
-                    />
-                    <div className="flex flex-col gap-2 shrink-0">
-                      <button onClick={sendChatMessage} disabled={chatSending || !chatInput.trim()} className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer">Send</button>
-                      <button onClick={resetChat} disabled={chatSending || (chatMessages.length === 0 && !chatSessionId)} className="px-4 py-1 text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40 cursor-pointer">Reset</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
+            <>
                 <div className="px-3 md:px-4 py-2 border-b border-gray-800 text-sm shrink-0 overflow-x-auto">
                   <div className="flex items-center gap-1 whitespace-nowrap">
                     <button onClick={() => navigateVolume('/')} className="text-purple-400 hover:text-purple-300 cursor-pointer">/</button>
@@ -650,7 +696,6 @@ export default function MADDashboard() {
                   )}
                 </div>
               </>
-            )}
           </div>
         ) : (
           <>
@@ -737,6 +782,96 @@ export default function MADDashboard() {
                 <button onClick={() => setShowCreateForm(false)} className="flex-1 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg font-medium transition-colors cursor-pointer">Cancel</button>
                 <button onClick={spawnSession} disabled={spawning} className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-medium transition-colors cursor-pointer">{spawning ? 'Creating...' : 'Create'}</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating chat button */}
+      {!chatOpen && (
+        <button
+          onClick={() => setChatOpen(true)}
+          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-purple-600 hover:bg-purple-500 rounded-full shadow-lg flex items-center justify-center transition-colors cursor-pointer"
+          title="Chat with volumes"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-white">
+            <path fillRule="evenodd" d="M4.804 21.644A6.707 6.707 0 0 0 6 21.75a6.721 6.721 0 0 0 3.583-1.029c.774.182 1.584.279 2.417.279 5.322 0 9.75-3.97 9.75-9 0-5.03-4.428-9-9.75-9s-9.75 3.97-9.75 9c0 2.409 1.025 4.587 2.674 6.192.232.226.277.428.254.543a3.73 3.73 0 0 1-.814 1.686.75.75 0 0 0 .44 1.223Z" clipRule="evenodd" />
+          </svg>
+        </button>
+      )}
+
+      {/* Floating chat panel */}
+      {chatOpen && (
+        <div className="fixed bottom-6 right-6 z-50 w-96 max-w-[calc(100vw-3rem)] h-[32rem] max-h-[calc(100dvh-3rem)] flex flex-col bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden">
+          {/* Chat header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
+            <span className="text-sm font-medium text-gray-200">Chat</span>
+            <div className="flex items-center gap-1 shrink-0">
+              <button onClick={resetChat} className="p-1 text-gray-400 hover:text-gray-200 cursor-pointer" title="Reset chat">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.634a.75.75 0 0 0 1.5 0v-2.033l.312.311a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.449-.39Zm1.23-3.723a.75.75 0 0 0 .219-.53V3.537a.75.75 0 0 0-1.5 0v2.033l-.312-.311a7 7 0 0 0-11.712 3.138.75.75 0 0 0 1.449.39 5.5 5.5 0 0 1 9.201-2.466l.312.311H11.77a.75.75 0 0 0 0 1.5h3.634a.75.75 0 0 0 .53-.219Z" clipRule="evenodd" />
+                </svg>
+              </button>
+              <button onClick={() => setChatOpen(false)} className="p-1 text-gray-400 hover:text-gray-200 cursor-pointer" title="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+            {chatMessages.length === 0 && !chatSending && (
+              <div className="text-sm text-gray-500 text-center mt-8 space-y-2">
+                <p>Ask about any volume — the agent will discover and browse them.</p>
+                <p className="text-xs">Uses list_volumes, grep, read_file, read_notebook.</p>
+              </div>
+            )}
+            {chatMessages.map((m, i) => (
+              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                {m.role === 'status' ? (
+                  <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400">
+                    <div className="w-3 h-3 border-2 border-gray-600 border-t-purple-400 rounded-full animate-spin" />
+                    {m.content}
+                  </div>
+                ) : (
+                  <div className={`max-w-[85%] px-3 py-2 rounded-lg text-sm ${
+                    m.role === 'user' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-100 border border-gray-700'
+                  }`}>
+                    <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-pre:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 prose-code:text-purple-300 prose-a:text-purple-400">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+            {chatSending && (
+              <div className="flex justify-start">
+                <div className="px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm text-gray-400">
+                  <span className="inline-block animate-pulse">thinking...</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Input */}
+          <div className="border-t border-gray-800 p-3 shrink-0">
+            <div className="flex gap-2">
+              <textarea
+                value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() } }}
+                placeholder="What's the latest train loss? Which volumes have results?"
+                rows={2} disabled={chatSending}
+                className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm resize-none focus:outline-none focus:border-purple-500 disabled:opacity-60"
+              />
+              <button
+                onClick={sendChatMessage}
+                disabled={chatSending || !chatInput.trim()}
+                className="px-3 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer self-end"
+              >
+                Send
+              </button>
             </div>
           </div>
         </div>

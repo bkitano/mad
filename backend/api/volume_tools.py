@@ -220,8 +220,105 @@ TOOLS_SCHEMA: list[dict] = [
 
 
 def dispatch_tool(name: str, volume_name: str, args: dict[str, Any]) -> Any:
+    """Dispatch for single-volume mode (volume_name auto-injected)."""
     args = dict(args or {})
     args["volume_name"] = volume_name
+    if name == "list_files":
+        return list_files(**args)
+    if name == "read_file":
+        return read_file(**args)
+    if name == "read_notebook":
+        return read_notebook(**args)
+    if name == "grep":
+        return grep(**args)
+    raise ValueError(f"unknown tool: {name}")
+
+
+# ---- Global mode: volume_name is explicit on each tool -----------------------
+# Used when the chat agent operates across all volumes (no pre-selected volume).
+
+_VOL_NAME_PARAM = {"type": "string", "description": "Name of the Modal volume."}
+
+GLOBAL_TOOLS_SCHEMA: list[dict] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "list_volumes",
+            "description": "List all available Modal volumes with their names and creation dates.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_files",
+            "description": "List the immediate contents of a path on a volume.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "volume_name": _VOL_NAME_PARAM,
+                    "path": {"type": "string", "description": "Absolute path within the volume. Defaults to '/'."},
+                },
+                "required": ["volume_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read a file from a volume. Returns up to max_bytes of UTF-8 text (or base64 if binary).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "volume_name": _VOL_NAME_PARAM,
+                    "path": {"type": "string", "description": "Absolute path within the volume."},
+                    "max_bytes": {"type": "integer", "description": "Truncation cap. Defaults to 200000."},
+                },
+                "required": ["volume_name", "path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_notebook",
+            "description": "Read a Jupyter notebook (.ipynb), returning cell sources plus text outputs.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "volume_name": _VOL_NAME_PARAM,
+                    "path": {"type": "string", "description": "Absolute path to a .ipynb file on the volume."},
+                },
+                "required": ["volume_name", "path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "grep",
+            "description": "Recursively search a volume for a Python regex pattern. Skips binary files.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "volume_name": _VOL_NAME_PARAM,
+                    "pattern": {"type": "string", "description": "Python regex."},
+                    "path": {"type": "string", "description": "Directory to search under. Defaults to '/'."},
+                    "max_matches": {"type": "integer", "description": "Defaults to 200."},
+                },
+                "required": ["volume_name", "pattern"],
+            },
+        },
+    },
+]
+
+
+def dispatch_global_tool(name: str, args: dict[str, Any]) -> Any:
+    """Dispatch for global mode — volume_name comes from the LLM's tool call args."""
+    args = dict(args or {})
+    if name == "list_volumes":
+        return list_volumes()
     if name == "list_files":
         return list_files(**args)
     if name == "read_file":

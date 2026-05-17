@@ -5,10 +5,24 @@ Run:
     uvicorn api.app:app --host 0.0.0.0 --port 8000
 """
 
+import sys
+from pathlib import Path
+
+# Ensure api/ is on sys.path so `import volume_tools` resolves to the local module
+# regardless of whether we're run as `uvicorn api.app:app` or `uvicorn app:app`.
+_API_DIR = str(Path(__file__).resolve().parent)
+if _API_DIR not in sys.path:
+    sys.path.insert(0, _API_DIR)
+
 import json
 import logging
 import os
+from pathlib import Path as _DotenvPath
 from typing import Optional
+
+# Auto-load .env from the api/ directory
+from dotenv import load_dotenv
+load_dotenv(_DotenvPath(__file__).resolve().parent / ".env")
 
 import httpx as _httpx
 from fastapi import FastAPI, HTTPException, Query
@@ -46,15 +60,16 @@ MODAL_CREATE_SANDBOX_URL = os.environ.get(
 
 # Volume chat config
 OPENCODE_ZEN_BASE_URL = "https://opencode.ai/zen/go/v1"
-DEFAULT_CHAT_MODEL = "glm-5.1"
+DEFAULT_CHAT_MODEL = "deepseek-v4-flash"
 MAX_AGENT_STEPS = 12
 CHAT_SESSIONS_DICT = "mad-volume-chat-sessions"
 
-SYSTEM_PROMPT_TMPL = (
-    "You are a helpful assistant with tool-access to files on the Modal volume "
-    "'{volume_name}'. Use the tools to explore the volume and answer questions "
-    "about the experiment(s) that ran on it.\n\n"
+SYSTEM_PROMPT = (
+    "You are a helpful assistant with tool-access to Modal volumes. "
+    "Use `list_volumes` to discover available volumes, then use the other tools "
+    "to explore files and answer questions about the experiment(s) stored on them.\n\n"
     "Guidelines:\n"
+    "- Start with `list_volumes` if you don't know which volume to look at.\n"
     "- Prefer `grep` and targeted `read_file` calls over walking the directory tree.\n"
     "- Use `read_notebook` for .ipynb files — never `read_file`.\n"
     "- When the user asks about training results, look for wandb run URLs, "
@@ -80,8 +95,8 @@ class TerminateSandboxRequest(BaseModel):
 
 
 class VolumeChatRequest(BaseModel):
-    volume_name: str
     message: str
+    volume_name: Optional[str] = None
     session_id: Optional[str] = None
     model: Optional[str] = None
 
@@ -92,7 +107,7 @@ class VolumeChatRequest(BaseModel):
 @app.get("/volumes")
 def list_volumes():
     """List all mad-sandbox volumes."""
-    import volume_tools
+    import volume_tools  # noqa: F811
 
     return {"volumes": volume_tools.list_volumes()}
 
@@ -100,7 +115,7 @@ def list_volumes():
 @app.get("/volumes/ls")
 def volume_ls(volume_name: str, path: str = "/"):
     """List files in a volume at the given path."""
-    import volume_tools
+    import volume_tools  # noqa: F811
 
     entries = volume_tools.list_files(volume_name, path)
     return {"volume_name": volume_name, "path": path, "entries": entries}
@@ -109,7 +124,7 @@ def volume_ls(volume_name: str, path: str = "/"):
 @app.get("/volumes/read")
 def volume_read(volume_name: str, path: str = Query(...)):
     """Read a file from a volume. Returns the file content as text."""
-    import volume_tools
+    import volume_tools  # noqa: F811
 
     result = volume_tools.read_file(volume_name, path, max_bytes=None)
     return {
@@ -151,8 +166,11 @@ def delete_volume(payload: DeleteVolumeRequest):
 def _serialize_assistant_message(msg) -> dict:
     """Strip the OpenAI ChatCompletionMessage to what the API expects on replay."""
     out: dict = {"role": "assistant"}
-    if msg.content:
-        out["content"] = msg.content
+    # DeepSeek thinking models require reasoning_content to be passed back
+    if getattr(msg, "reasoning_content", None):
+        out["reasoning_content"] = msg.reasoning_content
+    # Always set content (even if empty string) — DeepSeek requires content or tool_calls
+    out["content"] = msg.content or ""
     if msg.tool_calls:
         out["tool_calls"] = [
             {
@@ -170,12 +188,24 @@ def _serialize_assistant_message(msg) -> dict:
 
 @app.post("/volumes/chat")
 def volume_chat(req: VolumeChatRequest):
-    """Chat with the contents of a Modal volume via an LLM + tool-use loop."""
+    """Streaming chat with volume contents via an LLM + tool-use loop.
+
+    Returns an SSE stream with events:
+      - {"type": "session_id", "session_id": "..."}
+      - {"type": "thinking", "content": "..."}
+      - {"type": "tool_call", "name": "...", "arguments": {...}}
+      - {"type": "tool_result", "name": "...", "summary": "..."}
+      - {"type": "content", "content": "..."}
+      - {"type": "done"}
+      - {"type": "error", "content": "..."}
+    """
     import uuid as _uuid
 
     import modal as _modal
     from openai import OpenAI
-    import volume_tools
+    import volume_tools  # noqa: F811
+
+    from fastapi.responses import StreamingResponse
 
     api_key = os.environ.get("OPENCODE_GO_API_KEY")
     if not api_key:
@@ -186,55 +216,114 @@ def volume_chat(req: VolumeChatRequest):
     history: list[dict] = sessions.get(session_id, [])
 
     if not history:
-        history.append({
-            "role": "system",
-            "content": SYSTEM_PROMPT_TMPL.format(volume_name=req.volume_name),
-        })
+        history.append({"role": "system", "content": SYSTEM_PROMPT})
     history.append({"role": "user", "content": req.message})
 
     model = req.model or os.environ.get("OPENCODE_MODEL_DEFAULT") or DEFAULT_CHAT_MODEL
     client = OpenAI(base_url=OPENCODE_ZEN_BASE_URL, api_key=api_key)
+    tools_schema = volume_tools.GLOBAL_TOOLS_SCHEMA
 
-    final_text = ""
-    for _ in range(MAX_AGENT_STEPS):
-        resp = client.chat.completions.create(
-            model=model,
-            messages=history,
-            tools=volume_tools.TOOLS_SCHEMA,
-        )
-        msg = resp.choices[0].message
-        history.append(_serialize_assistant_message(msg))
+    def _sse(event: dict) -> str:
+        return f"data: {json.dumps(event)}\n\n"
 
-        if not msg.tool_calls:
-            final_text = msg.content or ""
-            break
+    def generate():
+        yield _sse({"type": "session_id", "session_id": session_id})
 
-        for tc in msg.tool_calls:
-            try:
-                args = json.loads(tc.function.arguments or "{}")
-                result = volume_tools.dispatch_tool(tc.function.name, req.volume_name, args)
-                content = json.dumps(result, default=str)
-            except Exception as e:
-                content = json.dumps({"error": f"{type(e).__name__}: {e}"})
-            history.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": content,
-            })
-    else:
-        for h in reversed(history):
-            if h.get("role") == "assistant" and h.get("content"):
-                final_text = h["content"]
-                break
+        try:
+            for _ in range(MAX_AGENT_STEPS):
+                stream = client.chat.completions.create(
+                    model=model,
+                    messages=history,
+                    tools=tools_schema,
+                    stream=True,
+                )
 
-    sessions[session_id] = history
+                # Accumulate the streamed response
+                content_parts: list[str] = []
+                reasoning_parts: list[str] = []
+                tool_calls_acc: dict[int, dict] = {}  # index -> {id, name, arguments}
 
-    return {
-        "session_id": session_id,
-        "response": final_text,
-        "model": model,
-        "volume_name": req.volume_name,
-    }
+                for chunk in stream:
+                    delta = chunk.choices[0].delta if chunk.choices else None
+                    if not delta:
+                        continue
+
+                    # Reasoning/thinking tokens
+                    rc = getattr(delta, "reasoning_content", None)
+                    if rc:
+                        reasoning_parts.append(rc)
+                        yield _sse({"type": "thinking", "content": rc})
+
+                    # Content tokens
+                    if delta.content:
+                        content_parts.append(delta.content)
+                        yield _sse({"type": "content", "content": delta.content})
+
+                    # Tool call deltas
+                    if delta.tool_calls:
+                        for tc_delta in delta.tool_calls:
+                            idx = tc_delta.index
+                            if idx not in tool_calls_acc:
+                                tool_calls_acc[idx] = {"id": "", "name": "", "arguments": ""}
+                            if tc_delta.id:
+                                tool_calls_acc[idx]["id"] = tc_delta.id
+                            if tc_delta.function:
+                                if tc_delta.function.name:
+                                    tool_calls_acc[idx]["name"] = tc_delta.function.name
+                                if tc_delta.function.arguments:
+                                    tool_calls_acc[idx]["arguments"] += tc_delta.function.arguments
+
+                # Build the assistant message for history
+                full_content = "".join(content_parts)
+                full_reasoning = "".join(reasoning_parts)
+                assistant_msg: dict = {"role": "assistant", "content": full_content}
+                if full_reasoning:
+                    assistant_msg["reasoning_content"] = full_reasoning
+                if tool_calls_acc:
+                    assistant_msg["tool_calls"] = [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                        }
+                        for tc in tool_calls_acc.values()
+                    ]
+                history.append(assistant_msg)
+
+                # No tool calls — we're done
+                if not tool_calls_acc:
+                    break
+
+                # Execute tool calls
+                for tc in tool_calls_acc.values():
+                    yield _sse({"type": "tool_call", "name": tc["name"], "arguments": tc["arguments"]})
+                    try:
+                        args = json.loads(tc["arguments"] or "{}")
+                        result = volume_tools.dispatch_global_tool(tc["name"], args)
+                        result_str = json.dumps(result, default=str)
+                        # Send a short summary to the client
+                        summary = result_str[:200] + ("..." if len(result_str) > 200 else "")
+                        yield _sse({"type": "tool_result", "name": tc["name"], "summary": summary})
+                    except Exception as e:
+                        result_str = json.dumps({"error": f"{type(e).__name__}: {e}"})
+                        yield _sse({"type": "tool_result", "name": tc["name"], "summary": result_str})
+                    history.append({
+                        "role": "tool",
+                        "tool_call_id": tc["id"],
+                        "content": result_str,
+                    })
+
+        except Exception as e:
+            yield _sse({"type": "error", "content": f"{type(e).__name__}: {e}"})
+
+        sessions[session_id] = history
+        yield _sse({"type": "done"})
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/volumes/chat/reset")
