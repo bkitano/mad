@@ -89,21 +89,18 @@ class VolumeToolsLLM(FrameProcessor):
 
             self._history.append({"role": "user", "content": user_text})
 
-            await self.push_frame(OutputTransportMessageFrame(
-                message=json.dumps({"type": "transcription", "text": user_text})
-            ))
+            await self._send_status({"type": "transcription", "text": user_text})
 
             # Run the tool-calling agent loop
             logger.info("[VolumeToolsLLM] starting agent loop...")
-            response_text = await asyncio.to_thread(self._run_agent_loop)
+            response_text = await self._run_agent_loop()
             logger.info(f"[VolumeToolsLLM] agent loop complete, response: {response_text[:200]}")
 
-            # Send response text to client as a JSON message
-            await self.push_frame(OutputTransportMessageFrame(
-                message=json.dumps({"type": "response", "text": response_text})
-            ))
+            # Send response text to client as a JSON message (frontend display)
+            await self._send_status({"type": "response", "text": response_text})
 
-            # Push response to TTS
+            # Only the final response text is piped to TTS — thinking and
+            # tool-call chatter stays out of audio.
             await self.push_frame(LLMFullResponseStartFrame())
             await self.push_frame(TextFrame(text=response_text))
             await self.push_frame(LLMFullResponseEndFrame())
@@ -114,18 +111,29 @@ class VolumeToolsLLM(FrameProcessor):
         else:
             await self.push_frame(frame, direction)
 
-    def _run_agent_loop(self) -> str:
-        """Synchronous agent loop (runs in thread)."""
+    async def _send_status(self, payload: dict) -> None:
+        """Send a JSON status message to the connected frontend (not to TTS)."""
+        await self.push_frame(OutputTransportMessageFrame(
+            message=json.dumps(payload)
+        ))
+
+    async def _run_agent_loop(self) -> str:
+        """Run the tool-calling agent loop. Emits thinking / tool_call /
+        tool_result events to the frontend as it goes; returns the final
+        response text (the only thing piped to TTS)."""
         from openai import OpenAI
 
         api_key = os.environ.get("OPENCODE_GO_API_KEY", "")
         client = OpenAI(base_url=OPENCODE_ZEN_BASE_URL, api_key=api_key)
         tools_schema = volume_tools.GLOBAL_TOOLS_SCHEMA
 
+        await self._send_status({"type": "thinking"})
+
         for step in range(MAX_AGENT_STEPS):
             logger.debug(f"[agent] step {step+1}/{MAX_AGENT_STEPS}, history length: {len(self._history)}")
             try:
-                resp = client.chat.completions.create(
+                resp = await asyncio.to_thread(
+                    client.chat.completions.create,
                     model=DEFAULT_CHAT_MODEL,
                     messages=self._history,
                     tools=tools_schema,
@@ -166,12 +174,27 @@ class VolumeToolsLLM(FrameProcessor):
                 logger.info(f"[agent] calling tool: {tool_name}({tc.function.arguments})")
                 try:
                     args = json.loads(tc.function.arguments or "{}")
-                    result = volume_tools.dispatch_global_tool(tool_name, args)
+                except Exception:
+                    args = {}
+                await self._send_status({
+                    "type": "tool_call",
+                    "name": tool_name,
+                    "arguments": args,
+                })
+                try:
+                    result = await asyncio.to_thread(
+                        volume_tools.dispatch_global_tool, tool_name, args
+                    )
                     result_str = json.dumps(result, default=str)
                     logger.debug(f"[agent] tool {tool_name} result: {result_str[:200]}")
                 except Exception as e:
                     logger.error(f"[agent] tool {tool_name} failed: {e}")
                     result_str = json.dumps({"error": f"{type(e).__name__}: {e}"})
+                await self._send_status({
+                    "type": "tool_result",
+                    "name": tool_name,
+                    "summary": result_str[:200],
+                })
                 self._history.append({
                     "role": "tool",
                     "tool_call_id": tc.id,

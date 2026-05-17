@@ -86,6 +86,8 @@ export default function MADDashboard() {
   const pipecatClientRef = useRef<any>(null)
   const voiceStartingRef = useRef(false)
   const voiceBubbleIdx = useRef<number | null>(null)
+  const voiceStatusIdx = useRef<number | null>(null)
+  const voiceStatusRef = useRef<{ thinking: boolean; toolCount: number }>({ thinking: false, toolCount: 0 })
 
   // Create form state
   const [githubRepo, setGithubRepo] = useState('bkitano/mad-experiments-template')
@@ -388,9 +390,41 @@ export default function MADDashboard() {
       const { PipecatClient } = await import('@pipecat-ai/client-js')
       const { WebSocketTransport, ProtobufFrameSerializer } = await import('@pipecat-ai/websocket-transport')
 
+      const clearVoiceStatus = () => {
+        if (voiceStatusIdx.current === null) return
+        const idx = voiceStatusIdx.current
+        voiceStatusIdx.current = null
+        voiceStatusRef.current = { thinking: false, toolCount: 0 }
+        setChatMessages((msgs) => msgs.filter((_, i) => i !== idx))
+        // Filtering shifts indices; the bot bubble (if any) needs to be re-found
+        // on next append.
+        if (voiceBubbleIdx.current !== null && voiceBubbleIdx.current > idx) {
+          voiceBubbleIdx.current -= 1
+        }
+      }
+
+      const updateVoiceStatus = () => {
+        const { thinking, toolCount } = voiceStatusRef.current
+        const parts: string[] = []
+        if (thinking) parts.push('Thinking')
+        if (toolCount > 0) parts.push(`${toolCount} tool call${toolCount > 1 ? 's' : ''}`)
+        const text = parts.join(' · ') + '...'
+        if (voiceStatusIdx.current === null) {
+          setChatMessages((msgs) => {
+            voiceStatusIdx.current = msgs.length
+            return [...msgs, { role: 'status', content: text }]
+          })
+        } else {
+          const idx = voiceStatusIdx.current
+          setChatMessages((msgs) => msgs.map((m, i) => i === idx ? { ...m, content: text } : m))
+        }
+      }
+
       const appendBotText = (data: any) => {
         const text = typeof data === 'string' ? data : data?.text
         if (!text) return
+        // First bot speech for this turn — drop the thinking/tool status row.
+        clearVoiceStatus()
         setChatMessages((msgs) => {
           if (voiceBubbleIdx.current !== null && voiceBubbleIdx.current < msgs.length) {
             const idx = voiceBubbleIdx.current
@@ -422,12 +456,40 @@ export default function MADDashboard() {
             const text = typeof data === 'string' ? data : data?.text
             if (text && data?.final) {
               voiceBubbleIdx.current = null  // new user msg resets the bot bubble
+              voiceStatusIdx.current = null  // and the status indicator
+              voiceStatusRef.current = { thinking: false, toolCount: 0 }
               setChatMessages((msgs) => [...msgs, { role: 'user', content: text }])
             }
           },
           onBotTtsText: (data: any) => { appendBotText(data) },
           onBotLlmText: (data: any) => { appendBotText(data) },
           onBotTranscript: (data: any) => { appendBotText(data) },
+          onServerMessage: (data: any) => {
+            // Custom JSON messages from the backend agent loop. Used to surface
+            // thinking and tool-call state without piping any of it to TTS.
+            const payload = data?.data ?? data
+            if (!payload || typeof payload !== 'object') return
+            switch (payload.type) {
+              case 'thinking':
+                if (!voiceStatusRef.current.thinking) {
+                  voiceStatusRef.current.thinking = true
+                  updateVoiceStatus()
+                }
+                break
+              case 'tool_call':
+                voiceStatusRef.current.toolCount += 1
+                updateVoiceStatus()
+                break
+              case 'tool_result':
+                // status already shows the count
+                break
+              case 'response':
+                // TTS will deliver this; drop the status row now so the user
+                // sees the bubble appear as audio starts.
+                clearVoiceStatus()
+                break
+            }
+          },
         },
       })
 
