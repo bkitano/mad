@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import NotebookViewer from '../components/mad/NotebookViewer'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
@@ -777,7 +779,27 @@ export default function MADDashboard() {
                       ) : viewingFile.path.endsWith('.ipynb') ? (
                         <div className="flex-1 overflow-auto bg-gray-950"><NotebookViewer content={viewingFile.content} /></div>
                       ) : (
-                        <pre className="flex-1 overflow-auto p-4 text-xs font-mono text-gray-300 bg-gray-950 whitespace-pre-wrap">{viewingFile.content}</pre>
+                        <div className="flex-1 overflow-auto bg-gray-950">
+                          <SyntaxHighlighter
+                            language={(() => {
+                              const ext = viewingFile.path.split('.').pop()?.toLowerCase() || ''
+                              const map: Record<string, string> = {
+                                py: 'python', js: 'javascript', ts: 'typescript', tsx: 'tsx', jsx: 'jsx',
+                                rs: 'rust', go: 'go', rb: 'ruby', sh: 'bash', bash: 'bash', zsh: 'bash',
+                                yaml: 'yaml', yml: 'yaml', json: 'json', toml: 'toml', md: 'markdown',
+                                css: 'css', html: 'html', sql: 'sql', c: 'c', cpp: 'cpp', h: 'c',
+                                java: 'java', kt: 'kotlin', swift: 'swift', dockerfile: 'docker',
+                              }
+                              return map[ext] || 'text'
+                            })()}
+                            style={oneDark}
+                            customStyle={{ margin: 0, padding: '16px', background: '#030712', fontSize: '12px', lineHeight: '1.5' }}
+                            showLineNumbers
+                            lineNumberStyle={{ color: '#4b5563', fontSize: '11px' }}
+                          >
+                            {viewingFile.content}
+                          </SyntaxHighlighter>
+                        </div>
                       )}
                     </div>
                   )}
