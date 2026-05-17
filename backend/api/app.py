@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 load_dotenv(_DotenvPath(__file__).resolve().parent / ".env")
 
 import httpx as _httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -38,6 +38,28 @@ app = FastAPI(
     version="0.3.0",
 )
 
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+
+class WebSocketCORSFix:
+    """Allow all WebSocket connections regardless of origin.
+
+    Starlette's CORSMiddleware rejects WebSocket upgrades when the origin
+    doesn't match. This middleware accepts all WebSocket connections before
+    CORS gets a chance to reject them.
+    """
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] == "websocket":
+            # Strip origin check — allow all WS connections
+            await self.app(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(WebSocketCORSFix)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -48,19 +70,18 @@ app.add_middleware(
 
 
 @app.websocket("/ws/voice")
-async def voice_websocket(websocket):
+async def voice_websocket(websocket: WebSocket):
     """WebSocket endpoint for voice chat via Pipecat pipeline."""
-    from starlette.websockets import WebSocket
-    ws: WebSocket = websocket
-    await ws.accept()
+    await websocket.accept()
+    logger.info("[voice] WebSocket accepted")
     try:
         from voice import run_voice_pipeline
-        await run_voice_pipeline(ws)
+        await run_voice_pipeline(websocket)
     except Exception as e:
         logger.error(f"Voice pipeline error: {e}")
     finally:
         try:
-            await ws.close()
+            await websocket.close()
         except Exception:
             pass
 
