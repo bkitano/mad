@@ -19,6 +19,8 @@ if _API_DIR not in sys.path:
 from loguru import logger
 
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
     EndFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
@@ -73,6 +75,9 @@ class VolumeToolsLLM(FrameProcessor):
     def __init__(self):
         super().__init__()
         self._history: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self._session_id: str | None = None
+        self._bot_speaking = False  # True while TTS audio is actually playing
+        self._processing = False   # True while agent loop is running
 
     async def process_frame(self, frame, direction):
         await super().process_frame(frame, direction)
@@ -81,13 +86,34 @@ class VolumeToolsLLM(FrameProcessor):
         if frame_type not in ("InputAudioRawFrame", "OutputAudioRawFrame"):
             logger.debug(f"[VolumeToolsLLM] received frame: {frame_type}")
 
+        if isinstance(frame, BotStartedSpeakingFrame):
+            self._bot_speaking = True
+            await self.push_frame(frame, direction)
+            return
+        elif isinstance(frame, BotStoppedSpeakingFrame):
+            self._bot_speaking = False
+            await self.push_frame(frame, direction)
+            return
+
         if isinstance(frame, TranscriptionFrame):
             user_text = frame.text
-            logger.info(f"[VolumeToolsLLM] transcription received: '{user_text}'")
+            logger.info(f"[VolumeToolsLLM] transcription received: '{user_text}' (bot_speaking={self._bot_speaking}, processing={self._processing})")
             if not user_text or not user_text.strip():
+                return
+            # Ignore transcriptions while bot is speaking or agent is already running
+            if self._bot_speaking or self._processing:
+                logger.debug("[VolumeToolsLLM] ignoring transcription (bot speaking or processing)")
                 return
 
             self._history.append({"role": "user", "content": user_text})
+
+            # Persist user message
+            import chat_store
+            if not self._session_id:
+                session = chat_store.create_session(session_type="voice")
+                self._session_id = session["id"]
+                chat_store.auto_title(self._session_id, user_text)
+            chat_store.add_message(self._session_id, "user", user_text)
 
             await self.push_frame(OutputTransportMessageFrame(
                 message=json.dumps({"type": "transcription", "text": user_text})
@@ -95,15 +121,17 @@ class VolumeToolsLLM(FrameProcessor):
 
             # Run the tool-calling agent loop
             logger.info("[VolumeToolsLLM] starting agent loop...")
-            response_text = await asyncio.to_thread(self._run_agent_loop)
+            self._processing = True
+            try:
+                response_text = await asyncio.to_thread(self._run_agent_loop)
+            finally:
+                self._processing = False
             logger.info(f"[VolumeToolsLLM] agent loop complete, response: {response_text[:200]}")
 
-            # Send response text to client as a JSON message
-            await self.push_frame(OutputTransportMessageFrame(
-                message=json.dumps({"type": "response", "text": response_text})
-            ))
+            # Persist assistant response
+            chat_store.add_message(self._session_id, "assistant", response_text)
 
-            # Push response to TTS
+            # Push response to TTS (SDK surfaces this via onBotTtsText)
             await self.push_frame(LLMFullResponseStartFrame())
             await self.push_frame(TextFrame(text=response_text))
             await self.push_frame(LLMFullResponseEndFrame())

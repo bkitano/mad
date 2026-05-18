@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 load_dotenv(_DotenvPath(__file__).resolve().parent / ".env")
 
 import httpx as _httpx
-from fastapi import FastAPI, HTTPException, Query, WebSocket
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -231,39 +231,54 @@ def _serialize_assistant_message(msg) -> dict:
 
 
 @app.post("/volumes/chat")
-def volume_chat(req: VolumeChatRequest):
-    """Streaming chat with volume contents via an LLM + tool-use loop.
+def volume_chat(request: Request):
+    """Streaming chat endpoint compatible with the Vercel AI SDK UI Message Stream protocol.
 
-    Returns an SSE stream with events:
-      - {"type": "session_id", "session_id": "..."}
-      - {"type": "thinking", "content": "..."}
-      - {"type": "tool_call", "name": "...", "arguments": {...}}
-      - {"type": "tool_result", "name": "...", "summary": "..."}
-      - {"type": "content", "content": "..."}
-      - {"type": "done"}
-      - {"type": "error", "content": "..."}
+    Accepts: { "messages": [...] }  (from useChat)
+    Returns: SSE stream with x-vercel-ai-ui-message-stream: v1
     """
-    import uuid as _uuid
-
-    import modal as _modal
     from openai import OpenAI
     import volume_tools  # noqa: F811
+    import chat_store
 
     from fastapi.responses import StreamingResponse
+
+    import asyncio
+    body = asyncio.get_event_loop().run_until_complete(request.json())
 
     api_key = os.environ.get("OPENCODE_GO_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENCODE_GO_API_KEY missing from environment.")
 
-    sessions = _modal.Dict.from_name(CHAT_SESSIONS_DICT, create_if_missing=True)
-    session_id = req.session_id or _uuid.uuid4().hex
-    history: list[dict] = sessions.get(session_id, [])
+    # Get or create session
+    session_id = body.get("session_id", "")
+    if not session_id or not chat_store.get_session(session_id):
+        session = chat_store.create_session(session_type="text")
+        session_id = session["id"]
 
-    if not history:
-        history.append({"role": "system", "content": SYSTEM_PROMPT})
-    history.append({"role": "user", "content": req.message})
+    # Load history from DB
+    history: list[dict] = chat_store.get_history_for_llm(session_id)
+    if not history or history[0].get("role") != "system":
+        history.insert(0, {"role": "system", "content": SYSTEM_PROMPT})
 
-    model = req.model or os.environ.get("OPENCODE_MODEL_DEFAULT") or DEFAULT_CHAT_MODEL
+    # Extract the latest user message from the AI SDK messages array
+    messages = body.get("messages", [])
+    user_text = ""
+    if messages:
+        last_msg = messages[-1]
+        if "parts" in last_msg:
+            text_parts = [p["text"] for p in last_msg["parts"] if p.get("type") == "text"]
+            user_text = "\n".join(text_parts)
+        else:
+            user_text = last_msg.get("content", "")
+        if user_text:
+            history.append({"role": "user", "content": user_text})
+            chat_store.add_message(session_id, "user", user_text)
+            # Auto-title from first user message
+            if len([m for m in history if m["role"] == "user"]) == 1:
+                chat_store.auto_title(session_id, user_text)
+
+    model = body.get("model") or os.environ.get("OPENCODE_MODEL_DEFAULT") or DEFAULT_CHAT_MODEL
     client = OpenAI(base_url=OPENCODE_ZEN_BASE_URL, api_key=api_key)
     tools_schema = volume_tools.GLOBAL_TOOLS_SCHEMA
 
@@ -271,10 +286,16 @@ def volume_chat(req: VolumeChatRequest):
         return f"data: {json.dumps(event)}\n\n"
 
     def generate():
-        yield _sse({"type": "session_id", "session_id": session_id})
+        msg_id = f"msg_{_uuid.uuid4().hex[:12]}"
+
+        yield _sse({"type": "start", "messageId": msg_id})
+        yield _sse({"type": "start-step"})
 
         try:
-            for _ in range(MAX_AGENT_STEPS):
+            text_block_id = 0
+            reasoning_block_id = 0
+
+            for step in range(MAX_AGENT_STEPS):
                 stream = client.chat.completions.create(
                     model=model,
                     messages=history,
@@ -282,26 +303,39 @@ def volume_chat(req: VolumeChatRequest):
                     stream=True,
                 )
 
-                # Accumulate the streamed response
                 content_parts: list[str] = []
                 reasoning_parts: list[str] = []
-                tool_calls_acc: dict[int, dict] = {}  # index -> {id, name, arguments}
+                tool_calls_acc: dict[int, dict] = {}
+                in_text = False
+                in_reasoning = False
 
                 for chunk in stream:
                     delta = chunk.choices[0].delta if chunk.choices else None
                     if not delta:
                         continue
 
-                    # Reasoning/thinking tokens
+                    # Reasoning tokens
                     rc = getattr(delta, "reasoning_content", None)
                     if rc:
+                        if not in_reasoning:
+                            r_id = f"reasoning_{reasoning_block_id}"
+                            yield _sse({"type": "reasoning-start", "id": r_id})
+                            in_reasoning = True
                         reasoning_parts.append(rc)
-                        yield _sse({"type": "thinking", "content": rc})
+                        yield _sse({"type": "reasoning-delta", "id": r_id, "delta": rc})
 
                     # Content tokens
                     if delta.content:
+                        if in_reasoning:
+                            yield _sse({"type": "reasoning-end", "id": r_id})
+                            in_reasoning = False
+                            reasoning_block_id += 1
+                        if not in_text:
+                            t_id = f"text_{text_block_id}"
+                            yield _sse({"type": "text-start", "id": t_id})
+                            in_text = True
                         content_parts.append(delta.content)
-                        yield _sse({"type": "content", "content": delta.content})
+                        yield _sse({"type": "text-delta", "id": t_id, "delta": delta.content})
 
                     # Tool call deltas
                     if delta.tool_calls:
@@ -317,7 +351,15 @@ def volume_chat(req: VolumeChatRequest):
                                 if tc_delta.function.arguments:
                                     tool_calls_acc[idx]["arguments"] += tc_delta.function.arguments
 
-                # Build the assistant message for history
+                # Close open blocks
+                if in_reasoning:
+                    yield _sse({"type": "reasoning-end", "id": r_id})
+                    reasoning_block_id += 1
+                if in_text:
+                    yield _sse({"type": "text-end", "id": t_id})
+                    text_block_id += 1
+
+                # Build history entry
                 full_content = "".join(content_parts)
                 full_reasoning = "".join(reasoning_parts)
                 assistant_msg: dict = {"role": "assistant", "content": full_content}
@@ -325,59 +367,93 @@ def volume_chat(req: VolumeChatRequest):
                     assistant_msg["reasoning_content"] = full_reasoning
                 if tool_calls_acc:
                     assistant_msg["tool_calls"] = [
-                        {
-                            "id": tc["id"],
-                            "type": "function",
-                            "function": {"name": tc["name"], "arguments": tc["arguments"]},
-                        }
+                        {"id": tc["id"], "type": "function", "function": {"name": tc["name"], "arguments": tc["arguments"]}}
                         for tc in tool_calls_acc.values()
                     ]
                 history.append(assistant_msg)
 
-                # No tool calls — we're done
+                # No tool calls — done
                 if not tool_calls_acc:
                     break
 
-                # Execute tool calls
+                # Execute tools and stream results
                 for tc in tool_calls_acc.values():
-                    yield _sse({"type": "tool_call", "name": tc["name"], "arguments": tc["arguments"]})
+                    yield _sse({"type": "tool-input-start", "toolCallId": tc["id"], "toolName": tc["name"]})
+                    yield _sse({"type": "tool-input-available", "toolCallId": tc["id"], "toolName": tc["name"], "input": json.loads(tc["arguments"] or "{}")})
+
                     try:
                         args = json.loads(tc["arguments"] or "{}")
                         result = volume_tools.dispatch_global_tool(tc["name"], args)
-                        result_str = json.dumps(result, default=str)
-                        # Send a short summary to the client
-                        summary = result_str[:200] + ("..." if len(result_str) > 200 else "")
-                        yield _sse({"type": "tool_result", "name": tc["name"], "summary": summary})
+                        result_json = json.loads(json.dumps(result, default=str))
                     except Exception as e:
-                        result_str = json.dumps({"error": f"{type(e).__name__}: {e}"})
-                        yield _sse({"type": "tool_result", "name": tc["name"], "summary": result_str})
+                        result_json = {"error": f"{type(e).__name__}: {e}"}
+                    result_str = json.dumps(result_json, default=str)
+
+                    yield _sse({"type": "tool-output-available", "toolCallId": tc["id"], "output": result_json})
+
                     history.append({
                         "role": "tool",
                         "tool_call_id": tc["id"],
                         "content": result_str,
                     })
 
-        except Exception as e:
-            yield _sse({"type": "error", "content": f"{type(e).__name__}: {e}"})
+                yield _sse({"type": "finish-step"})
+                if tool_calls_acc:
+                    yield _sse({"type": "start-step"})
 
-        sessions[session_id] = history
-        yield _sse({"type": "done"})
+        except Exception as e:
+            yield _sse({"type": "error", "errorText": f"{type(e).__name__}: {e}"})
+
+        # Save assistant response to DB
+        final_content = ""
+        for h in reversed(history):
+            if h.get("role") == "assistant" and h.get("content"):
+                final_content = h["content"]
+                break
+        if final_content:
+            chat_store.add_message(session_id, "assistant", final_content)
+
+        yield _sse({"type": "finish-step"})
+        yield _sse({"type": "finish"})
+        yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "x-vercel-ai-ui-message-stream": "v1",
+            "x-chat-session-id": session_id,
+        },
     )
 
 
-@app.post("/volumes/chat/reset")
-def volume_chat_reset(session_id: str = Query(...)):
-    """Drop a chat session's history."""
-    import modal as _modal
+@app.get("/chats")
+def list_chats(limit: int = Query(50, ge=1, le=200)):
+    """List recent chat sessions."""
+    import chat_store
+    return chat_store.list_sessions(limit=limit)
 
-    sessions = _modal.Dict.from_name(CHAT_SESSIONS_DICT, create_if_missing=True)
-    sessions.pop(session_id, None)
-    return {"session_id": session_id, "status": "reset"}
+
+@app.get("/chats/{session_id}")
+def get_chat(session_id: str):
+    """Get a chat session with its messages."""
+    import chat_store
+    session = chat_store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    messages = chat_store.get_messages(session_id)
+    return {"session": session, "messages": messages}
+
+
+@app.delete("/chats/{session_id}")
+def delete_chat(session_id: str):
+    """Delete a chat session and all its messages."""
+    import chat_store
+    if not chat_store.delete_session(session_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"status": "deleted"}
 
 
 # -- Sandbox endpoints ---------------------------------------------------------

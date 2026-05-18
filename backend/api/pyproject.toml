@@ -11,5 +11,6 @@ dependencies = [
     "modal>=1.3.0.post1",
     "openai>=1.50",
     "python-dotenv>=1.0",
+    "psycopg2-binary>=2.9.0",
     "pipecat-ai[elevenlabs,websocket]>=0.0.50",
 ]

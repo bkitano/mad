@@ -1,16 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import NotebookViewer from '../components/mad/NotebookViewer'
+import VoiceChat from '../components/mad/VoiceChat'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
-
-interface ChatMessage {
-  role: 'user' | 'assistant' | 'status'
-  content: string
-}
 
 interface Session {
   sandbox_id: string
@@ -34,7 +32,7 @@ interface VolumeItem {
   created_by: string | null
 }
 
-type SidebarTab = 'sandboxes' | 'volumes'
+type SidebarTab = 'sandboxes' | 'volumes' | 'chats'
 
 function MobileMenuButton({ onClick }: { onClick: () => void }) {
   return (
@@ -75,16 +73,60 @@ export default function MADDashboard() {
   const [renameLoading, setRenameLoading] = useState(false)
 
   const [chatOpen, setChatOpen] = useState(false)
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
-  const [chatInput, setChatInput] = useState('')
-  const [chatSending, setChatSending] = useState(false)
   const [chatSessionId, setChatSessionId] = useState<string | null>(null)
+  const [chatHistory, setChatHistory] = useState<{id: string, title: string, type: string, updated_at: string}[]>([])
   const chatScrollRef = useRef<HTMLDivElement>(null)
 
-  // Voice chat state
-  const [voiceActive, setVoiceActive] = useState(false)
-  const pipecatClientRef = useRef<any>(null)
-  const voiceBubbleIdx = useRef<number | null>(null)
+  const chatTransport = useMemo(() => new DefaultChatTransport({
+    api: `${API_URL}/volumes/chat`,
+    body: chatSessionId ? { session_id: chatSessionId } : {},
+  }), [chatSessionId])
+
+  const {
+    messages: chatMessages,
+    sendMessage: sendChatMessage,
+    status: chatStatus,
+    setMessages: setChatMessages,
+  } = useChat({ transport: chatTransport })
+
+  const [chatInput, setChatInput] = useState('')
+  const chatSending = chatStatus === 'submitted' || chatStatus === 'streaming'
+
+  // Fetch chat history
+  const fetchChatHistory = async () => {
+    try {
+      const res = await fetch(`${API_URL}/chats?limit=20`)
+      if (res.ok) setChatHistory(await res.json())
+    } catch { /* ignore */ }
+  }
+
+  const loadChatSession = async (sessionId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/chats/${sessionId}`)
+      if (!res.ok) return
+      await res.json() // validate response
+      setChatSessionId(sessionId)
+      setChatMessages([])
+          } catch { /* ignore */ }
+  }
+
+  const startNewChat = () => {
+    setChatSessionId(null)
+    setChatMessages([])
+      }
+
+  // Capture session_id from response headers
+  useEffect(() => {
+    // When the first message is sent and we get a response, the session_id
+    // comes back in the x-chat-session-id header. We capture it for subsequent messages.
+    if (chatMessages.length > 0 && !chatSessionId) {
+      // The transport handles this internally — we just need to refresh history
+      fetchChatHistory()
+    }
+  }, [chatMessages.length])
+
+  // Voice panel state
+  const [voiceOpen, setVoiceOpen] = useState(false)
 
   // Create form state
   const [githubRepo, setGithubRepo] = useState('bkitano/mad-experiments-template')
@@ -241,216 +283,19 @@ export default function MADDashboard() {
     setMobileSidebarOpen(false)
   }
 
-  const sendChatMessage = async () => {
+  const handleSendChat = () => {
     if (!chatInput.trim() || chatSending) return
-    const userMessage = chatInput.trim()
+    const text = chatInput.trim()
     setChatInput('')
-    setChatMessages((msgs) => [...msgs, { role: 'user', content: userMessage }])
-    setChatSending(true)
-
-    let statusIdx: number | null = null
-    let contentIdx: number | null = null
-    let isThinking = false
-    let toolCount = 0
-
-    const updateStatus = () => {
-      const parts: string[] = []
-      if (isThinking) parts.push('Thinking')
-      if (toolCount > 0) parts.push(`${toolCount} tool call${toolCount > 1 ? 's' : ''}`)
-      const text = parts.join(' · ') + '...'
-      if (statusIdx === null) {
-        setChatMessages((msgs) => {
-          statusIdx = msgs.length
-          return [...msgs, { role: 'status', content: text }]
-        })
-      } else {
-        const idx = statusIdx
-        setChatMessages((msgs) => msgs.map((m, i) => i === idx ? { ...m, content: text } : m))
-      }
-    }
-
-    try {
-      const res = await fetch(`${API_URL}/volumes/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userMessage,
-          session_id: chatSessionId,
-        }),
-      })
-      if (!res.ok) throw new Error(await res.text())
-
-      const reader = res.body!.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const event = JSON.parse(line.slice(6))
-
-          switch (event.type) {
-            case 'session_id':
-              setChatSessionId(event.session_id)
-              break
-
-            case 'thinking':
-              if (!isThinking) { isThinking = true; updateStatus() }
-              break
-
-            case 'tool_call':
-              toolCount++
-              updateStatus()
-              break
-
-            case 'tool_result':
-              // status already shows count
-              break
-
-            case 'content':
-              // Remove status line once content starts
-              if (statusIdx !== null) {
-                const idx = statusIdx
-                setChatMessages((msgs) => msgs.filter((_, i) => i !== idx))
-                statusIdx = null
-                contentIdx = null // reset since indices shifted
-              }
-              if (contentIdx === null) {
-                setChatMessages((msgs) => {
-                  contentIdx = msgs.length
-                  return [...msgs, { role: 'assistant', content: event.content }]
-                })
-              } else {
-                const idx = contentIdx
-                setChatMessages((msgs) =>
-                  msgs.map((m, i) => i === idx ? { ...m, content: m.content + event.content } : m)
-                )
-              }
-              break
-
-            case 'error':
-              if (statusIdx !== null) {
-                const idx = statusIdx
-                setChatMessages((msgs) => msgs.filter((_, i) => i !== idx))
-                statusIdx = null
-              }
-              setChatMessages((msgs) => [...msgs, { role: 'assistant', content: `Error: ${event.content}` }])
-              break
-
-            case 'done':
-              // Clean up status if still showing (e.g. no content was generated)
-              if (statusIdx !== null) {
-                const idx = statusIdx
-                setChatMessages((msgs) => msgs.filter((_, i) => i !== idx))
-              }
-              break
-          }
-        }
-      }
-    } catch (err) {
-      setChatMessages((msgs) => [...msgs, { role: 'assistant', content: `Error: ${err}` }])
-    } finally {
-      setChatSending(false)
-    }
+    sendChatMessage({ text })
   }
 
-  const resetChat = async () => {
-    if (chatSessionId) {
-      try {
-        await fetch(`${API_URL}/volumes/chat/reset?session_id=${encodeURIComponent(chatSessionId)}`, { method: 'POST' })
-      } catch { /* best-effort */ }
-    }
-    setChatMessages([])
-    setChatSessionId(null)
-    setChatInput('')
-  }
 
   useEffect(() => {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
   }, [chatMessages, chatSending])
 
-  // Voice: Pipecat client SDK handles audio I/O + protobuf framing
   const VOICE_WS_URL = API_URL.replace(/^http/, 'ws') + '/ws/voice'
-
-  const startVoice = async () => {
-    try {
-      const { PipecatClient } = await import('@pipecat-ai/client-js')
-      const { WebSocketTransport, ProtobufFrameSerializer } = await import('@pipecat-ai/websocket-transport')
-
-      const appendBotText = (data: any) => {
-        const text = typeof data === 'string' ? data : data?.text
-        if (!text) return
-        setChatMessages((msgs) => {
-          if (voiceBubbleIdx.current !== null && voiceBubbleIdx.current < msgs.length) {
-            const idx = voiceBubbleIdx.current
-            return msgs.map((m, i) => i === idx ? { ...m, content: m.content + ' ' + text } : m)
-          }
-          voiceBubbleIdx.current = msgs.length
-          return [...msgs, { role: 'assistant', content: text }]
-        })
-      }
-
-      const transport = new WebSocketTransport({
-        serializer: new ProtobufFrameSerializer(),
-      })
-
-      const client = new PipecatClient({
-        transport,
-        enableMic: true,
-        enableCam: false,
-        callbacks: {
-          onConnected: () => {
-            setVoiceActive(true)
-            setChatMessages((msgs) => [...msgs, { role: 'status', content: 'Voice connected — speak now' }])
-          },
-          onDisconnected: () => {
-            setVoiceActive(false)
-            setChatMessages((msgs) => [...msgs, { role: 'status', content: 'Voice disconnected' }])
-          },
-          onUserTranscript: (data: any) => {
-            const text = typeof data === 'string' ? data : data?.text
-            if (text && data?.final) {
-              voiceBubbleIdx.current = null  // new user msg resets the bot bubble
-              setChatMessages((msgs) => [...msgs, { role: 'user', content: text }])
-            }
-          },
-          onBotTtsText: (data: any) => { appendBotText(data) },
-          onBotLlmText: (data: any) => { appendBotText(data) },
-          onBotTranscript: (data: any) => { appendBotText(data) },
-        },
-      })
-
-
-      pipecatClientRef.current = client
-      await client.connect({ wsUrl: VOICE_WS_URL })
-    } catch (err) {
-      setChatMessages((msgs) => [...msgs, { role: 'status', content: `Voice failed: ${err}` }])
-      setVoiceActive(false)
-    }
-  }
-
-  const stopVoice = async () => {
-    try {
-      await pipecatClientRef.current?.disconnect()
-    } catch { /* best effort */ }
-    pipecatClientRef.current = null
-    setVoiceActive(false)
-  }
-
-  const toggleVoice = () => {
-    if (voiceActive) {
-      stopVoice()
-    } else {
-      startVoice()
-    }
-  }
 
   const navigateVolume = (path: string) => {
     if (!selectedVolume) return
@@ -565,6 +410,16 @@ export default function MADDashboard() {
           >
             Volumes
           </button>
+          <button
+            onClick={() => { setSidebarTab('chats'); fetchChatHistory() }}
+            className={`flex-1 py-3 text-sm font-medium transition-colors cursor-pointer ${
+              sidebarTab === 'chats'
+                ? 'text-purple-400 border-b-2 border-purple-400'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            Chats
+          </button>
         </div>
 
         {sidebarTab === 'sandboxes' && (
@@ -623,6 +478,43 @@ export default function MADDashboard() {
               <p className="text-sm text-gray-500 px-3 py-2">No volumes found</p>
             )}
           </div>
+        )}
+
+        {sidebarTab === 'chats' && (
+          <>
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {chatHistory.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => { loadChatSession(s.id); setChatOpen(true) }}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                    chatSessionId === s.id
+                      ? 'bg-purple-600/20 text-purple-300 border border-purple-700'
+                      : 'hover:bg-gray-800 text-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs">{s.type === 'voice' ? '\uD83C\uDF99\uFE0F' : '\uD83D\uDCAC'}</span>
+                    <span className="text-xs truncate flex-1">{s.title}</span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {new Date(s.updated_at).toLocaleString()}
+                  </div>
+                </button>
+              ))}
+              {chatHistory.length === 0 && (
+                <p className="text-sm text-gray-500 px-3 py-2">No chats yet</p>
+              )}
+            </div>
+            <div className="p-3 border-t border-gray-800">
+              <button
+                onClick={() => { startNewChat(); setChatOpen(true) }}
+                className="w-full py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              >
+                New Chat
+              </button>
+            </div>
+          </>
         )}
       </aside>
 
@@ -890,18 +782,33 @@ export default function MADDashboard() {
         </div>
       )}
 
-      {/* Floating chat button */}
-      {!chatOpen && (
-        <button
-          onClick={() => setChatOpen(true)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-purple-600 hover:bg-purple-500 rounded-full shadow-lg flex items-center justify-center transition-colors cursor-pointer"
-          title="Chat with volumes"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-white">
-            <path fillRule="evenodd" d="M4.804 21.644A6.707 6.707 0 0 0 6 21.75a6.721 6.721 0 0 0 3.583-1.029c.774.182 1.584.279 2.417.279 5.322 0 9.75-3.97 9.75-9 0-5.03-4.428-9-9.75-9s-9.75 3.97-9.75 9c0 2.409 1.025 4.587 2.674 6.192.232.226.277.428.254.543a3.73 3.73 0 0 1-.814 1.686.75.75 0 0 0 .44 1.223Z" clipRule="evenodd" />
-          </svg>
-        </button>
+      {/* Floating action buttons — text chat + voice */}
+      {!chatOpen && !voiceOpen && (
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+          <button
+            onClick={() => setVoiceOpen(true)}
+            className="w-12 h-12 bg-gray-700 hover:bg-gray-600 rounded-full shadow-lg flex items-center justify-center transition-colors cursor-pointer"
+            title="Voice chat"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-gray-200">
+              <path d="M7 4a3 3 0 0 1 6 0v6a3 3 0 1 1-6 0V4Z" />
+              <path d="M5.5 9.643a.75.75 0 0 0-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 0 0 0 1.5h4.5a.75.75 0 0 0 0-1.5h-1.5v-1.546A6.001 6.001 0 0 0 16 10v-.357a.75.75 0 0 0-1.5 0V10a4.5 4.5 0 0 1-9 0v-.357Z" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setChatOpen(true)}
+            className="w-14 h-14 bg-purple-600 hover:bg-purple-500 rounded-full shadow-lg flex items-center justify-center transition-colors cursor-pointer"
+            title="Text chat"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-white">
+              <path fillRule="evenodd" d="M4.804 21.644A6.707 6.707 0 0 0 6 21.75a6.721 6.721 0 0 0 3.583-1.029c.774.182 1.584.279 2.417.279 5.322 0 9.75-3.97 9.75-9 0-5.03-4.428-9-9.75-9s-9.75 3.97-9.75 9c0 2.409 1.025 4.587 2.674 6.192.232.226.277.428.254.543a3.73 3.73 0 0 1-.814 1.686.75.75 0 0 0 .44 1.223Z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
       )}
+
+      {/* Voice chat panel */}
+      {voiceOpen && <VoiceChat wsUrl={VOICE_WS_URL} onClose={() => setVoiceOpen(false)} />}
 
       {/* Floating chat panel */}
       {chatOpen && (
@@ -910,9 +817,9 @@ export default function MADDashboard() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
             <span className="text-sm font-medium text-gray-200">Chat</span>
             <div className="flex items-center gap-1 shrink-0">
-              <button onClick={resetChat} className="p-1 text-gray-400 hover:text-gray-200 cursor-pointer" title="Reset chat">
+              <button onClick={startNewChat} className="p-1 text-gray-400 hover:text-gray-200 cursor-pointer" title="New chat">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                  <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.634a.75.75 0 0 0 1.5 0v-2.033l.312.311a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.449-.39Zm1.23-3.723a.75.75 0 0 0 .219-.53V3.537a.75.75 0 0 0-1.5 0v2.033l-.312-.311a7 7 0 0 0-11.712 3.138.75.75 0 0 0 1.449.39 5.5 5.5 0 0 1 9.201-2.466l.312.311H11.77a.75.75 0 0 0 0 1.5h3.634a.75.75 0 0 0 .53-.219Z" clipRule="evenodd" />
+                  <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
                 </svg>
               </button>
               <button onClick={() => setChatOpen(false)} className="p-1 text-gray-400 hover:text-gray-200 cursor-pointer" title="Close">
@@ -931,28 +838,49 @@ export default function MADDashboard() {
                 <p className="text-xs">Uses list_volumes, grep, read_file, read_notebook.</p>
               </div>
             )}
-            {chatMessages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                {m.role === 'status' ? (
-                  <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400">
-                    <div className="w-3 h-3 border-2 border-gray-600 border-t-purple-400 rounded-full animate-spin" />
-                    {m.content}
-                  </div>
-                ) : (
-                  <div className={`max-w-[85%] px-3 py-2 rounded-lg text-sm ${
-                    m.role === 'user' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-100 border border-gray-700'
-                  }`}>
-                    <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-pre:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 prose-code:text-purple-300 prose-a:text-purple-400">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
-                    </div>
-                  </div>
-                )}
+            {chatMessages.map((m) => (
+              <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] px-3 py-2 rounded-lg text-sm ${
+                  m.role === 'user' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-100 border border-gray-700'
+                }`}>
+                  {m.parts.map((part, j) => {
+                    if (part.type === 'text') {
+                      return (
+                        <div key={j} className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-pre:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 prose-code:text-purple-300 prose-a:text-purple-400">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.text}</ReactMarkdown>
+                        </div>
+                      )
+                    }
+                    if (part.type === 'reasoning') {
+                      return (
+                        <div key={j} className="text-xs text-gray-500 italic border-l-2 border-gray-700 pl-2 my-1">
+                          {part.text}
+                        </div>
+                      )
+                    }
+                    if (part.type.startsWith('tool-')) {
+                      const toolPart = part as any
+                      return (
+                        <div key={j} className="text-xs text-gray-400 font-mono bg-gray-900 rounded px-2 py-1 my-1">
+                          <span className="text-blue-400">{toolPart.toolName || 'tool'}</span>
+                          {toolPart.state === 'result' || toolPart.state === 'output-available' ? (
+                            <span className="text-green-400 ml-1">done</span>
+                          ) : (
+                            <span className="text-yellow-400 ml-1 animate-pulse">running...</span>
+                          )}
+                        </div>
+                      )
+                    }
+                    return null
+                  })}
+                </div>
               </div>
             ))}
-            {chatSending && (
+            {chatStatus === 'submitted' && (
               <div className="flex justify-start">
-                <div className="px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm text-gray-400">
-                  <span className="inline-block animate-pulse">thinking...</span>
+                <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400">
+                  <div className="w-3 h-3 border-2 border-gray-600 border-t-purple-400 rounded-full animate-spin" />
+                  thinking...
                 </div>
               </div>
             )}
@@ -960,61 +888,22 @@ export default function MADDashboard() {
 
           {/* Input */}
           <div className="border-t border-gray-800 p-3 shrink-0">
-            {voiceActive ? (
-              /* Voice active state — full-width listening indicator */
-              <div className="flex items-center gap-3">
-                <div className="flex-1 flex items-center justify-center gap-1 py-3 bg-gray-800 rounded-lg border border-red-900/50">
-                  {/* Animated bars */}
-                  <div className="flex items-end gap-0.5 h-5">
-                    <div className="w-1 bg-red-400 rounded-full animate-[voice-bar_0.8s_ease-in-out_infinite]" style={{ height: '40%' }} />
-                    <div className="w-1 bg-red-400 rounded-full animate-[voice-bar_0.8s_ease-in-out_0.15s_infinite]" style={{ height: '70%' }} />
-                    <div className="w-1 bg-red-400 rounded-full animate-[voice-bar_0.8s_ease-in-out_0.3s_infinite]" style={{ height: '100%' }} />
-                    <div className="w-1 bg-red-400 rounded-full animate-[voice-bar_0.8s_ease-in-out_0.45s_infinite]" style={{ height: '60%' }} />
-                    <div className="w-1 bg-red-400 rounded-full animate-[voice-bar_0.8s_ease-in-out_0.6s_infinite]" style={{ height: '30%' }} />
-                  </div>
-                  <span className="ml-2 text-sm text-red-300">Listening...</span>
-                </div>
-                <button
-                  onClick={toggleVoice}
-                  className="p-3 bg-red-600 hover:bg-red-500 rounded-full text-white transition-colors cursor-pointer shrink-0"
-                  title="End voice"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                    <path fillRule="evenodd" d="M5.5 3.5A1.5 1.5 0 0 1 7 5v10a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5Zm7 0A1.5 1.5 0 0 1 14 5v10a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5Z" clipRule="evenodd" />
-                  </svg>
-                </button>
-              </div>
-            ) : (
-              /* Text input mode */
-              <div className="flex gap-2">
-                <textarea
-                  value={chatInput} onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() } }}
-                  placeholder="What's the latest train loss? Which volumes have results?"
-                  rows={2} disabled={chatSending}
-                  className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm resize-none focus:outline-none focus:border-purple-500 disabled:opacity-60"
-                />
-                <div className="flex flex-col gap-1 self-end">
-                  <button
-                    onClick={sendChatMessage}
-                    disabled={chatSending || !chatInput.trim()}
-                    className="px-3 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-                  >
-                    Send
-                  </button>
-                  <button
-                    onClick={toggleVoice}
-                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-                    title="Start voice"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 mx-auto">
-                      <path d="M7 4a3 3 0 0 1 6 0v6a3 3 0 1 1-6 0V4Z" />
-                      <path d="M5.5 9.643a.75.75 0 0 0-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 0 0 0 1.5h4.5a.75.75 0 0 0 0-1.5h-1.5v-1.546A6.001 6.001 0 0 0 16 10v-.357a.75.75 0 0 0-1.5 0V10a4.5 4.5 0 0 1-9 0v-.357Z" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            )}
+            <div className="flex gap-2">
+              <textarea
+                value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendChat() } }}
+                placeholder="What's the latest train loss? Which volumes have results?"
+                rows={2} disabled={chatSending}
+                className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm resize-none focus:outline-none focus:border-purple-500 disabled:opacity-60"
+              />
+              <button
+                onClick={() => handleSendChat()}
+                disabled={chatSending || !chatInput.trim()}
+                className="px-3 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer self-end"
+              >
+                Send
+              </button>
+            </div>
           </div>
         </div>
       )}

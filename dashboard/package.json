@@ -9,10 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ai-sdk/react": "^3.0.186",
     "@mdx-js/react": "^3.0.0",
     "@pipecat-ai/client-js": "^1.9.0",
+    "@pipecat-ai/client-react": "^1.5.0",
     "@pipecat-ai/websocket-transport": "^1.6.4",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "ai": "^6.0.184",
     "gray-matter": "^4.0.3",
     "katex": "^0.16.9",
     "lucide-react": "^0.562.0",
