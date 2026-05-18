@@ -1,7 +1,10 @@
 import { Routes, Route } from 'react-router-dom'
 import { MDXProvider } from '@mdx-js/react'
 import Layout from './components/Layout'
+import ProtectedRoute from './components/ProtectedRoute'
 import LandingPage from './pages/LandingPage'
+import LoginPage from './pages/LoginPage'
+import AuthCallbackPage from './pages/AuthCallbackPage'
 import MADDashboard from './pages/MADDashboard'
 import ThesisPage from './pages/ThesisPage'
 import PlatformPage from './pages/PlatformPage'
@@ -25,6 +28,8 @@ function App() {
     <MDXProvider components={mdxComponents}>
       <Routes>
         <Route path="/" element={<Layout><LandingPage /></Layout>} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/thesis" element={<Layout><ThesisPage /></Layout>} />
         <Route path="/platform" element={<Layout><PlatformPage /></Layout>} />
         <Route path="/platform/hello-world" element={<Layout><HelloWorldPage /></Layout>} />
@@ -40,7 +45,7 @@ function App() {
         <Route path="/engineering" element={<Layout><EngineeringPage /></Layout>} />
         <Route path="/engineering/backtesting" element={<Layout><BacktestingPage /></Layout>} />
         <Route path="/engineering/market-making" element={<Layout><MarketMakingPage /></Layout>} />
-        <Route path="/agent/*" element={<MADDashboard />} />
+        <Route path="/agent/*" element={<ProtectedRoute><MADDashboard /></ProtectedRoute>} />
       </Routes>
     </MDXProvider>
   )
