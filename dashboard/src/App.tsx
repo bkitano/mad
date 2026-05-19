@@ -6,6 +6,7 @@ import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import AuthCallbackPage from './pages/AuthCallbackPage'
 import MADDashboard from './pages/MADDashboard'
+import ChatPage from './pages/ChatPage'
 import ThesisPage from './pages/ThesisPage'
 import PlatformPage from './pages/PlatformPage'
 import HelloWorldPage from './pages/platform/HelloWorldPage'
@@ -45,6 +46,8 @@ function App() {
         <Route path="/engineering" element={<Layout><EngineeringPage /></Layout>} />
         <Route path="/engineering/backtesting" element={<Layout><BacktestingPage /></Layout>} />
         <Route path="/engineering/market-making" element={<Layout><MarketMakingPage /></Layout>} />
+        <Route path="/agent/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+        <Route path="/agent/chat/:sessionId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
         <Route path="/agent/*" element={<ProtectedRoute><MADDashboard /></ProtectedRoute>} />
       </Routes>
     </MDXProvider>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
+import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -125,6 +126,7 @@ function MobileMenuButton({ onClick }: { onClick: () => void }) {
 }
 
 export default function MADDashboard() {
+  const navigate = useNavigate()
   const [sandboxes, setSandboxes] = useState<SandboxListItem[]>([])
   const [session, setSession] = useState<Session | null>(null)
   const [spawning, setSpawning] = useState(false)
@@ -174,7 +176,6 @@ export default function MADDashboard() {
   const [chatInput, setChatInput] = useState('')
   const chatSending = chatStatus === 'submitted' || chatStatus === 'streaming'
 
-  // Fetch chat history
   const fetchChatHistory = async () => {
     try {
       const res = await apiFetch('/chats?limit=20')
@@ -182,27 +183,13 @@ export default function MADDashboard() {
     } catch { /* ignore */ }
   }
 
-  const loadChatSession = async (sessionId: string) => {
-    try {
-      const res = await apiFetch(`/chats/${sessionId}`)
-      if (!res.ok) return
-      await res.json() // validate response
-      setChatSessionId(sessionId)
-      setChatMessages([])
-          } catch { /* ignore */ }
-  }
-
   const startNewChat = () => {
     setChatSessionId(null)
     setChatMessages([])
-      }
+  }
 
-  // Capture session_id from response headers
   useEffect(() => {
-    // When the first message is sent and we get a response, the session_id
-    // comes back in the x-chat-session-id header. We capture it for subsequent messages.
     if (chatMessages.length > 0 && !chatSessionId) {
-      // The transport handles this internally — we just need to refresh history
       fetchChatHistory()
     }
   }, [chatMessages.length])
@@ -568,12 +555,8 @@ export default function MADDashboard() {
               {chatHistory.map((s) => (
                 <button
                   key={s.id}
-                  onClick={() => { loadChatSession(s.id); setChatOpen(true) }}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
-                    chatSessionId === s.id
-                      ? 'bg-purple-600/20 text-purple-300 border border-purple-700'
-                      : 'hover:bg-gray-800 text-gray-300'
-                  }`}
+                  onClick={() => navigate(`/agent/chat/${s.id}`)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer hover:bg-gray-800 text-gray-300`}
                 >
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs">{s.type === 'voice' ? '\uD83C\uDF99\uFE0F' : '\uD83D\uDCAC'}</span>
@@ -590,7 +573,7 @@ export default function MADDashboard() {
             </div>
             <div className="p-3 border-t border-gray-800">
               <button
-                onClick={() => { startNewChat(); setChatOpen(true) }}
+                onClick={() => navigate('/agent/chat')}
                 className="w-full py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
               >
                 New Chat
@@ -897,10 +880,15 @@ export default function MADDashboard() {
       {/* Floating chat panel */}
       {chatOpen && (
         <div className="fixed bottom-6 right-6 z-50 w-96 max-w-[calc(100vw-3rem)] h-[32rem] max-h-[calc(100dvh-3rem)] flex flex-col bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden">
-          {/* Chat header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
             <span className="text-sm font-medium text-gray-200">Chat</span>
             <div className="flex items-center gap-1 shrink-0">
+              <button onClick={() => navigate('/agent/chat')} className="p-1 text-gray-400 hover:text-gray-200 cursor-pointer" title="Open full page">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path fillRule="evenodd" d="M4.25 5.5a.75.75 0 0 0-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 0 0 .75-.75v-4a.75.75 0 0 1 1.5 0v4A2.25 2.25 0 0 1 12.75 17h-8.5A2.25 2.25 0 0 1 2 14.75v-8.5A2.25 2.25 0 0 1 4.25 4h5a.75.75 0 0 1 0 1.5h-5Z" clipRule="evenodd" />
+                  <path fillRule="evenodd" d="M6.194 12.753a.75.75 0 0 0 1.06.053L16.5 4.44v2.81a.75.75 0 0 0 1.5 0v-4.5a.75.75 0 0 0-.75-.75h-4.5a.75.75 0 0 0 0 1.5h2.553l-9.056 8.194a.75.75 0 0 0-.053 1.06Z" clipRule="evenodd" />
+                </svg>
+              </button>
               <button onClick={startNewChat} className="p-1 text-gray-400 hover:text-gray-200 cursor-pointer" title="New chat">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
                   <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
@@ -914,7 +902,6 @@ export default function MADDashboard() {
             </div>
           </div>
 
-          {/* Messages */}
           <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
             {chatMessages.length === 0 && !chatSending && (
               <div className="text-sm text-gray-500 text-center mt-8 space-y-2">
@@ -970,7 +957,6 @@ export default function MADDashboard() {
             )}
           </div>
 
-          {/* Input */}
           <div className="border-t border-gray-800 p-3 shrink-0">
             <div className="flex gap-2">
               <textarea
@@ -991,6 +977,7 @@ export default function MADDashboard() {
           </div>
         </div>
       )}
+
     </div>
   )
 }

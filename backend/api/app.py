@@ -253,7 +253,7 @@ async def rename_volume(payload: RenameVolumeRequest, user: dict = Depends(get_c
 
     if not volume_store.user_owns_volume(payload.old_name, user["id"]):
         raise HTTPException(status_code=403, detail="Not your volume")
-    _modal.Volume.rename(payload.old_name, payload.new_name)
+    await _modal.Volume.rename.aio(payload.old_name, payload.new_name)
     volume_store.rename_volume(payload.old_name, payload.new_name)
     return {
         "old_name": payload.old_name,
@@ -458,8 +458,15 @@ async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
 
                     try:
                         args = json.loads(tc["arguments"] or "{}")
-                        result = volume_tools.dispatch_global_tool(tc["name"], args)
+                        # Run tool with a timeout to prevent stalls
+                        import concurrent.futures
+                        TOOL_TIMEOUT = 120  # seconds
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                            future = pool.submit(volume_tools.dispatch_global_tool, tc["name"], args)
+                            result = future.result(timeout=TOOL_TIMEOUT)
                         result_json = json.loads(json.dumps(result, default=str))
+                    except concurrent.futures.TimeoutError:
+                        result_json = {"error": f"Tool '{tc['name']}' timed out after {TOOL_TIMEOUT}s"}
                     except Exception as e:
                         result_json = {"error": f"{type(e).__name__}: {e}"}
                     result_str = json.dumps(result_json, default=str)
@@ -570,11 +577,11 @@ async def list_sandboxes(user: dict = Depends(get_current_user)):
 
     user_id = user["id"]
     try:
-        sandbox_app = _modal.App.lookup(SANDBOX_APP_NAME)
+        sandbox_app = await _modal.App.lookup.aio(SANDBOX_APP_NAME)
     except _modal.exception.NotFoundError:
         return {"sandboxes": []}
     sandboxes = []
-    for sb in _modal.Sandbox.list(app_id=sandbox_app.app_id):
+    async for sb in _modal.Sandbox.list.aio(app_id=sandbox_app.app_id):
         try:
             tags = sb.get_tags()
             vol_name = tags.get("volume_name", "")
@@ -665,7 +672,7 @@ async def terminate_sandbox(payload: TerminateSandboxRequest, user: dict = Depen
     """Terminate a running sandbox by its ID."""
     import modal as _modal
 
-    sandbox = _modal.Sandbox.from_id(payload.sandbox_id)
+    sandbox = await _modal.Sandbox.from_id.aio(payload.sandbox_id)
     # Verify ownership
     try:
         tags = sandbox.get_tags()
@@ -676,7 +683,7 @@ async def terminate_sandbox(payload: TerminateSandboxRequest, user: dict = Depen
         raise
     except Exception:
         pass  # Legacy sandbox without tags — allow termination
-    sandbox.terminate()
+    await sandbox.terminate.aio()
 
     # Record stop for usage tracking
     import usage_store

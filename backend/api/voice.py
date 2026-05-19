@@ -193,10 +193,17 @@ class VolumeToolsLLM(FrameProcessor):
                 tool_name = tc.function.name
                 logger.info(f"[agent] calling tool: {tool_name}({tc.function.arguments})")
                 try:
+                    import concurrent.futures
+                    TOOL_TIMEOUT = 120
                     args = json.loads(tc.function.arguments or "{}")
-                    result = volume_tools.dispatch_global_tool(tool_name, args)
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                        future = pool.submit(volume_tools.dispatch_global_tool, tool_name, args)
+                        result = future.result(timeout=TOOL_TIMEOUT)
                     result_str = json.dumps(result, default=str)
                     logger.debug(f"[agent] tool {tool_name} result: {result_str[:200]}")
+                except concurrent.futures.TimeoutError:
+                    logger.error(f"[agent] tool {tool_name} timed out after {TOOL_TIMEOUT}s")
+                    result_str = json.dumps({"error": f"Tool '{tool_name}' timed out after {TOOL_TIMEOUT}s"})
                 except Exception as e:
                     logger.error(f"[agent] tool {tool_name} failed: {e}")
                     result_str = json.dumps({"error": f"{type(e).__name__}: {e}"})
