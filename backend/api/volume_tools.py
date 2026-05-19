@@ -460,7 +460,7 @@ def create_sandbox(
     volume_name: str,
     github_repo: str = "bkitano/mad-experiments-template",
     github_ref: str = "main",
-    gpu: str = "T4",
+    gpu: str = "",
 ) -> dict:
     """Create a sandbox by calling the Modal endpoint."""
     resp = httpx.post(

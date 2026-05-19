@@ -119,10 +119,11 @@ def create_sandbox(
     repo: str,
     ref: str = "main",
     token: str | None = None,
-    gpu: str | None = "T4",
+    gpu: str | None = None,
     cpu: float = 4.0,
-    memory: int = 32768,
+    memory: int = 8192,
     volume_name: str = "",
+    user_id: str = "",
 ) -> modal.Sandbox:
     print("🏖️  Creating sandbox")
 
@@ -196,8 +197,13 @@ def create_sandbox(
             volumes={"/root/state": volume},
             workdir="/root/state/code",
         )
+    tags = {}
     if volume_name:
-        sb.set_tags({"volume_name": volume_name})
+        tags["volume_name"] = volume_name
+    if user_id:
+        tags["user_id"] = user_id
+    if tags:
+        sb.set_tags(tags)
     return sb
 
 
@@ -209,12 +215,13 @@ class CreateSandboxRequest(BaseModel):
     github_repo: str = DEFAULT_GITHUB_REPO
     github_ref: str = "main"
     github_token: Optional[str] = None
-    timeout_hours: int = 12
+    timeout_hours: int = 6
     allow_modal_access: bool = True
-    gpu: Optional[str] = "T4"  # T4, L4, A10G, L40S, A100, A100-80GB, H100, or "T4:4" for multi-GPU
+    gpu: Optional[str] = None  # T4, L4, A10G, L40S, A100, A100-80GB, H100, or "T4:4" for multi-GPU
     cpu: float = 4.0           # CPU cores
-    memory: int = 32768        # Memory in MiB (default 32 GiB)
+    memory: int = 8192         # Memory in MiB (default 8 GiB)
     volume_name: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 class CreateSandboxResponse(BaseModel):
@@ -267,6 +274,7 @@ def create_sandbox_worker(payload: CreateSandboxRequest = CreateSandboxRequest()
         image, timeout, sandbox_app, sandbox_secrets, volume,
         repo=payload.github_repo, ref=payload.github_ref, token=payload.github_token,
         gpu=payload.gpu, cpu=payload.cpu, memory=payload.memory, volume_name=volume_name,
+        user_id=payload.user_id or "",
     )
 
     tunnels = sandbox.tunnels()
@@ -340,10 +348,10 @@ def mcp_server():
         volume_name: str,
         github_repo: str = DEFAULT_GITHUB_REPO,
         github_ref: str = "main",
-        gpu: str = "T4",
+        gpu: str = "",
         cpu: float = 4.0,
-        memory: int = 32768,
-        timeout_hours: int = 12,
+        memory: int = 8192,
+        timeout_hours: int = 6,
     ) -> dict:
         """Create a sandbox with the given volume mounted."""
         import modal as _modal

@@ -8,8 +8,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import NotebookViewer from '../components/mad/NotebookViewer'
 import VoiceChat from '../components/mad/VoiceChat'
 import { useAuth } from '../contexts/AuthContext'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+import { API_URL, apiFetch } from '../lib/api'
 
 interface Session {
   sandbox_id: string
@@ -154,10 +153,16 @@ export default function MADDashboard() {
   const [chatHistory, setChatHistory] = useState<{id: string, title: string, type: string, updated_at: string}[]>([])
   const chatScrollRef = useRef<HTMLDivElement>(null)
 
+  const { session: authSession } = useAuth()
+
   const chatTransport = useMemo(() => new DefaultChatTransport({
     api: `${API_URL}/volumes/chat`,
     body: chatSessionId ? { session_id: chatSessionId } : {},
-  }), [chatSessionId])
+    headers: () => {
+      const token = authSession?.access_token
+      return token ? { Authorization: `Bearer ${token}` } as Record<string, string> : {} as Record<string, string>
+    },
+  }), [chatSessionId, authSession])
 
   const {
     messages: chatMessages,
@@ -172,14 +177,14 @@ export default function MADDashboard() {
   // Fetch chat history
   const fetchChatHistory = async () => {
     try {
-      const res = await fetch(`${API_URL}/chats?limit=20`)
+      const res = await apiFetch('/chats?limit=20')
       if (res.ok) setChatHistory(await res.json())
     } catch { /* ignore */ }
   }
 
   const loadChatSession = async (sessionId: string) => {
     try {
-      const res = await fetch(`${API_URL}/chats/${sessionId}`)
+      const res = await apiFetch(`/chats/${sessionId}`)
       if (!res.ok) return
       await res.json() // validate response
       setChatSessionId(sessionId)
@@ -209,10 +214,10 @@ export default function MADDashboard() {
   const [githubRepo, setGithubRepo] = useState('bkitano/mad-experiments-template')
   const [githubRef, setGithubRef] = useState('main')
   const [volumeName, setVolumeName] = useState('')
-  const [gpu, setGpu] = useState('T4')
+  const [gpu, setGpu] = useState('')
   const [gpuCount, setGpuCount] = useState(1)
   const [cpu, setCpu] = useState(4)
-  const [memory, setMemory] = useState(32768)
+  const [memory, setMemory] = useState(8192)
 
   const pollJupyter = useCallback((url: string) => {
     setJupyterReady(false)
@@ -245,7 +250,7 @@ export default function MADDashboard() {
 
   const fetchSandboxes = async () => {
     try {
-      const res = await fetch(`${API_URL}/sandboxes`)
+      const res = await apiFetch('/sandboxes')
       if (res.ok) {
         const data = await res.json()
         setSandboxes(data.sandboxes || [])
@@ -255,7 +260,7 @@ export default function MADDashboard() {
 
   const fetchVolumes = async () => {
     try {
-      const res = await fetch(`${API_URL}/volumes`)
+      const res = await apiFetch('/volumes')
       if (res.ok) {
         const data = await res.json()
         setVolumes(data.volumes || [])
@@ -281,7 +286,7 @@ export default function MADDashboard() {
       body.cpu = cpu
       body.memory = memory
 
-      const res = await fetch(`${API_URL}/sandboxes/create`, {
+      const res = await apiFetch('/sandboxes/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -318,7 +323,7 @@ export default function MADDashboard() {
     if (!session) return
     if (!confirm('Terminate this session?')) return
     try {
-      await fetch(`${API_URL}/sandboxes/terminate`, {
+      await apiFetch('/sandboxes/terminate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sandbox_id: session.sandbox_id }),
@@ -339,7 +344,7 @@ export default function MADDashboard() {
     setVolumeLoading(true)
     try {
       const params = new URLSearchParams({ volume_name: volName, path })
-      const res = await fetch(`${API_URL}/volumes/ls?${params}`)
+      const res = await apiFetch(`/volumes/ls?${params}`)
       if (res.ok) {
         const data = await res.json()
         setVolumeEntries(data.entries || [])
@@ -386,7 +391,7 @@ export default function MADDashboard() {
     setFileLoading(true)
     try {
       const params = new URLSearchParams({ volume_name: selectedVolume.name, path: filePath })
-      const res = await fetch(`${API_URL}/volumes/read?${params}`)
+      const res = await apiFetch(`/volumes/read?${params}`)
       if (res.ok) {
         const data = await res.json()
         setViewingFile({ path: data.path, content: data.content, encoding: data.encoding })
@@ -416,7 +421,7 @@ export default function MADDashboard() {
     }
     setRenameLoading(true)
     try {
-      const res = await fetch(`${API_URL}/volumes/rename`, {
+      const res = await apiFetch('/volumes/rename', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ old_name: selectedVolume.name, new_name: renameValue.trim() }),
@@ -436,7 +441,7 @@ export default function MADDashboard() {
     if (!selectedVolume) return
     if (!confirm(`Delete volume "${selectedVolume.name}"? This is irreversible.`)) return
     try {
-      const res = await fetch(`${API_URL}/volumes/delete`, {
+      const res = await apiFetch('/volumes/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ volume_name: selectedVolume.name }),

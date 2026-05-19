@@ -25,17 +25,69 @@ from dotenv import load_dotenv
 load_dotenv(_DotenvPath(__file__).resolve().parent / ".env")
 
 import httpx as _httpx
-from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from auth import get_current_user
+
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
+
+import asyncio
+from contextlib import asynccontextmanager
+
+SANDBOX_POLL_INTERVAL = 300  # 5 minutes
+
+
+async def _poll_sandbox_liveness():
+    """Background loop: check if 'active' sandboxes are actually still running."""
+    while True:
+        await asyncio.sleep(SANDBOX_POLL_INTERVAL)
+        try:
+            import modal as _modal
+            import usage_store
+
+            active_ids = usage_store.get_all_active_sandbox_ids()
+            if not active_ids:
+                continue
+
+            closed = 0
+            for sandbox_id in active_ids:
+                try:
+                    sb = _modal.Sandbox.from_id(sandbox_id)
+                    rc = sb.poll()
+                    if rc is not None:
+                        # Sandbox has exited
+                        usage_store.record_sandbox_stop(sandbox_id)
+                        closed += 1
+                except Exception:
+                    # Sandbox doesn't exist anymore (deleted, expired, etc.)
+                    usage_store.record_sandbox_stop(sandbox_id)
+                    closed += 1
+
+            if closed:
+                logger.info(f"[poller] Closed {closed} stale sandbox session(s)")
+        except Exception as e:
+            logger.error(f"[poller] Error: {e}")
+
+
+@asynccontextmanager
+async def lifespan(app):
+    task = asyncio.create_task(_poll_sandbox_liveness())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
 
 app = FastAPI(
     title="MAD API",
     description="Volume and sandbox management for MAD experiments",
     version="0.3.0",
+    lifespan=lifespan,
 )
 
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -63,7 +115,7 @@ app.add_middleware(WebSocketCORSFix)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -91,6 +143,11 @@ async def voice_websocket(websocket: WebSocket):
 SANDBOX_APP_NAME = "mad-sandbox-worker"
 OPENCODE_PORT = 4096
 JUPYTER_PORT = 8888
+
+# Abuse prevention defaults (no plan system yet)
+MAX_SANDBOXES_PER_USER = 3
+ALLOWED_GPUS = {"T4", "L4", "A10G", ""}  # empty string = CPU-only
+MAX_TIMEOUT_HOURS = 6
 
 MODAL_CREATE_SANDBOX_URL = os.environ.get(
     "MODAL_CREATE_SANDBOX_URL",
@@ -149,27 +206,36 @@ class VolumeChatRequest(BaseModel):
 
 
 @app.get("/volumes")
-def list_volumes():
-    """List all mad-sandbox volumes."""
+async def list_volumes(user: dict = Depends(get_current_user)):
+    """List volumes owned by the authenticated user."""
     import volume_tools  # noqa: F811
+    import volume_store
 
-    return {"volumes": volume_tools.list_volumes()}
+    owned_names = set(volume_store.list_user_volumes(user["id"]))
+    all_volumes = volume_tools.list_volumes()
+    return {"volumes": [v for v in all_volumes if v["name"] in owned_names]}
 
 
 @app.get("/volumes/ls")
-def volume_ls(volume_name: str, path: str = "/"):
+async def volume_ls(volume_name: str, path: str = "/", user: dict = Depends(get_current_user)):
     """List files in a volume at the given path."""
     import volume_tools  # noqa: F811
+    import volume_store
 
+    if not volume_store.user_owns_volume(volume_name, user["id"]):
+        raise HTTPException(status_code=403, detail="Not your volume")
     entries = volume_tools.list_files(volume_name, path)
     return {"volume_name": volume_name, "path": path, "entries": entries}
 
 
 @app.get("/volumes/read")
-def volume_read(volume_name: str, path: str = Query(...)):
+async def volume_read(volume_name: str, path: str = Query(...), user: dict = Depends(get_current_user)):
     """Read a file from a volume. Returns the file content as text."""
     import volume_tools  # noqa: F811
+    import volume_store
 
+    if not volume_store.user_owns_volume(volume_name, user["id"]):
+        raise HTTPException(status_code=403, detail="Not your volume")
     result = volume_tools.read_file(volume_name, path, max_bytes=None)
     return {
         "volume_name": volume_name,
@@ -180,11 +246,15 @@ def volume_read(volume_name: str, path: str = Query(...)):
 
 
 @app.post("/volumes/rename")
-def rename_volume(payload: RenameVolumeRequest):
+async def rename_volume(payload: RenameVolumeRequest, user: dict = Depends(get_current_user)):
     """Rename a volume."""
     import modal as _modal
+    import volume_store
 
+    if not volume_store.user_owns_volume(payload.old_name, user["id"]):
+        raise HTTPException(status_code=403, detail="Not your volume")
     _modal.Volume.rename(payload.old_name, payload.new_name)
+    volume_store.rename_volume(payload.old_name, payload.new_name)
     return {
         "old_name": payload.old_name,
         "new_name": payload.new_name,
@@ -193,11 +263,15 @@ def rename_volume(payload: RenameVolumeRequest):
 
 
 @app.post("/volumes/delete")
-def delete_volume(payload: DeleteVolumeRequest):
+async def delete_volume(payload: DeleteVolumeRequest, user: dict = Depends(get_current_user)):
     """Delete a volume by name."""
     import modal as _modal
+    import volume_store
 
+    if not volume_store.user_owns_volume(payload.volume_name, user["id"]):
+        raise HTTPException(status_code=403, detail="Not your volume")
     _modal.Volume.objects.delete(payload.volume_name)
+    volume_store.delete_volume(payload.volume_name)
     return {
         "volume_name": payload.volume_name,
         "status": "deleted",
@@ -231,7 +305,7 @@ def _serialize_assistant_message(msg) -> dict:
 
 
 @app.post("/volumes/chat")
-def volume_chat(request: Request):
+async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
     """Streaming chat endpoint compatible with the Vercel AI SDK UI Message Stream protocol.
 
     Accepts: { "messages": [...] }  (from useChat)
@@ -243,17 +317,18 @@ def volume_chat(request: Request):
 
     from fastapi.responses import StreamingResponse
 
-    import asyncio
-    body = asyncio.get_event_loop().run_until_complete(request.json())
+    body = await request.json()
 
     api_key = os.environ.get("OPENCODE_GO_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENCODE_GO_API_KEY missing from environment.")
 
+    user_id = user["id"]
+
     # Get or create session
     session_id = body.get("session_id", "")
-    if not session_id or not chat_store.get_session(session_id):
-        session = chat_store.create_session(session_type="text")
+    if not session_id or not chat_store.get_session(session_id, user_id=user_id):
+        session = chat_store.create_session(session_type="text", user_id=user_id)
         session_id = session["id"]
 
     # Load history from DB
@@ -430,17 +505,17 @@ def volume_chat(request: Request):
 
 
 @app.get("/chats")
-def list_chats(limit: int = Query(50, ge=1, le=200)):
+async def list_chats(limit: int = Query(50, ge=1, le=200), user: dict = Depends(get_current_user)):
     """List recent chat sessions."""
     import chat_store
-    return chat_store.list_sessions(limit=limit)
+    return chat_store.list_sessions(limit=limit, user_id=user["id"])
 
 
 @app.get("/chats/{session_id}")
-def get_chat(session_id: str):
+async def get_chat(session_id: str, user: dict = Depends(get_current_user)):
     """Get a chat session with its messages."""
     import chat_store
-    session = chat_store.get_session(session_id)
+    session = chat_store.get_session(session_id, user_id=user["id"])
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     messages = chat_store.get_messages(session_id)
@@ -448,25 +523,68 @@ def get_chat(session_id: str):
 
 
 @app.delete("/chats/{session_id}")
-def delete_chat(session_id: str):
+async def delete_chat(session_id: str, user: dict = Depends(get_current_user)):
     """Delete a chat session and all its messages."""
     import chat_store
-    if not chat_store.delete_session(session_id):
+    if not chat_store.delete_session(session_id, user_id=user["id"]):
         raise HTTPException(status_code=404, detail="Session not found")
     return {"status": "deleted"}
+
+
+# -- Sandbox helpers -----------------------------------------------------------
+
+import time as _time
+import uuid as _uuid
+
+# Simple per-user rate limiter for sandbox creation: {user_id: last_create_timestamp}
+_sandbox_create_timestamps: dict[str, float] = {}
+SANDBOX_CREATE_COOLDOWN_SECONDS = 30
+
+
+def _count_user_sandboxes(user_id: str) -> int:
+    """Count running sandboxes owned by a user."""
+    import modal as _modal
+
+    try:
+        sandbox_app = _modal.App.lookup(SANDBOX_APP_NAME)
+    except _modal.exception.NotFoundError:
+        return 0
+    count = 0
+    for sb in _modal.Sandbox.list(app_id=sandbox_app.app_id):
+        try:
+            tags = sb.get_tags()
+            if tags.get("user_id") == user_id:
+                count += 1
+        except Exception:
+            pass
+    return count
 
 
 # -- Sandbox endpoints ---------------------------------------------------------
 
 
 @app.get("/sandboxes")
-def list_sandboxes():
-    """List all running sandboxes for this app."""
+async def list_sandboxes(user: dict = Depends(get_current_user)):
+    """List running sandboxes for the authenticated user."""
     import modal as _modal
 
-    sandbox_app = _modal.App.lookup(SANDBOX_APP_NAME, create_if_missing=True)
+    user_id = user["id"]
+    try:
+        sandbox_app = _modal.App.lookup(SANDBOX_APP_NAME)
+    except _modal.exception.NotFoundError:
+        return {"sandboxes": []}
     sandboxes = []
     for sb in _modal.Sandbox.list(app_id=sandbox_app.app_id):
+        try:
+            tags = sb.get_tags()
+            vol_name = tags.get("volume_name", "")
+            owner = tags.get("user_id", "")
+        except Exception:
+            vol_name = ""
+            owner = ""
+        # Only show sandboxes owned by this user (or untagged legacy ones)
+        if owner and owner != user_id:
+            continue
         try:
             tunnels = sb.tunnels()
             opencode_url = tunnels[OPENCODE_PORT].url if OPENCODE_PORT in tunnels else None
@@ -474,11 +592,6 @@ def list_sandboxes():
         except Exception:
             opencode_url = None
             jupyter_url = None
-        try:
-            tags = sb.get_tags()
-            vol_name = tags.get("volume_name", "")
-        except Exception:
-            vol_name = ""
         sandboxes.append({
             "sandbox_id": sb.object_id,
             "opencode_url": opencode_url,
@@ -489,22 +602,112 @@ def list_sandboxes():
 
 
 @app.post("/sandboxes/create")
-async def create_sandbox_proxy(payload: dict = {}):
+async def create_sandbox_proxy(payload: dict = {}, user: dict = Depends(get_current_user)):
     """Proxy to the Modal create_sandbox_worker endpoint."""
+    import volume_store
+
+    user_id = user["id"]
+
+    # Rate limit: one create per cooldown period
+    now = _time.time()
+    last = _sandbox_create_timestamps.get(user_id, 0)
+    if now - last < SANDBOX_CREATE_COOLDOWN_SECONDS:
+        wait = int(SANDBOX_CREATE_COOLDOWN_SECONDS - (now - last))
+        raise HTTPException(status_code=429, detail=f"Please wait {wait}s before creating another sandbox")
+
+    # GPU restriction
+    gpu = payload.get("gpu", "") or ""
+    # Strip multi-GPU suffix like "T4:4" → "T4"
+    gpu_type = gpu.split(":")[0] if gpu else ""
+    if gpu_type not in ALLOWED_GPUS:
+        raise HTTPException(status_code=403, detail=f"GPU '{gpu_type}' is not available on your plan. Allowed: {', '.join(g for g in ALLOWED_GPUS if g) or 'CPU only'}")
+
+    # Timeout cap
+    timeout_hours = payload.get("timeout_hours", 6)
+    if timeout_hours > MAX_TIMEOUT_HOURS:
+        payload["timeout_hours"] = MAX_TIMEOUT_HOURS
+
+    # Concurrent sandbox cap
+    running = _count_user_sandboxes(user_id)
+    if running >= MAX_SANDBOXES_PER_USER:
+        raise HTTPException(status_code=429, detail=f"You already have {running} running sandbox(es). Max is {MAX_SANDBOXES_PER_USER}. Terminate one first.")
+
+    # Tag the sandbox with the user_id so we can filter later
+    payload["user_id"] = user_id
+    _sandbox_create_timestamps[user_id] = now
     async with _httpx.AsyncClient(timeout=120.0) as http:
         resp = await http.post(MODAL_CREATE_SANDBOX_URL, json=payload)
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+
+    # Register volume ownership
+    vol_name = data.get("volume_name")
+    if vol_name:
+        volume_store.register_volume(vol_name, user_id)
+
+    # Track usage
+    import usage_store
+    sandbox_id = data.get("sandbox_id", "")
+    if sandbox_id:
+        gpu_count_val = int(gpu.split(":")[1]) if ":" in gpu else 1
+        cpu_val = payload.get("cpu", 4.0)
+        memory_val = payload.get("memory", 8192)
+        usage_store.record_sandbox_start(
+            user_id, sandbox_id, gpu=gpu_type, gpu_count=gpu_count_val,
+            cpu=cpu_val, memory_mb=memory_val,
+        )
+
+    return data
 
 
 @app.post("/sandboxes/terminate")
-def terminate_sandbox(payload: TerminateSandboxRequest):
+async def terminate_sandbox(payload: TerminateSandboxRequest, user: dict = Depends(get_current_user)):
     """Terminate a running sandbox by its ID."""
     import modal as _modal
 
     sandbox = _modal.Sandbox.from_id(payload.sandbox_id)
+    # Verify ownership
+    try:
+        tags = sandbox.get_tags()
+        owner = tags.get("user_id", "")
+        if owner and owner != user["id"]:
+            raise HTTPException(status_code=403, detail="Not your sandbox")
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # Legacy sandbox without tags — allow termination
     sandbox.terminate()
+
+    # Record stop for usage tracking
+    import usage_store
+    usage_store.record_sandbox_stop(payload.sandbox_id)
+
     return {
         "sandbox_id": payload.sandbox_id,
         "status": "terminated",
+    }
+
+
+# -- Usage endpoints -----------------------------------------------------------
+
+
+@app.get("/usage")
+async def get_usage(user: dict = Depends(get_current_user)):
+    """Return compute usage summary for the authenticated user."""
+    import usage_store
+    from datetime import datetime, timezone
+
+    # Active sessions
+    active = usage_store.get_active_sessions(user["id"])
+
+    # Usage this calendar month
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    summary = usage_store.get_usage_summary(user["id"], since=month_start)
+
+    return {
+        "active_sandboxes": active,
+        "period_start": month_start.isoformat(),
+        "total_gpu_seconds": summary["total_seconds"],
+        "by_gpu": summary["by_gpu"],
     }
