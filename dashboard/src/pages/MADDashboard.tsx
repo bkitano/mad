@@ -364,7 +364,8 @@ export default function MADDashboard() {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
   }, [chatMessages, chatSending])
 
-  const VOICE_WS_URL = API_URL.replace(/^http/, 'ws') + '/ws/voice'
+  const voiceToken = authSession?.access_token || ''
+  const VOICE_WS_URL = API_URL.replace(/^http/, 'ws') + '/ws/voice' + (voiceToken ? `?token=${voiceToken}` : '')
 
   const navigateVolume = (path: string) => {
     if (!selectedVolume) return

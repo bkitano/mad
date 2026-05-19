@@ -72,10 +72,11 @@ class VolumeToolsLLM(FrameProcessor):
     """Pipecat processor that takes transcription text and runs the volume-tools
     agent loop, then pushes the final text response downstream to TTS."""
 
-    def __init__(self):
+    def __init__(self, user_id: str = ""):
         super().__init__()
         self._history: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
         self._session_id: str | None = None
+        self._user_id = user_id
         self._bot_speaking = False  # True while TTS audio is actually playing
         self._processing = False   # True while agent loop is running
 
@@ -197,7 +198,7 @@ class VolumeToolsLLM(FrameProcessor):
                     TOOL_TIMEOUT = 120
                     args = json.loads(tc.function.arguments or "{}")
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                        future = pool.submit(volume_tools.dispatch_global_tool, tool_name, args)
+                        future = pool.submit(volume_tools.dispatch_global_tool, tool_name, args, self._user_id)
                         result = future.result(timeout=TOOL_TIMEOUT)
                     result_str = json.dumps(result, default=str)
                     logger.debug(f"[agent] tool {tool_name} result: {result_str[:200]}")
@@ -224,7 +225,7 @@ class VolumeToolsLLM(FrameProcessor):
 
 # -- Pipecat WebSocket server --------------------------------------------------
 
-async def run_voice_pipeline(websocket):
+async def run_voice_pipeline(websocket, user_id: str = ""):
     """Run a Pipecat voice pipeline for a single WebSocket connection.
 
     Called from the FastAPI WebSocket endpoint in app.py.
@@ -263,7 +264,7 @@ async def run_voice_pipeline(websocket):
     )
 
     vad = VADProcessor(vad_analyzer=SileroVADAnalyzer(sample_rate=16000))
-    llm = VolumeToolsLLM()
+    llm = VolumeToolsLLM(user_id=user_id)
 
     pipeline = Pipeline([
         transport.input(),

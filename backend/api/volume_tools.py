@@ -26,10 +26,18 @@ BINARY_EXTS = {
 MAX_GREP_FILE_BYTES = 1_000_000
 
 
-def list_volumes() -> list[dict]:
+def list_volumes(_user_id: str = "") -> list[dict]:
+    # If user_id provided, only return volumes owned by that user
+    owned_names: set[str] | None = None
+    if _user_id:
+        import volume_store
+        owned_names = set(volume_store.list_user_volumes(_user_id))
+
     out: list[dict] = []
     for vol in modal.Volume.objects.list():
         if not vol.name:
+            continue
+        if owned_names is not None and vol.name not in owned_names:
             continue
         info = vol.info()
         out.append({
@@ -461,40 +469,76 @@ def create_sandbox(
     github_repo: str = "bkitano/mad-experiments-template",
     github_ref: str = "main",
     gpu: str = "",
+    _user_id: str = "",
 ) -> dict:
     """Create a sandbox by calling the Modal endpoint."""
+    payload: dict = {
+        "volume_name": volume_name,
+        "github_repo": github_repo,
+        "github_ref": github_ref,
+        "gpu": gpu,
+    }
+    if _user_id:
+        payload["user_id"] = _user_id
     resp = httpx.post(
         MODAL_CREATE_SANDBOX_URL,
-        json={
-            "volume_name": volume_name,
-            "github_repo": github_repo,
-            "github_ref": github_ref,
-            "gpu": gpu,
-        },
+        json=payload,
         timeout=120.0,
     )
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+    # Register volume ownership
+    if _user_id:
+        import volume_store
+        vol = data.get("volume_name") or volume_name
+        volume_store.register_volume(vol, _user_id)
+    return data
 
 
-def terminate_sandbox(sandbox_id: str) -> dict:
+def terminate_sandbox(sandbox_id: str, _user_id: str = "") -> dict:
     """Terminate a sandbox by ID."""
     sb = modal.Sandbox.from_id(sandbox_id)
+    # Verify ownership if user_id provided
+    if _user_id:
+        try:
+            tags = sb.get_tags()
+            owner = tags.get("user_id", "")
+            if owner and owner != _user_id:
+                return {"error": "Not your sandbox."}
+        except Exception:
+            pass
     sb.terminate()
     return {"sandbox_id": sandbox_id, "status": "terminated"}
 
 
-def rename_volume(old_name: str, new_name: str) -> dict:
+def rename_volume(old_name: str, new_name: str, _user_id: str = "") -> dict:
     """Rename a Modal volume."""
+    if _user_id:
+        import volume_store
+        if not volume_store.user_owns_volume(old_name, _user_id):
+            return {"error": "You don't own that volume."}
     modal.Volume.rename(old_name, new_name)
+    if _user_id:
+        import volume_store
+        volume_store.rename_volume(old_name, new_name)
     return {"old_name": old_name, "new_name": new_name, "status": "renamed"}
 
 
-def list_sandboxes() -> list[dict]:
-    """List all running sandboxes with their OpenCode URLs."""
+def list_sandboxes(_user_id: str = "") -> list[dict]:
+    """List running sandboxes, optionally filtered by user."""
     sandbox_app = modal.App.lookup("mad-sandbox-worker", create_if_missing=True)
     sandboxes = []
     for sb in modal.Sandbox.list(app_id=sandbox_app.app_id):
+        try:
+            tags = sb.get_tags()
+            vol_name = tags.get("volume_name", "")
+            owner = tags.get("user_id", "")
+        except Exception:
+            vol_name = ""
+            owner = ""
+        # Filter by user if provided
+        if _user_id and owner and owner != _user_id:
+            continue
         try:
             tunnels = sb.tunnels()
             opencode_url = tunnels[4096].url if 4096 in tunnels else None
@@ -502,11 +546,6 @@ def list_sandboxes() -> list[dict]:
         except Exception:
             opencode_url = None
             jupyter_url = None
-        try:
-            tags = sb.get_tags()
-            vol_name = tags.get("volume_name", "")
-        except Exception:
-            vol_name = ""
         sandboxes.append({
             "sandbox_id": sb.object_id,
             "opencode_url": opencode_url,
@@ -619,12 +658,16 @@ def read_sandbox_file(sandbox_id: str, path: str) -> dict:
 # ---- Dispatch ----------------------------------------------------------------
 
 
-def dispatch_global_tool(name: str, args: dict[str, Any]) -> Any:
-    """Dispatch for global mode — volume_name comes from the LLM's tool call args."""
+def dispatch_global_tool(name: str, args: dict[str, Any], user_id: str = "") -> Any:
+    """Dispatch for global mode — volume_name comes from the LLM's tool call args.
+
+    When user_id is provided, tools that create/list/modify resources will scope
+    to that user (ownership registration, filtering, permission checks).
+    """
     args = dict(args or {})
-    # Volume tools
+    # Volume tools — inject _user_id for tools that support it
     if name == "list_volumes":
-        return list_volumes()
+        return list_volumes(_user_id=user_id)
     if name == "list_files":
         return list_files(**args)
     if name == "read_file":
@@ -635,13 +678,13 @@ def dispatch_global_tool(name: str, args: dict[str, Any]) -> Any:
         return grep(**args)
     # Sandbox tools
     if name == "create_sandbox":
-        return create_sandbox(**args)
+        return create_sandbox(**args, _user_id=user_id)
     if name == "terminate_sandbox":
-        return terminate_sandbox(**args)
+        return terminate_sandbox(**args, _user_id=user_id)
     if name == "rename_volume":
-        return rename_volume(**args)
+        return rename_volume(**args, _user_id=user_id)
     if name == "list_sandboxes":
-        return list_sandboxes()
+        return list_sandboxes(_user_id=user_id)
     if name == "send_to_sandbox":
         return send_to_sandbox(**args)
     if name == "send_to_sandbox_async":

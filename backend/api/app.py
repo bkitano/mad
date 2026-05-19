@@ -122,13 +122,32 @@ app.add_middleware(
 
 
 @app.websocket("/ws/voice")
-async def voice_websocket(websocket: WebSocket):
+async def voice_websocket(websocket: WebSocket, token: str = ""):
     """WebSocket endpoint for voice chat via Pipecat pipeline."""
     await websocket.accept()
     logger.info("[voice] WebSocket accepted")
+
+    # Try to resolve user_id from token query param
+    user_id = ""
+    if token:
+        try:
+            async with _httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{os.environ.get('SUPABASE_URL', '')}/auth/v1/user",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "apikey": os.environ.get("SUPABASE_KEY", ""),
+                    },
+                )
+            if resp.status_code == 200:
+                user_id = resp.json().get("id", "")
+        except Exception:
+            pass
+    logger.info(f"[voice] user_id={user_id or '(anonymous)'}")
+
     try:
         from voice import run_voice_pipeline
-        await run_voice_pipeline(websocket)
+        await run_voice_pipeline(websocket, user_id=user_id)
     except Exception as e:
         logger.error(f"Voice pipeline error: {e}")
     finally:
@@ -462,7 +481,7 @@ async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
                         import concurrent.futures
                         TOOL_TIMEOUT = 120  # seconds
                         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                            future = pool.submit(volume_tools.dispatch_global_tool, tc["name"], args)
+                            future = pool.submit(volume_tools.dispatch_global_tool, tc["name"], args, user_id)
                             result = future.result(timeout=TOOL_TIMEOUT)
                         result_json = json.loads(json.dumps(result, default=str))
                     except concurrent.futures.TimeoutError:
