@@ -50,9 +50,38 @@ export default function ChatPage() {
   useEffect(() => {
     if (urlSessionId && urlSessionId !== chatSessionId) {
       setChatSessionId(urlSessionId)
-      setMessages([])
     }
   }, [urlSessionId])
+
+  // Load persisted messages whenever the active session changes
+  useEffect(() => {
+    if (!chatSessionId) {
+      setMessages([])
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await apiFetch(`/chats/${chatSessionId}`)
+        if (!res.ok) {
+          if (!cancelled) setMessages([])
+          return
+        }
+        const data = await res.json()
+        if (cancelled) return
+        const loaded = (data.messages || []).map((m: any) => {
+          const parts = Array.isArray(m.parts) && m.parts.length > 0
+            ? m.parts
+            : [{ type: 'text', text: m.content || '' }]
+          return { id: String(m.id), role: m.role, parts }
+        })
+        setMessages(loaded)
+      } catch {
+        if (!cancelled) setMessages([])
+      }
+    })()
+    return () => { cancelled = true }
+  }, [chatSessionId])
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -73,13 +102,11 @@ export default function ChatPage() {
   const loadSession = (id: string) => {
     navigate(`/agent/chat/${id}`)
     setChatSessionId(id)
-    setMessages([])
   }
 
   const startNewChat = () => {
     navigate('/agent/chat')
     setChatSessionId(null)
-    setMessages([])
   }
 
   const deleteChat = async (id: string, e: React.MouseEvent) => {
