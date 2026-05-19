@@ -15,6 +15,7 @@ OPENCODE_GO_API_KEY=""
 OPENCODE_CONFIG="path/to/opencode.jsonc"
 HF_TOKEN=""
 HF_REPO_ID=""
+TAVILY_API_KEY=""
 ```
 
 2. Start ngrok.

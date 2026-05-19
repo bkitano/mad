@@ -185,7 +185,8 @@ SYSTEM_PROMPT = (
     "## Capabilities\n"
     "- **Volumes**: Browse stored experiment data (list_volumes, list_files, read_file, grep, read_notebook)\n"
     "- **Sandboxes**: Manage running compute instances (list_sandboxes, send_to_sandbox, send_to_sandbox_async)\n"
-    "- **Live files**: Read files from running sandboxes (list_sandbox_files, read_sandbox_file)\n\n"
+    "- **Live files**: Read files from running sandboxes (list_sandbox_files, read_sandbox_file)\n"
+    "- **Web search**: Look up current information, library docs, papers, or anything not in volumes (`web_search`)\n\n"
     "## Guidelines\n"
     "- Use `list_volumes` or `list_sandboxes` first to discover what's available.\n"
     "- For read-only questions about past experiments, use volume tools (grep, read_file).\n"
@@ -194,6 +195,8 @@ SYSTEM_PROMPT = (
     "- Use `send_to_sandbox_async` for long-running tasks, then check back with sandbox file tools.\n"
     "- Prefer `grep` and targeted reads over walking directory trees.\n"
     "- Use `read_notebook` for .ipynb files on volumes.\n"
+    "- Use `web_search` when the user asks about external info (papers, library APIs, news, error messages) "
+    "or when your own knowledge may be stale. Cite source URLs in your reply.\n"
     "- Be concise. Summarize results rather than dumping raw output."
 )
 

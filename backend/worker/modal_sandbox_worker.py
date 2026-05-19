@@ -52,6 +52,7 @@ endpoint_image = (
         "pydantic>=2.0.0",
         "fastapi[standard]",
         "mcp>=1.0",
+        "httpx>=0.27.0",
     )
     .add_local_python_source("worker")
 )
@@ -430,6 +431,15 @@ def mcp_server():
         import modal as _modal
         _modal.Volume.objects.delete(volume_name)
         return {"volume_name": volume_name, "status": "deleted"}
+
+    @server.tool(description="Search the live web via Tavily. Returns a short synthesized answer plus the top source URLs with snippets. Requires TAVILY_API_KEY in the environment.")
+    def web_search(
+        query: str,
+        max_results: int = 5,
+        search_depth: str = "basic",
+    ) -> dict:
+        from worker import web_search as _ws
+        return _ws.web_search(query, max_results=max_results, search_depth=search_depth)
 
     return server.streamable_http_app()
 

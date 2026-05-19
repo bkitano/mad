@@ -24,4 +24,4 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["modal_sandbox_worker", "volume_tools"]
+py-modules = ["modal_sandbox_worker", "volume_tools", "web_search"]

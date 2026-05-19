@@ -450,6 +450,23 @@ GLOBAL_TOOLS_SCHEMA: list[dict] = [
             },
         },
     },
+    # -- Web search --
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the live web via Tavily. Use for current events, library docs, blog posts, or anything not in the volumes/sandboxes. Returns a short synthesized answer plus the top source URLs with snippets.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Natural-language search query."},
+                    "max_results": {"type": "integer", "description": "Number of source links to return (1–10). Defaults to 5."},
+                    "search_depth": {"type": "string", "enum": ["basic", "advanced"], "description": "'basic' is faster; 'advanced' digs deeper. Defaults to 'basic'."},
+                },
+                "required": ["query"],
+            },
+        },
+    },
 ]
 
 
@@ -695,4 +712,8 @@ def dispatch_global_tool(name: str, args: dict[str, Any], user_id: str = "") -> 
         return list_sandbox_files(**args)
     if name == "read_sandbox_file":
         return read_sandbox_file(**args)
+    # Web search
+    if name == "web_search":
+        from web_search import web_search as _web_search
+        return _web_search(**args)
     raise ValueError(f"unknown tool: {name}")
