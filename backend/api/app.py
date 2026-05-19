@@ -366,6 +366,10 @@ async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
         yield _sse({"type": "start", "messageId": msg_id})
         yield _sse({"type": "start-step"})
 
+        # Accumulators for persisting the full assistant turn (across all steps)
+        turn_text_parts: list[str] = []
+        turn_parts: list[dict] = []
+
         try:
             text_block_id = 0
             reasoning_block_id = 0
@@ -447,6 +451,13 @@ async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
                     ]
                 history.append(assistant_msg)
 
+                # Accumulate turn-wide parts for persistence
+                if full_reasoning:
+                    turn_parts.append({"type": "reasoning", "text": full_reasoning})
+                if full_content:
+                    turn_text_parts.append(full_content)
+                    turn_parts.append({"type": "text", "text": full_content})
+
                 # No tool calls — done
                 if not tool_calls_acc:
                     break
@@ -454,15 +465,18 @@ async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
                 # Execute tools and stream results
                 for tc in tool_calls_acc.values():
                     yield _sse({"type": "tool-input-start", "toolCallId": tc["id"], "toolName": tc["name"]})
-                    yield _sse({"type": "tool-input-available", "toolCallId": tc["id"], "toolName": tc["name"], "input": json.loads(tc["arguments"] or "{}")})
+                    try:
+                        tool_input = json.loads(tc["arguments"] or "{}")
+                    except Exception:
+                        tool_input = {}
+                    yield _sse({"type": "tool-input-available", "toolCallId": tc["id"], "toolName": tc["name"], "input": tool_input})
 
                     try:
-                        args = json.loads(tc["arguments"] or "{}")
                         # Run tool with a timeout to prevent stalls
                         import concurrent.futures
                         TOOL_TIMEOUT = 120  # seconds
                         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                            future = pool.submit(volume_tools.dispatch_global_tool, tc["name"], args)
+                            future = pool.submit(volume_tools.dispatch_global_tool, tc["name"], tool_input)
                             result = future.result(timeout=TOOL_TIMEOUT)
                         result_json = json.loads(json.dumps(result, default=str))
                     except concurrent.futures.TimeoutError:
@@ -479,6 +493,15 @@ async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
                         "content": result_str,
                     })
 
+                    turn_parts.append({
+                        "type": f"tool-{tc['name']}",
+                        "toolCallId": tc["id"],
+                        "toolName": tc["name"],
+                        "state": "output-available",
+                        "input": tool_input,
+                        "output": result_json,
+                    })
+
                 yield _sse({"type": "finish-step"})
                 if tool_calls_acc:
                     yield _sse({"type": "start-step"})
@@ -486,14 +509,15 @@ async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
         except Exception as e:
             yield _sse({"type": "error", "errorText": f"{type(e).__name__}: {e}"})
 
-        # Save assistant response to DB
-        final_content = ""
-        for h in reversed(history):
-            if h.get("role") == "assistant" and h.get("content"):
-                final_content = h["content"]
-                break
-        if final_content:
-            chat_store.add_message(session_id, "assistant", final_content)
+        # Save the full assistant turn (text from all steps + structured parts)
+        final_content = "\n\n".join(turn_text_parts)
+        if final_content or turn_parts:
+            chat_store.add_message(
+                session_id,
+                "assistant",
+                final_content,
+                parts=turn_parts or None,
+            )
 
         yield _sse({"type": "finish-step"})
         yield _sse({"type": "finish"})
