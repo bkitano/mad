@@ -671,7 +671,7 @@ export default function MADDashboard() {
                   <p className="text-sm text-gray-400">Waiting for Jupyter to start...</p>
                 </div>
               )}
-              <iframe src={jupyterReady ? session.jupyter_url : undefined} className={`absolute inset-0 w-full h-full border-0 ${activeTab === 'jupyter' ? 'block' : 'hidden'}`} title="Jupyter" />
+              <iframe src={jupyterReady ? session.jupyter_url : undefined} className={`absolute inset-0 w-full h-full border-0 ${activeTab === 'jupyter' ? 'visible' : 'invisible pointer-events-none'}`} title="Jupyter" />
             </main>
           </>
         ) : selectedVolume ? (
