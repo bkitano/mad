@@ -76,6 +76,7 @@ class VolumeToolsLLM(FrameProcessor):
         super().__init__()
         self._history: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
         self._session_id: str | None = None
+        self._assistant_message_id: str | None = None
         self._user_id = user_id
         self._bot_speaking = False  # True while TTS audio is actually playing
         self._processing = False   # True while agent loop is running
@@ -108,13 +109,20 @@ class VolumeToolsLLM(FrameProcessor):
 
             self._history.append({"role": "user", "content": user_text})
 
-            # Persist user message
+            # Persist user message to the event log
             import chat_store
+            import uuid as _uuid
             if not self._session_id:
-                session = chat_store.create_session(session_type="voice")
+                session = chat_store.create_session(session_type="voice", user_id=self._user_id or None)
                 self._session_id = session["id"]
                 chat_store.auto_title(self._session_id, user_text)
-            chat_store.add_message(self._session_id, "user", user_text)
+            user_msg_id = f"msg_{_uuid.uuid4().hex[:12]}"
+            chat_store.append_event(
+                self._session_id, user_msg_id, "user",
+                {"type": "text", "text": user_text},
+            )
+            # New assistant message for this turn
+            self._assistant_message_id = f"msg_{_uuid.uuid4().hex[:12]}"
 
             await self.push_frame(OutputTransportMessageFrame(
                 message=json.dumps({"type": "transcription", "text": user_text})
@@ -129,8 +137,7 @@ class VolumeToolsLLM(FrameProcessor):
                 self._processing = False
             logger.info(f"[VolumeToolsLLM] agent loop complete, response: {response_text[:200]}")
 
-            # Persist assistant response
-            chat_store.add_message(self._session_id, "assistant", response_text)
+            # Final text response is persisted inside the agent loop already
 
             # Push response to TTS (SDK surfaces this via onBotTtsText)
             await self.push_frame(LLMFullResponseStartFrame())
@@ -144,14 +151,27 @@ class VolumeToolsLLM(FrameProcessor):
             await self.push_frame(frame, direction)
 
     def _run_agent_loop(self) -> str:
-        """Synchronous agent loop (runs in thread)."""
+        """Synchronous agent loop (runs in thread).
+
+        Persists each block-level UI event (reasoning, text, tool call,
+        step boundary) to the same chat_events table the text path uses,
+        so voice and text sessions render through the identical reload path.
+        """
         from openai import OpenAI
+        import chat_store
 
         api_key = os.environ.get("OPENCODE_GO_API_KEY", "")
         client = OpenAI(base_url=OPENCODE_ZEN_BASE_URL, api_key=api_key)
         tools_schema = volume_tools.GLOBAL_TOOLS_SCHEMA
 
+        assert self._session_id and self._assistant_message_id
+
         for step in range(MAX_AGENT_STEPS):
+            chat_store.append_event(
+                self._session_id, self._assistant_message_id, "assistant",
+                {"type": "step-start"},
+            )
+
             logger.debug(f"[agent] step {step+1}/{MAX_AGENT_STEPS}, history length: {len(self._history)}")
             try:
                 resp = client.chat.completions.create(
@@ -166,11 +186,22 @@ class VolumeToolsLLM(FrameProcessor):
             msg = resp.choices[0].message
             logger.debug(f"[agent] LLM response — content: {bool(msg.content)}, tool_calls: {len(msg.tool_calls) if msg.tool_calls else 0}")
 
-            # Build history entry
+            reasoning = getattr(msg, "reasoning_content", None)
+            if reasoning:
+                chat_store.append_event(
+                    self._session_id, self._assistant_message_id, "assistant",
+                    {"type": "reasoning", "text": reasoning},
+                )
+            if msg.content:
+                chat_store.append_event(
+                    self._session_id, self._assistant_message_id, "assistant",
+                    {"type": "text", "text": msg.content},
+                )
+
+            # Update LLM history
             assistant_msg: dict = {"role": "assistant", "content": msg.content or ""}
-            if getattr(msg, "reasoning_content", None):
-                assistant_msg["reasoning_content"] = msg.reasoning_content
-                logger.debug(f"[agent] reasoning_content: {msg.reasoning_content[:100]}...")
+            if reasoning:
+                assistant_msg["reasoning_content"] = reasoning
             if msg.tool_calls:
                 assistant_msg["tool_calls"] = [
                     {
@@ -189,32 +220,51 @@ class VolumeToolsLLM(FrameProcessor):
                 logger.info(f"[agent] final response (no tools): {(msg.content or '')[:100]}")
                 return msg.content or "(no response)"
 
-            # Execute tools
             for tc in msg.tool_calls:
                 tool_name = tc.function.name
                 logger.info(f"[agent] calling tool: {tool_name}({tc.function.arguments})")
                 try:
-                    import concurrent.futures
-                    TOOL_TIMEOUT = 120
-                    args = json.loads(tc.function.arguments or "{}")
+                    tool_input = json.loads(tc.function.arguments or "{}")
+                except json.JSONDecodeError:
+                    tool_input = {"_raw_arguments": tc.function.arguments}
+
+                import concurrent.futures
+                TOOL_TIMEOUT = 120
+                error_text: str | None = None
+                try:
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                        future = pool.submit(volume_tools.dispatch_global_tool, tool_name, args, self._user_id)
+                        future = pool.submit(volume_tools.dispatch_global_tool, tool_name, tool_input, self._user_id)
                         result = future.result(timeout=TOOL_TIMEOUT)
-                    result_str = json.dumps(result, default=str)
-                    logger.debug(f"[agent] tool {tool_name} result: {result_str[:200]}")
+                    result_json = json.loads(json.dumps(result, default=str))
                 except concurrent.futures.TimeoutError:
                     logger.error(f"[agent] tool {tool_name} timed out after {TOOL_TIMEOUT}s")
-                    result_str = json.dumps({"error": f"Tool '{tool_name}' timed out after {TOOL_TIMEOUT}s"})
+                    result_json = {"error": f"Tool '{tool_name}' timed out after {TOOL_TIMEOUT}s"}
+                    error_text = result_json["error"]
                 except Exception as e:
                     logger.error(f"[agent] tool {tool_name} failed: {e}")
-                    result_str = json.dumps({"error": f"{type(e).__name__}: {e}"})
+                    result_json = {"error": f"{type(e).__name__}: {e}"}
+                    error_text = result_json["error"]
+
+                tool_part = {
+                    "type": f"tool-{tool_name}",
+                    "toolCallId": tc.id,
+                    "state": "output-error" if error_text else "output-available",
+                    "input": tool_input,
+                    "output": result_json,
+                }
+                if error_text:
+                    tool_part["errorText"] = error_text
+                chat_store.append_event(
+                    self._session_id, self._assistant_message_id, "assistant",
+                    tool_part,
+                )
+
                 self._history.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": result_str,
+                    "content": json.dumps(result_json, default=str),
                 })
 
-        # Hit step budget
         logger.warning(f"[agent] hit step budget ({MAX_AGENT_STEPS})")
         for h in reversed(self._history):
             if h.get("role") == "assistant" and h.get("content"):

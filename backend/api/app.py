@@ -304,35 +304,16 @@ async def delete_volume(payload: DeleteVolumeRequest, user: dict = Depends(get_c
 # -- Volume chat ---------------------------------------------------------------
 
 
-def _serialize_assistant_message(msg) -> dict:
-    """Strip the OpenAI ChatCompletionMessage to what the API expects on replay."""
-    out: dict = {"role": "assistant"}
-    # DeepSeek thinking models require reasoning_content to be passed back
-    if getattr(msg, "reasoning_content", None):
-        out["reasoning_content"] = msg.reasoning_content
-    # Always set content (even if empty string) — DeepSeek requires content or tool_calls
-    out["content"] = msg.content or ""
-    if msg.tool_calls:
-        out["tool_calls"] = [
-            {
-                "id": tc.id,
-                "type": "function",
-                "function": {
-                    "name": tc.function.name,
-                    "arguments": tc.function.arguments,
-                },
-            }
-            for tc in msg.tool_calls
-        ]
-    return out
-
-
 @app.post("/volumes/chat")
 async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
-    """Streaming chat endpoint compatible with the Vercel AI SDK UI Message Stream protocol.
+    """Streaming chat endpoint over the Vercel AI SDK UI Message Stream protocol.
 
-    Accepts: { "messages": [...] }  (from useChat)
-    Returns: SSE stream with x-vercel-ai-ui-message-stream: v1
+    Every block-level UI event (user submission, completed text block,
+    completed reasoning block, finished tool call, step boundary) is written
+    to `chat_events` at the same moment its corresponding SSE event is
+    yielded. The LLM context for the next step — including across reloads —
+    is always rebuilt from that event log, so any session is resumable and
+    the persisted view is identical to the live view.
     """
     from openai import OpenAI
     import volume_tools  # noqa: F811
@@ -348,33 +329,47 @@ async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
 
     user_id = user["id"]
 
-    # Get or create session
-    session_id = body.get("session_id", "")
-    if not session_id or not chat_store.get_session(session_id, user_id=user_id):
-        session = chat_store.create_session(session_type="text", user_id=user_id)
+    # Resolve session. If the client supplies an id we honor it (so the first
+    # send and reload point at the same row); if it doesn't exist we create it
+    # with that id, owned by this user. Mismatched owner is a 403.
+    session_id = (body.get("session_id") or "").strip()
+    if session_id:
+        existing = chat_store.get_session(session_id)
+        if existing:
+            if existing.get("user_id") and existing["user_id"] != user_id:
+                raise HTTPException(status_code=403, detail="Not your session")
+        else:
+            chat_store.create_session(user_id=user_id, session_id=session_id)
+    else:
+        session = chat_store.create_session(user_id=user_id)
         session_id = session["id"]
 
-    # Load history from DB
-    history: list[dict] = chat_store.get_history_for_llm(session_id)
-    if not history or history[0].get("role") != "system":
-        history.insert(0, {"role": "system", "content": SYSTEM_PROMPT})
+    # Rebuild LLM history from the event log (resumability lives here)
+    prior_events = chat_store.list_events(session_id)
+    history: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    history.extend(chat_store.events_to_llm_history(prior_events))
 
-    # Extract the latest user message from the AI SDK messages array
+    # Persist the new user submission as one event before we start streaming
     messages = body.get("messages", [])
-    user_text = ""
-    if messages:
-        last_msg = messages[-1]
-        if "parts" in last_msg:
-            text_parts = [p["text"] for p in last_msg["parts"] if p.get("type") == "text"]
-            user_text = "\n".join(text_parts)
-        else:
-            user_text = last_msg.get("content", "")
-        if user_text:
-            history.append({"role": "user", "content": user_text})
-            chat_store.add_message(session_id, "user", user_text)
-            # Auto-title from first user message
-            if len([m for m in history if m["role"] == "user"]) == 1:
-                chat_store.auto_title(session_id, user_text)
+    if not messages:
+        raise HTTPException(status_code=400, detail="messages required")
+    last_msg = messages[-1]
+    if "parts" in last_msg:
+        user_text = "\n".join(p.get("text", "") for p in last_msg["parts"] if p.get("type") == "text")
+    else:
+        user_text = last_msg.get("content", "")
+    if not user_text:
+        raise HTTPException(status_code=400, detail="user message has no text")
+
+    user_message_id = last_msg.get("id") or f"msg_{_uuid.uuid4().hex[:12]}"
+    chat_store.append_event(
+        session_id, user_message_id, "user",
+        {"type": "text", "text": user_text},
+    )
+    had_prior_user = any(e["role"] == "user" for e in prior_events)
+    if not had_prior_user:
+        chat_store.auto_title(session_id, user_text)
+    history.append({"role": "user", "content": user_text})
 
     model = body.get("model") or os.environ.get("OPENCODE_MODEL_DEFAULT") or DEFAULT_CHAT_MODEL
     client = OpenAI(base_url=OPENCODE_ZEN_BASE_URL, api_key=api_key)
@@ -384,9 +379,9 @@ async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
         return f"data: {json.dumps(event)}\n\n"
 
     def generate():
-        msg_id = f"msg_{_uuid.uuid4().hex[:12]}"
+        assistant_message_id = f"msg_{_uuid.uuid4().hex[:12]}"
 
-        yield _sse({"type": "start", "messageId": msg_id})
+        yield _sse({"type": "start", "messageId": assistant_message_id})
         yield _sse({"type": "start-step"})
 
         try:
@@ -394,6 +389,14 @@ async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
             reasoning_block_id = 0
 
             for step in range(MAX_AGENT_STEPS):
+                # Persist the step boundary so the reload view contains the same
+                # step-start parts the AI SDK produces from the SSE start-step
+                # event during live streaming.
+                chat_store.append_event(
+                    session_id, assistant_message_id, "assistant",
+                    {"type": "step-start"},
+                )
+
                 stream = client.chat.completions.create(
                     model=model,
                     messages=history,
@@ -401,41 +404,50 @@ async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
                     stream=True,
                 )
 
-                content_parts: list[str] = []
-                reasoning_parts: list[str] = []
+                step_text: list[str] = []        # all text emitted this step (for LLM history)
+                step_reasoning: list[str] = []   # all reasoning emitted this step
+                current_text: list[str] = []     # text block currently being streamed
+                current_reasoning: list[str] = []
                 tool_calls_acc: dict[int, dict] = {}
                 in_text = False
                 in_reasoning = False
+                t_id = ""
+                r_id = ""
 
                 for chunk in stream:
                     delta = chunk.choices[0].delta if chunk.choices else None
                     if not delta:
                         continue
 
-                    # Reasoning tokens
                     rc = getattr(delta, "reasoning_content", None)
                     if rc:
                         if not in_reasoning:
                             r_id = f"reasoning_{reasoning_block_id}"
                             yield _sse({"type": "reasoning-start", "id": r_id})
                             in_reasoning = True
-                        reasoning_parts.append(rc)
+                            current_reasoning = []
+                        current_reasoning.append(rc)
+                        step_reasoning.append(rc)
                         yield _sse({"type": "reasoning-delta", "id": r_id, "delta": rc})
 
-                    # Content tokens
                     if delta.content:
                         if in_reasoning:
                             yield _sse({"type": "reasoning-end", "id": r_id})
+                            chat_store.append_event(
+                                session_id, assistant_message_id, "assistant",
+                                {"type": "reasoning", "text": "".join(current_reasoning)},
+                            )
                             in_reasoning = False
                             reasoning_block_id += 1
                         if not in_text:
                             t_id = f"text_{text_block_id}"
                             yield _sse({"type": "text-start", "id": t_id})
                             in_text = True
-                        content_parts.append(delta.content)
+                            current_text = []
+                        current_text.append(delta.content)
+                        step_text.append(delta.content)
                         yield _sse({"type": "text-delta", "id": t_id, "delta": delta.content})
 
-                    # Tool call deltas
                     if delta.tool_calls:
                         for tc_delta in delta.tool_calls:
                             idx = tc_delta.index
@@ -449,74 +461,95 @@ async def volume_chat(request: Request, user: dict = Depends(get_current_user)):
                                 if tc_delta.function.arguments:
                                     tool_calls_acc[idx]["arguments"] += tc_delta.function.arguments
 
-                # Close open blocks
                 if in_reasoning:
                     yield _sse({"type": "reasoning-end", "id": r_id})
+                    chat_store.append_event(
+                        session_id, assistant_message_id, "assistant",
+                        {"type": "reasoning", "text": "".join(current_reasoning)},
+                    )
                     reasoning_block_id += 1
                 if in_text:
                     yield _sse({"type": "text-end", "id": t_id})
+                    chat_store.append_event(
+                        session_id, assistant_message_id, "assistant",
+                        {"type": "text", "text": "".join(current_text)},
+                    )
                     text_block_id += 1
 
-                # Build history entry
-                full_content = "".join(content_parts)
-                full_reasoning = "".join(reasoning_parts)
-                assistant_msg: dict = {"role": "assistant", "content": full_content}
-                if full_reasoning:
-                    assistant_msg["reasoning_content"] = full_reasoning
+                # Build the OpenAI message for this step and append to history
+                assistant_msg: dict = {"role": "assistant", "content": "".join(step_text)}
+                if step_reasoning:
+                    assistant_msg["reasoning_content"] = "".join(step_reasoning)
                 if tool_calls_acc:
                     assistant_msg["tool_calls"] = [
-                        {"id": tc["id"], "type": "function", "function": {"name": tc["name"], "arguments": tc["arguments"]}}
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                        }
                         for tc in tool_calls_acc.values()
                     ]
                 history.append(assistant_msg)
 
-                # No tool calls — done
                 if not tool_calls_acc:
                     break
 
-                # Execute tools and stream results
+                # Execute tools, stream their input/output, and persist each as one event
                 for tc in tool_calls_acc.values():
-                    yield _sse({"type": "tool-input-start", "toolCallId": tc["id"], "toolName": tc["name"]})
-                    yield _sse({"type": "tool-input-available", "toolCallId": tc["id"], "toolName": tc["name"], "input": json.loads(tc["arguments"] or "{}")})
-
                     try:
-                        args = json.loads(tc["arguments"] or "{}")
-                        # Run tool with a timeout to prevent stalls
-                        import concurrent.futures
-                        TOOL_TIMEOUT = 120  # seconds
+                        tool_input = json.loads(tc["arguments"] or "{}")
+                    except json.JSONDecodeError:
+                        tool_input = {"_raw_arguments": tc["arguments"]}
+
+                    yield _sse({"type": "tool-input-start", "toolCallId": tc["id"], "toolName": tc["name"]})
+                    yield _sse({
+                        "type": "tool-input-available",
+                        "toolCallId": tc["id"],
+                        "toolName": tc["name"],
+                        "input": tool_input,
+                    })
+
+                    import concurrent.futures
+                    TOOL_TIMEOUT = 120
+                    error_text: str | None = None
+                    try:
                         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                            future = pool.submit(volume_tools.dispatch_global_tool, tc["name"], args, user_id)
+                            future = pool.submit(
+                                volume_tools.dispatch_global_tool, tc["name"], tool_input, user_id,
+                            )
                             result = future.result(timeout=TOOL_TIMEOUT)
                         result_json = json.loads(json.dumps(result, default=str))
                     except concurrent.futures.TimeoutError:
                         result_json = {"error": f"Tool '{tc['name']}' timed out after {TOOL_TIMEOUT}s"}
+                        error_text = result_json["error"]
                     except Exception as e:
                         result_json = {"error": f"{type(e).__name__}: {e}"}
-                    result_str = json.dumps(result_json, default=str)
+                        error_text = result_json["error"]
 
                     yield _sse({"type": "tool-output-available", "toolCallId": tc["id"], "output": result_json})
+
+                    tool_part = {
+                        "type": f"tool-{tc['name']}",
+                        "toolCallId": tc["id"],
+                        "state": "output-error" if error_text else "output-available",
+                        "input": tool_input,
+                        "output": result_json,
+                    }
+                    if error_text:
+                        tool_part["errorText"] = error_text
+                    chat_store.append_event(session_id, assistant_message_id, "assistant", tool_part)
 
                     history.append({
                         "role": "tool",
                         "tool_call_id": tc["id"],
-                        "content": result_str,
+                        "content": json.dumps(result_json, default=str),
                     })
 
                 yield _sse({"type": "finish-step"})
-                if tool_calls_acc:
-                    yield _sse({"type": "start-step"})
+                yield _sse({"type": "start-step"})
 
         except Exception as e:
             yield _sse({"type": "error", "errorText": f"{type(e).__name__}: {e}"})
-
-        # Save assistant response to DB
-        final_content = ""
-        for h in reversed(history):
-            if h.get("role") == "assistant" and h.get("content"):
-                final_content = h["content"]
-                break
-        if final_content:
-            chat_store.add_message(session_id, "assistant", final_content)
 
         yield _sse({"type": "finish-step"})
         yield _sse({"type": "finish"})
@@ -543,12 +576,18 @@ async def list_chats(limit: int = Query(50, ge=1, le=200), user: dict = Depends(
 
 @app.get("/chats/{session_id}")
 async def get_chat(session_id: str, user: dict = Depends(get_current_user)):
-    """Get a chat session with its messages."""
+    """Get a chat session as AI SDK UIMessages built from the event log.
+
+    The returned `messages` array has the exact shape `useChat` puts into its
+    `messages` state, so the frontend can call `setMessages(messages)` and
+    render with the same code path used for live streaming.
+    """
     import chat_store
     session = chat_store.get_session(session_id, user_id=user["id"])
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    messages = chat_store.get_messages(session_id)
+    events = chat_store.list_events(session_id)
+    messages = chat_store.events_to_ui_messages(events)
     return {"session": session, "messages": messages}
 
 

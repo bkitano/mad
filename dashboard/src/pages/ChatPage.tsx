@@ -28,14 +28,24 @@ export default function ChatPage() {
   const [chatInput, setChatInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
+  // The transport reads the active session id off a ref so the same instance
+  // works across "new chat" → "first send creates a session" → "follow-up
+  // sends reuse that session", without having to rebuild the transport mid-stream.
+  const sessionRef = useRef<string | null>(urlSessionId || null)
+  useEffect(() => { sessionRef.current = chatSessionId }, [chatSessionId])
+
+  // Set when handleSend mints a brand-new id locally — skips the next
+  // historical load so we don't clobber the in-flight stream with empty state.
+  const skipNextLoad = useRef(false)
+
   const chatTransport = useMemo(() => new DefaultChatTransport({
     api: `${API_URL}/volumes/chat`,
-    body: chatSessionId ? { session_id: chatSessionId } : {},
+    body: () => sessionRef.current ? { session_id: sessionRef.current } : {},
     headers: () => {
       const token = authSession?.access_token
       return token ? { Authorization: `Bearer ${token}` } as Record<string, string> : {} as Record<string, string>
     },
-  }), [chatSessionId, authSession])
+  }), [authSession])
 
   const {
     messages,
@@ -53,10 +63,16 @@ export default function ChatPage() {
     }
   }, [urlSessionId])
 
-  // Load persisted messages whenever the active session changes
+  // Load persisted messages whenever the active session changes.
+  // The backend returns AI SDK UIMessages reconstructed from the event log,
+  // so the shape is identical to what `useChat` produces during streaming.
   useEffect(() => {
     if (!chatSessionId) {
       setMessages([])
+      return
+    }
+    if (skipNextLoad.current) {
+      skipNextLoad.current = false
       return
     }
     let cancelled = false
@@ -68,14 +84,7 @@ export default function ChatPage() {
           return
         }
         const data = await res.json()
-        if (cancelled) return
-        const loaded = (data.messages || []).map((m: any) => {
-          const parts = Array.isArray(m.parts) && m.parts.length > 0
-            ? m.parts
-            : [{ type: 'text', text: m.content || '' }]
-          return { id: String(m.id), role: m.role, parts }
-        })
-        setMessages(loaded)
+        if (!cancelled) setMessages(data.messages || [])
       } catch {
         if (!cancelled) setMessages([])
       }
@@ -92,12 +101,15 @@ export default function ChatPage() {
 
   useEffect(() => { fetchHistory() }, [fetchHistory])
 
-  // Refresh history when first assistant message arrives on a new chat
+  // Refresh the sidebar list whenever a turn finishes so a newly created
+  // session shows up immediately.
+  const prevStatus = useRef(status)
   useEffect(() => {
-    if (messages.length > 0 && !urlSessionId) {
+    if (prevStatus.current === 'streaming' && status === 'ready') {
       fetchHistory()
     }
-  }, [messages.length])
+    prevStatus.current = status
+  }, [status, fetchHistory])
 
   const loadSession = (id: string) => {
     navigate(`/agent/chat/${id}`)
@@ -123,6 +135,19 @@ export default function ChatPage() {
     if (!chatInput.trim() || sending) return
     const text = chatInput.trim()
     setChatInput('')
+    // Mint a session id eagerly so every send in this thread targets the same
+    // persisted session — including the very first message, which the backend
+    // will create on demand under this id.
+    if (!sessionRef.current) {
+      const raw = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+        ? crypto.randomUUID()
+        : `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`
+      const newId = raw.replace(/-/g, '').slice(0, 32)
+      sessionRef.current = newId
+      skipNextLoad.current = true
+      setChatSessionId(newId)
+      navigate(`/agent/chat/${newId}`, { replace: true })
+    }
     sendMessage({ text })
   }
 
@@ -309,13 +334,20 @@ export default function ChatPage() {
                         </div>
                       )
                     }
+                    if (part.type === 'step-start') {
+                      return null
+                    }
                     if (part.type.startsWith('tool-')) {
                       const toolPart = part as any
+                      const toolName = part.type.slice('tool-'.length)
+                      const done = toolPart.state === 'output-available' || toolPart.state === 'output-error'
                       return (
                         <div key={j} className="flex items-center gap-2 text-xs font-mono text-gray-400 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 my-2">
-                          <span className="text-blue-400">{toolPart.toolName || 'tool'}</span>
-                          {toolPart.state === 'result' || toolPart.state === 'output-available' ? (
-                            <span className="text-green-400">done</span>
+                          <span className="text-blue-400">{toolName}</span>
+                          {done ? (
+                            <span className={toolPart.state === 'output-error' ? 'text-red-400' : 'text-green-400'}>
+                              {toolPart.state === 'output-error' ? 'error' : 'done'}
+                            </span>
                           ) : (
                             <span className="text-yellow-400 animate-pulse">running...</span>
                           )}
