@@ -26,6 +26,7 @@ CLI usage:
 
 import json
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -207,6 +208,8 @@ def create_sandbox(
         tags["gpu"] = gpu
     tags["cpu"] = str(cpu)
     tags["memory"] = str(memory)
+    tags["created_at"] = str(int(time.time()))
+    tags["timeout_seconds"] = str(timeout)
     if tags:
         sb.set_tags(tags)
     return sb

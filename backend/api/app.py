@@ -622,6 +622,9 @@ async def list_sandboxes(user: dict = Depends(get_current_user)):
         except Exception:
             opencode_url = None
             jupyter_url = None
+        created_at = int(tags.get("created_at", "0"))
+        timeout_seconds = int(tags.get("timeout_seconds", str(6 * 3600)))
+        expires_at = (created_at + timeout_seconds) if created_at else 0
         sandboxes.append({
             "sandbox_id": sb.object_id,
             "opencode_url": opencode_url,
@@ -630,6 +633,7 @@ async def list_sandboxes(user: dict = Depends(get_current_user)):
             "gpu": tags.get("gpu", ""),
             "cpu": float(tags.get("cpu", "4")),
             "memory": int(tags.get("memory", "8192")),
+            "expires_at": expires_at,
         })
     return {"sandboxes": sandboxes}
 

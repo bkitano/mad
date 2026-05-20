@@ -20,6 +20,7 @@ interface Session {
   gpu: string
   cpu: number
   memory: number
+  expires_at: number  // unix epoch seconds
 }
 
 interface SandboxListItem {
@@ -30,6 +31,7 @@ interface SandboxListItem {
   gpu: string
   cpu: number
   memory: number
+  expires_at: number
 }
 
 interface VolumeItem {
@@ -40,6 +42,25 @@ interface VolumeItem {
 }
 
 type SidebarTab = 'sandboxes' | 'volumes' | 'chats'
+
+function Countdown({ expiresAt }: { expiresAt: number }) {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
+  useEffect(() => {
+    const id = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 60_000)
+    return () => clearInterval(id)
+  }, [])
+  if (!expiresAt) return null
+  const remaining = expiresAt - now
+  if (remaining <= 0) return <span className="text-xs text-red-400">expired</span>
+  const hours = Math.floor(remaining / 3600)
+  const minutes = Math.floor((remaining % 3600) / 60)
+  const isLow = remaining < 1800 // < 30 min
+  return (
+    <span className={`text-xs ${isLow ? 'text-orange-400' : 'text-gray-500'}`}>
+      {hours}h {minutes}m left
+    </span>
+  )
+}
 
 function SidebarAccount() {
   const { user, signOut, signInWithGoogle } = useAuth()
@@ -291,6 +312,7 @@ export default function MADDashboard() {
         gpu: gpu ? (gpuCount > 1 ? `${gpu}:${gpuCount}` : gpu) : '',
         cpu,
         memory,
+        expires_at: Math.floor(Date.now() / 1000) + 6 * 3600,
       } as Session)
       setShowCreateForm(false)
       setSelectedVolume(null)
@@ -316,6 +338,7 @@ export default function MADDashboard() {
       gpu: sb.gpu || '',
       cpu: sb.cpu || 4,
       memory: sb.memory || 8192,
+      expires_at: sb.expires_at || 0,
     })
     setMobileSidebarOpen(false)
   }
@@ -615,6 +638,7 @@ export default function MADDashboard() {
                 <span className="hidden md:inline text-xs text-gray-500 truncate">
                   {session.gpu || 'CPU'} &middot; {session.cpu} cores &middot; {session.memory >= 1024 ? `${(session.memory / 1024).toFixed(0)} GiB` : `${session.memory} MiB`}
                 </span>
+                <span className="hidden md:inline"><Countdown expiresAt={session.expires_at} /></span>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex bg-gray-800 rounded-lg p-0.5">
