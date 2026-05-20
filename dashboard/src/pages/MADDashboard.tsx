@@ -17,6 +17,9 @@ interface Session {
   opencode_url: string
   jupyter_url: string
   status: string
+  gpu: string
+  cpu: number
+  memory: number
 }
 
 interface SandboxListItem {
@@ -24,6 +27,9 @@ interface SandboxListItem {
   opencode_url: string | null
   jupyter_url: string | null
   volume_name: string
+  gpu: string
+  cpu: number
+  memory: number
 }
 
 interface VolumeItem {
@@ -279,8 +285,13 @@ export default function MADDashboard() {
         body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error(await res.text())
-      const data: Session = await res.json()
-      setSession(data)
+      const data = await res.json()
+      setSession({
+        ...data,
+        gpu: gpu ? (gpuCount > 1 ? `${gpu}:${gpuCount}` : gpu) : '',
+        cpu,
+        memory,
+      } as Session)
       setShowCreateForm(false)
       setSelectedVolume(null)
       setSidebarTab('sandboxes')
@@ -302,6 +313,9 @@ export default function MADDashboard() {
       opencode_url: sb.opencode_url,
       jupyter_url: sb.jupyter_url || '',
       status: 'running',
+      gpu: sb.gpu || '',
+      cpu: sb.cpu || 4,
+      memory: sb.memory || 8192,
     })
     setMobileSidebarOpen(false)
   }
@@ -598,6 +612,9 @@ export default function MADDashboard() {
                 {session.volume_name && (
                   <span className="hidden md:inline text-xs text-gray-500 truncate">vol: {session.volume_name}</span>
                 )}
+                <span className="hidden md:inline text-xs text-gray-500 truncate">
+                  {session.gpu || 'CPU'} &middot; {session.cpu} cores &middot; {session.memory >= 1024 ? `${(session.memory / 1024).toFixed(0)} GiB` : `${session.memory} MiB`}
+                </span>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex bg-gray-800 rounded-lg p-0.5">

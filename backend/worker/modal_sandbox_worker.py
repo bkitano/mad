@@ -52,6 +52,7 @@ endpoint_image = (
         "pydantic>=2.0.0",
         "fastapi[standard]",
         "mcp>=1.0",
+        "websockets>=13.0",
     )
     .add_local_python_source("worker")
 )
@@ -202,6 +203,10 @@ def create_sandbox(
         tags["volume_name"] = volume_name
     if user_id:
         tags["user_id"] = user_id
+    if gpu:
+        tags["gpu"] = gpu
+    tags["cpu"] = str(cpu)
+    tags["memory"] = str(memory)
     if tags:
         sb.set_tags(tags)
     return sb
@@ -323,6 +328,14 @@ def mcp_server():
 
     server = FastMCP("mad-volume", stateless_http=True)
 
+    def _get_jupyter_url_mcp(sandbox_id: str) -> str:
+        import modal as _modal
+        sb = _modal.Sandbox.from_id(sandbox_id)
+        tunnels = sb.tunnels()
+        if JUPYTER_PORT not in tunnels:
+            raise ValueError(f"Sandbox {sandbox_id} has no Jupyter tunnel")
+        return tunnels[JUPYTER_PORT].url
+
     @server.tool(description="List every Modal volume in the workspace.")
     def list_volumes() -> list[dict]:
         return volume_tools.list_volumes()
@@ -430,6 +443,157 @@ def mcp_server():
         import modal as _modal
         _modal.Volume.objects.delete(volume_name)
         return {"volume_name": volume_name, "status": "deleted"}
+
+    @server.tool(description="Check if the Jupyter server in a sandbox is up and ready. Call before kernel operations on recently created sandboxes.")
+    def check_jupyter_health(sandbox_id: str) -> dict:
+        """Health check for Jupyter server."""
+        import httpx as _httpx
+        try:
+            jupyter_url = _get_jupyter_url_mcp(sandbox_id)
+        except Exception as e:
+            return {"sandbox_id": sandbox_id, "healthy": False, "reason": f"No Jupyter tunnel: {e}"}
+        try:
+            resp = _httpx.get(f"{jupyter_url}/api/status", timeout=5.0)
+            resp.raise_for_status()
+            data = resp.json()
+            return {
+                "sandbox_id": sandbox_id, "healthy": True,
+                "started": data.get("started"),
+                "last_activity": data.get("last_activity"),
+                "connections": data.get("connections", 0),
+                "kernels": data.get("kernels", 0),
+            }
+        except _httpx.ConnectError:
+            return {"sandbox_id": sandbox_id, "healthy": False, "reason": "Jupyter not reachable (may still be starting)"}
+        except _httpx.TimeoutException:
+            return {"sandbox_id": sandbox_id, "healthy": False, "reason": "Jupyter timed out (may still be starting)"}
+        except Exception as e:
+            return {"sandbox_id": sandbox_id, "healthy": False, "reason": str(e)}
+
+    @server.tool(description="List available Jupyter kernel specs in a running sandbox.")
+    def list_jupyter_kernels(sandbox_id: str) -> dict:
+        """Discover which kernels are installed in a sandbox."""
+        import httpx as _httpx
+        jupyter_url = _get_jupyter_url_mcp(sandbox_id)
+        resp = _httpx.get(f"{jupyter_url}/api/kernelspecs", timeout=10.0)
+        resp.raise_for_status()
+        specs = resp.json()
+        return {
+            "default": specs.get("default", ""),
+            "kernelspecs": {
+                name: {
+                    "display_name": spec["spec"]["display_name"],
+                    "language": spec["spec"].get("language", ""),
+                }
+                for name, spec in specs.get("kernelspecs", {}).items()
+            },
+        }
+
+    @server.tool(description="Execute code in a Jupyter kernel inside a sandbox. The kernel persists state between calls (variables, imports, loaded data). Use kernel_name='mad' for the project environment.")
+    def execute_in_jupyter(sandbox_id: str, code: str, kernel_name: str = "mad", timeout: float = 300.0) -> dict:
+        """Run code on a Jupyter kernel and return output."""
+        import httpx as _httpx
+        import json as _json
+        import uuid as _uuid
+        import time as _time
+        import websockets.sync.client as _ws_sync
+
+        jupyter_url = _get_jupyter_url_mcp(sandbox_id)
+
+        # Find or start kernel
+        resp = _httpx.get(f"{jupyter_url}/api/kernels", timeout=10.0)
+        resp.raise_for_status()
+        kernel_id = None
+        for k in resp.json():
+            if k.get("name") == kernel_name and k.get("execution_state") != "dead":
+                kernel_id = k["id"]
+                break
+        if not kernel_id:
+            resp = _httpx.post(f"{jupyter_url}/api/kernels", json={"name": kernel_name}, timeout=10.0)
+            resp.raise_for_status()
+            kernel_id = resp.json()["id"]
+
+        # Execute via websocket
+        ws_url = jupyter_url.replace("https://", "wss://").replace("http://", "ws://")
+        ws_url = f"{ws_url}/api/kernels/{kernel_id}/channels"
+        msg_id = _uuid.uuid4().hex
+
+        execute_request = {
+            "header": {"msg_id": msg_id, "msg_type": "execute_request", "username": "", "session": _uuid.uuid4().hex, "version": "5.3"},
+            "parent_header": {}, "metadata": {},
+            "content": {"code": code, "silent": False, "store_history": True, "user_expressions": {}, "allow_stdin": False, "stop_on_error": True},
+            "buffers": [], "channel": "shell",
+        }
+
+        outputs, errors, status = [], [], "ok"
+        with _ws_sync.connect(ws_url, close_timeout=5) as ws:
+            ws.send(_json.dumps(execute_request))
+            deadline = _time.monotonic() + timeout
+            while _time.monotonic() < deadline:
+                try:
+                    ws.settimeout(min(deadline - _time.monotonic(), 5.0))
+                    raw = ws.recv()
+                except TimeoutError:
+                    continue
+                msg = _json.loads(raw)
+                msg_type = msg.get("msg_type") or msg.get("header", {}).get("msg_type", "")
+                if msg.get("parent_header", {}).get("msg_id") != msg_id:
+                    continue
+                if msg_type == "stream":
+                    outputs.append(msg["content"].get("text", ""))
+                elif msg_type in ("execute_result", "display_data"):
+                    data = msg["content"].get("data", {})
+                    if "text/plain" in data:
+                        outputs.append(data["text/plain"])
+                elif msg_type == "error":
+                    errors.extend(msg["content"].get("traceback", []))
+                    status = "error"
+                elif msg_type == "execute_reply":
+                    break
+
+        return {
+            "sandbox_id": sandbox_id, "kernel_id": kernel_id, "kernel_name": kernel_name,
+            "status": status,
+            "output": "\n".join(outputs)[:50_000],
+            "errors": "\n".join(errors)[:10_000] if errors else None,
+        }
+
+    @server.tool(description="Run all code cells of a .ipynb notebook on a Jupyter kernel in a sandbox. Stops on first error.")
+    def run_notebook_in_jupyter(sandbox_id: str, notebook_path: str, kernel_name: str = "mad", timeout_per_cell: float = 300.0) -> dict:
+        """Execute a notebook end-to-end."""
+        import httpx as _httpx
+        jupyter_url = _get_jupyter_url_mcp(sandbox_id)
+
+        # Read notebook via Jupyter contents API
+        resp = _httpx.get(f"{jupyter_url}/api/contents/{notebook_path}", timeout=30.0)
+        resp.raise_for_status()
+        nb_data = resp.json()
+        if nb_data.get("type") != "notebook":
+            return {"error": f"Not a notebook: {notebook_path}"}
+
+        cells = nb_data.get("content", {}).get("cells", [])
+        code_cells = [(i, c) for i, c in enumerate(cells) if c.get("cell_type") == "code"]
+
+        results = []
+        for i, cell in code_cells:
+            source = cell.get("source", "")
+            if isinstance(source, list):
+                source = "".join(source)
+            if not source.strip():
+                continue
+            # Reuse execute_in_jupyter for each cell
+            cell_result = execute_in_jupyter(sandbox_id, source, kernel_name, timeout_per_cell)
+            results.append({"cell_index": i, "source": source[:500], **{k: cell_result[k] for k in ("status", "output", "errors")}})
+            if cell_result["status"] == "error":
+                break
+
+        return {
+            "sandbox_id": sandbox_id, "notebook_path": notebook_path,
+            "kernel_name": kernel_name,
+            "cells_executed": len(results),
+            "cells_total": len(code_cells),
+            "results": results,
+        }
 
     return server.streamable_http_app()
 

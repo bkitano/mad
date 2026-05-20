@@ -185,12 +185,16 @@ SYSTEM_PROMPT = (
     "## Capabilities\n"
     "- **Volumes**: Browse stored experiment data (list_volumes, list_files, read_file, grep, read_notebook)\n"
     "- **Sandboxes**: Manage running compute instances (list_sandboxes, send_to_sandbox, send_to_sandbox_async)\n"
-    "- **Live files**: Read files from running sandboxes (list_sandbox_files, read_sandbox_file)\n\n"
+    "- **Live files**: Read files from running sandboxes (list_sandbox_files, read_sandbox_file)\n"
+    "- **Jupyter kernels**: Execute code directly on sandbox kernels (list_jupyter_kernels, execute_in_jupyter, run_notebook_in_jupyter)\n\n"
     "## Guidelines\n"
     "- Use `list_volumes` or `list_sandboxes` first to discover what's available.\n"
     "- For read-only questions about past experiments, use volume tools (grep, read_file).\n"
     "- For active work (running code, editing files, executing experiments), use `send_to_sandbox` "
     "to delegate to the OpenCode agent in a sandbox.\n"
+    "- For direct code execution (quick computations, inspecting data, checking GPU status, etc.), "
+    "use `execute_in_jupyter`. The kernel persists state between calls.\n"
+    "- To run an entire notebook end-to-end, use `run_notebook_in_jupyter`.\n"
     "- Use `send_to_sandbox_async` for long-running tasks, then check back with sandbox file tools.\n"
     "- Prefer `grep` and targeted reads over walking directory trees.\n"
     "- Use `read_notebook` for .ipynb files on volumes.\n"
@@ -623,6 +627,9 @@ async def list_sandboxes(user: dict = Depends(get_current_user)):
             "opencode_url": opencode_url,
             "jupyter_url": jupyter_url,
             "volume_name": vol_name,
+            "gpu": tags.get("gpu", ""),
+            "cpu": float(tags.get("cpu", "4")),
+            "memory": int(tags.get("memory", "8192")),
         })
     return {"sandboxes": sandboxes}
 
