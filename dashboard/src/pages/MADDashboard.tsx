@@ -232,6 +232,7 @@ export default function MADDashboard() {
   const [gpuCount, setGpuCount] = useState(1)
   const [cpu, setCpu] = useState(4)
   const [memory, setMemory] = useState(8192)
+  const [timeoutHours, setTimeoutHours] = useState(6)
 
   const pollJupyter = useCallback((url: string) => {
     setJupyterReady(false)
@@ -299,6 +300,7 @@ export default function MADDashboard() {
       if (gpu) body.gpu = gpuCount > 1 ? `${gpu}:${gpuCount}` : gpu
       body.cpu = cpu
       body.memory = memory
+      body.timeout_hours = timeoutHours
 
       const res = await apiFetch('/sandboxes/create', {
         method: 'POST',
@@ -312,7 +314,7 @@ export default function MADDashboard() {
         gpu: gpu ? (gpuCount > 1 ? `${gpu}:${gpuCount}` : gpu) : '',
         cpu,
         memory,
-        expires_at: Math.floor(Date.now() / 1000) + 6 * 3600,
+        expires_at: Math.floor(Date.now() / 1000) + timeoutHours * 3600,
       } as Session)
       setShowCreateForm(false)
       setSelectedVolume(null)
@@ -336,8 +338,8 @@ export default function MADDashboard() {
       jupyter_url: sb.jupyter_url || '',
       status: 'running',
       gpu: sb.gpu || '',
-      cpu: sb.cpu || 4,
-      memory: sb.memory || 8192,
+      cpu: sb.cpu || 0,
+      memory: sb.memory || 0,
       expires_at: sb.expires_at || 0,
     })
     setMobileSidebarOpen(false)
@@ -636,7 +638,7 @@ export default function MADDashboard() {
                   <span className="hidden md:inline text-xs text-gray-500 truncate">vol: {session.volume_name}</span>
                 )}
                 <span className="hidden md:inline text-xs text-gray-500 truncate">
-                  {session.gpu || 'CPU'} &middot; {session.cpu} cores &middot; {session.memory >= 1024 ? `${(session.memory / 1024).toFixed(0)} GiB` : `${session.memory} MiB`}
+                  {session.gpu || 'CPU'}{session.cpu ? ` · ${session.cpu} cores` : ''}{session.memory ? ` · ${session.memory >= 1024 ? `${(session.memory / 1024).toFixed(0)} GiB` : `${session.memory} MiB`}` : ''}
                 </span>
                 <span className="hidden md:inline"><Countdown expiresAt={session.expires_at} /></span>
               </div>
@@ -879,6 +881,17 @@ export default function MADDashboard() {
                     <option value={32768}>32 GiB</option>
                     <option value={65536}>64 GiB</option>
                     <option value={131072}>128 GiB</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Timeout</label>
+                  <select value={timeoutHours} onChange={(e) => setTimeoutHours(Number(e.target.value))} className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-purple-500">
+                    <option value={1}>1 hour</option>
+                    <option value={2}>2 hours</option>
+                    <option value={4}>4 hours</option>
+                    <option value={6}>6 hours</option>
+                    <option value={12}>12 hours</option>
+                    <option value={24}>24 hours</option>
                   </select>
                 </div>
               </div>

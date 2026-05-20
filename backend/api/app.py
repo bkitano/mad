@@ -166,7 +166,7 @@ JUPYTER_PORT = 8888
 # Abuse prevention defaults (no plan system yet)
 MAX_SANDBOXES_PER_USER = 3
 ALLOWED_GPUS = {"T4", "L4", "A10G", ""}  # empty string = CPU-only
-MAX_TIMEOUT_HOURS = 6
+MAX_TIMEOUT_HOURS = 24
 
 MODAL_CREATE_SANDBOX_URL = os.environ.get(
     "MODAL_CREATE_SANDBOX_URL",
@@ -631,8 +631,8 @@ async def list_sandboxes(user: dict = Depends(get_current_user)):
             "jupyter_url": jupyter_url,
             "volume_name": vol_name,
             "gpu": tags.get("gpu", ""),
-            "cpu": float(tags.get("cpu", "4")),
-            "memory": int(tags.get("memory", "8192")),
+            "cpu": float(tags.get("cpu", "0")),
+            "memory": int(tags.get("memory", "0")),
             "expires_at": expires_at,
         })
     return {"sandboxes": sandboxes}
